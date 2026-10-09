@@ -24,9 +24,14 @@ Offline phase purity (Expert Iteration — Anthony et al. 2017; AlphaGo
 Zero / AlphaZero — Silver et al. 2017/2018): nothing updates during
 generation, so the expert, the acting policy and the anchor are the SAME
 frozen network. Acting is the policy's own stochastic self-play (DAgger —
-Ross et al. 2011; committee acting was retired with row schema 2: acting
-the argmax of a near-tie lead reshapes the trajectory and value-target
-distribution around the committee's own noise, §20.1).
+Ross et al. 2011) except at override rows of committee-acted games
+(``--committee-act-frac``, 1.0 in the §20.14 recipe: +0.0055 play vs
+student acting, CE_Teacher_Design §20.13 add. 16), where the argmax of
+the legacy pi_gumbel readout (``tilt_summary_to_target``) replaces the
+sampled card so the corpus samples the search-preferred lines. That
+readout only steers the trajectory; the Stage-2 targets are built later
+by ``policy_iteration.py``, and every row's anchor stays theta_k's
+act-time policy whichever card was played.
 
 Anchors are theta_k's act-time probability vectors (the ``act()`` stash)
 at the true recurrent state of the realized trajectory, stored on every
