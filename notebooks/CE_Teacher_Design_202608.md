@@ -5479,3 +5479,77 @@ crowded out), and through the shared trunk the value/aux/bidding heads
 and the retention KL also read. The attribution read of item 1 has to
 go through distill and cert for that reason. The play head's entropy
 still matters downstream regardless: the bidding phase samples from it.
+
+### 22.6 Live iteration 1 and the recipe arms (2026-10-09/10)
+
+The `202609_recall_rc` corpus (8,000 games, centered-noise writer,
+137,765 committee rows) completed 14:02 10-09; the program ran master's
+recipe (fit/target/distill) and certified by 16:43. The cert FAILED only
+the convention bar — t0 defender trump lead 1.7% (seeds 1.36/1.46/1.66/
+2.21) against a 1.0% bar calibrated on the D8k lineage, whose theta_0
+was already under 1% (this lineage's theta_0: 3.4-4.1%, the seed 7%).
+Operator decision: bar → 4.0% (`68a906f`), policy-iteration cap 5 → 10
+(`9bc5310`); the failed cert is kept as `pi/iter1/cert_bar1pct_failed.json`
+and the orchestrator re-certifies on relaunch. Then three arms on the
+same corpus from the `crossfit-holdout` branch, each fit/target/distill/
+cert plus paired duplicate h2h (8,000 deals/mode) vs the baseline
+candidate:
+
+| arm | recipe | vs theta_0 h2h | play-only | bidding | t0 lead | KL p50 | clipped | paired vs baseline |
+|---|---|---|---|---|---|---|---|---|
+| baseline | master (floor, corpus-pooled noise) | +0.0166 ± 0.0032 | +0.0165 ± 0.0030 | +0.0010 ± 0.0013 | 1.7 | 0.043 | 5.3% | — |
+| A | --cross-fit 5 (no floor) | +0.0061 ± 0.0033 | +0.0055 ± 0.0031 | +0.0003 ± 0.0009 | 2.2 | 0.097 | 22.3% | −0.0089 ± 0.0033 |
+| B | A + --distill-holdout-frac 0.02 | +0.0030 ± 0.0034 | +0.0078 ± 0.0032 | −0.0030 ± 0.0012 | 0.6 | 0.097 | 22.3% | −0.0136 ± 0.0034 |
+| C | A + --noise-pool class | +0.0107 ± 0.0031 | +0.0106 ± 0.0030 | −0.0002 ± 0.0009 | 1.9 | 0.059 | 5.0% | −0.0049 ± 0.0029 |
+
+Paired within the arms: B − A = −0.0035 ± 0.0030 (the 2% distill
+holdout buys nothing and the bidding route slipped; DROPPED from the
+queue, 10% stays); C − A = +0.0031 ± 0.0031.
+
+**What arm A found (review, confirmed on the live table).** Both per-
+class sigma_u^2 values that mattered were the shrinkage prior, not data:
+with the local estimate E[r^2] − E[noise] negative and floored at 1e-7,
+the class value is k·global/(n+k) with k = 50 — 3.45e-5 from the 1,177
+held-out rows (the baseline's floor), 3.25e-6 from the 11,412 out-of-
+fold rows (arm A). The baseline's gamma at defender follows (0.09) was
+set by the 10% holdout fraction; arm A's (0.01) by the class size.
+Removing the floor did not break an estimator, it removed an implicit
+prior that worked by luck — and gamma → 0.01 is the over-sharpening
+case (v_post = gamma·sigma_n^2 → tiny, |z| p50 3.57, 22% clipped).
+
+**Root cause: the centered noise model's pooling target.** It shrank
+each card's across-replicate centered variance toward the CORPUS-WIDE
+df-weighted mean (1.459e-3) with nu = 4 against 2 df per card, i.e. the
+target carried two thirds of every label's noise. Measured per class on
+the live row table (df-weighted class mean / corpus mean): std defender
+follows t0-t4 0.39 / 0.37 / 0.24 / 0.13 / 0.04; defender leads ~0.3;
+picker follows 1.7-2.9. Quiet classes' noise was overstated up to 25x,
+so the held-out residual sat BELOW the noise floor (t0 defender follow
+2.20e-4 vs 3.63e-4) and sigma_u^2 was negative in every one; picker
+classes ran the other way. Fix (`4ff2846`, branch): `--noise-pool class`
+— the row's telemetry class mean as the target, itself shrunk toward the
+corpus-wide mean by df with NOISE_POOL_DF = 200 (classes fix the search
+budget, so per budget too). Under it sigma_u^2 is positive and measured
+everywhere and the held-out and out-of-fold estimates agree within 1.5x
+(t0 defender follow 7.1e-5 / 4.5e-5): defender-follow gamma t0-t4 0.21 /
+0.32 / 0.57 / 0.79 / 0.92 — late-trick follows are nearly determined and
+the search is trusted; corpus pooling had assigned them 20x their own
+noise and trusted the model instead.
+
+**Reading.** Arm C is the honest posterior under cross-fitting and a
+per-class noise model and it still reads 1.7 SE below the baseline,
+whose gamma at the big defender cells (0.09) is the accidental value and
+whose targets are the least sharp of the four (KL p50 0.043 vs 0.059).
+The remaining difference is sharpness: C's v_post still omits the
+model's own estimation error (finding #2's missing term; `floor_class_
+variances`'s docstring names it as the Prasad-Rao g2 the flexible model
+has no closed form for), so the honest posterior is still overconfident
+at pooled rows. The candidate term comes free with cross-fitting: the
+spread of the K fold models' predictions at a row (biased low — K−1 of
+K saw the row — but the right shape), added to v as (1−gamma)^2·
+Var_folds(a_model), with an explicit stated sigma_u^2 minimum beside it
+rather than a row-count accident. Arm D if pursued. Not run; the
+operator decides between relaunching master's recipe for iteration 1
+(known +0.0166) and one more 4-h arm. Either way the class-pooled noise
+model is correct and should merge; whether the floor stays as an
+explicit knob is the open question.
