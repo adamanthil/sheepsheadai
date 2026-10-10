@@ -5553,3 +5553,28 @@ operator decides between relaunching master's recipe for iteration 1
 (known +0.0166) and one more 4-h arm. Either way the class-pooled noise
 model is correct and should merge; whether the floor stays as an
 explicit knob is the open question.
+
+**22.6 addendum (10-10, after notebooks/Arm_D_Review_202610.md).** Arm
+D (fold-spread model-error term) was launched 07:11 and killed 07:18 on
+the review's two objections, both verified: under cross-fitting the
+out-of-fold sigma_u^2 is already the model's TOTAL prediction error
+(no row is in-sample), so the term double-counts; and C's extra KL
+lives at the SEARCH-TRUSTED rows (std/alone t3-t4 defender follows,
+t3 defender leads: gamma 0.65-0.93, n·ΔKL +150..+300 each), where
+(1−gamma)^2 is 0.005-0.12 — the early defender follows (gamma 0.22/
+0.33) are no sharper than the baseline. The commit was dropped from the
+branch (no theoretical justification). Arm E = C at matched dose
+(kappa 1.27, calibrated target-only on C's cache: KL p50 1.0→0.0589,
+1.2→0.0459, 1.4→0.0370; landed 0.0424 vs the baseline's 0.0427): cert
++0.0098 ± 0.0031 (play-only +0.0102 ± 0.0029), paired vs baseline
+−0.0054 ± 0.0029, paired vs C +0.0003 ± 0.0016. Dose is not the
+variable; allocation is. The honest posterior trusts quiet late-trick
+nodes at gamma 0.8-0.9 and the h2h says that costs ~0.005: search
+error the replicates share (strategy fusion, oracle-leaf optimism,
+theta_k as the other seats) passes through at full confidence, and the
+baseline's accidental gamma ≈ 0.1 was damping it. DECISION: iteration 1
+proceeds on master's recipe (+0.0166); class pooling merges as an
+available flag; the next research arm is an explicit search-bias
+allowance sigma_n,eff^2 = sigma_n^2 + b^2, calibrated by re-searching a
+sample of late-trick nodes at a much higher budget (a day of compute;
+not queued).
