@@ -5622,3 +5622,52 @@ recipe that matches it. Relaunch (`training-program --run-name
 202609_recall_rc`, no --stop-after; it re-certs then enters bidding)
 awaits that read. The reviewer's note with the agent's verified comments
 is notebooks/Arm_D_Review_202610.md (operator's, uncommitted).
+
+**22.6 third addendum (10-10 15:40) — search-bias calibration: NULL.**
+`search_bias_2048` (300 games, 1,145 paired nodes, 3,240 labels; 256-
+iteration production committee vs 2,048 at the same state; 8 workers,
+3.9 h). Per label d = ybar_lo − ybar_hi over the actions both labeled;
+with the class-pooled centered variances over the replicate counts:
+
+| slice | nodes | labels | E[d^2] | noise lo | noise hi | b^2 | b^2/noise_lo | argmax moved |
+|---|---|---|---|---|---|---|---|---|
+| all | 1,145 | 3,240 | 4.77e-4 | 3.55e-4 | 1.43e-4 | −2.2e-5 | −0.06 | 35% |
+| trick 2 | 224 | 788 | 9.56e-4 | 5.48e-4 | 2.13e-4 | +1.9e-4 | +0.36 | 41% |
+| trick 3 | 395 | 1,125 | 3.88e-4 | 4.44e-4 | 1.02e-4 | −1.6e-4 | −0.35 | 31% |
+| trick 4 | 385 | 770 | 8.10e-5 | 5.07e-5 | 2.98e-5 | +5e-7 | +0.01 | 35% |
+| std t3-defender-follow | 141 | 390 | 1.04e-4 | 7.76e-5 | 2.20e-5 | +4e-6 | +0.05 | 31% |
+| std t4-defender-follow | 163 | 326 | 3.85e-5 | 2.57e-5 | 7.6e-6 | +5e-6 | +0.20 | 36% |
+
+E[d^2] equals noise_lo + noise_hi to within sampling error in every
+slice (per-class b^2/noise_lo in −0.4..+0.4; one thin outlier, alone t4
+defender follows at +1.5x on 100 labels and 2e-5 absolute). Two
+readings. (1) The production label has NO detectable budget-dependent
+bias relative to 8x the iterations, so the allowance sigma_n,eff^2 =
+sigma_n^2 + b^2 has nothing to carry and is NOT built. (2) The class-
+pooled centered noise model is validated on fresh data: it predicts the
+256-vs-2048 disagreement exactly, at every trick. Caveat: a higher
+budget shares the committee's structural error sources (strategy fusion,
+oracle-leaf optimism, theta_k as the other seats), so this probe cannot
+see those; only a different estimator (deeper rollout, exhaustive late-
+trick play, or an oracle referee) could.
+
+So the ~0.005 that C/E lose to the baseline is not search bias the noise
+model misses. The remaining structural difference is the TARGET
+CONSTRUCTION at search-trusted rows: z = a_hat/(kappa sqrt v_post) is a
+point tilt of a noisy posterior mean. Var(a_hat | a) = gamma^2 sigma_n^2
+while v_post = gamma sigma_n^2, so z carries label noise of variance
+gamma/kappa^2 — ~1 SD at gamma 0.9, 0.3 SD at the baseline's gamma 0.1
+— and the tilt's convexity turns that noise into a sharper-on-average,
+randomly mis-ordered target (E exp(z) = exp(E z + gamma/2kappa^2)). The
+baseline wins by distilling the advantage MODEL (a smoothed estimate
+over 137k rows) rather than the per-node label, whatever the per-node
+posterior says. Candidate next arms, operator to choose: F = model-only
+targets (gamma forced to 0; the clean test of whether per-node labels
+add anything beyond the fitted model), G = a probability-of-best target
+P(a = argmax | posterior) in place of the exponential tilt (integrates
+the posterior instead of tilting by its mean; noise-aware by
+construction), H = an explicit, stated minimum model weight (the
+baseline's accident as a knob — theoretically weakest). Argmax moved
+35% between the two budgets at every trick: with d^2 ≈ noise, the
+label's ordering is a coin flip within its own noise far more often
+than the 5% clipped-row rate suggests.
