@@ -5578,3 +5578,47 @@ available flag; the next research arm is an explicit search-bias
 allowance sigma_n,eff^2 = sigma_n^2 + b^2, calibrated by re-searching a
 sample of late-trick nodes at a much higher budget (a day of compute;
 not queued).
+
+**22.6 second addendum (10-10 midday) — decision SUPERSEDED, state of
+play.** The orchestrator was relaunched on master at 10:52 (re-running the
+iteration-1 cert under the 4% bar) and STOPPED at 11:25 on the operator's
+decision: a recipe that is theoretically sound AND matches the baseline
+is wanted before the bidding phase, rather than carrying the accidental
+gamma into the run. Branch `crossfit-holdout` MERGED to master
+(`c15491b`; `--noise-pool class` is now the default, `--cross-fit` off by
+default, `--distill-holdout-frac` unset = the fit's holdout), so a
+relaunch today runs the baseline recipe plus class pooling.
+
+State of the iteration-1 evidence (all on the live 8,000-game corpus,
+theta_0 = checkpoint_8000000; paired = duplicate h2h on identical deals,
+8,000/mode):
+
+| arm | recipe | vs theta_0 (play-only) | paired vs baseline | KL p50 | clipped |
+|---|---|---|---|---|---|
+| baseline | master 10-09 (corpus-pooled noise, held-out floor) | +0.0165 ± 0.0030 | — | 0.043 | 5.3% |
+| A | cross-fit 5, no floor | +0.0055 ± 0.0031 | −0.0089 ± 0.0033 | 0.097 | 22.3% |
+| B | A + distill holdout 2% | +0.0078 ± 0.0032 | −0.0136 ± 0.0034 (B−A −0.0035 ± 0.0030) | 0.097 | 22.3% |
+| C | A + class-pooled noise | +0.0106 ± 0.0030 | −0.0049 ± 0.0029 (C−A +0.0031 ± 0.0031) | 0.059 | 5.0% |
+| D | C + fold-spread model error | killed in fit; commit dropped (double-counts under OOF sigma_u2; cannot reach gamma 0.65-0.93 rows) | | | |
+| E | C at kappa 1.27 (matched dose) | +0.0102 ± 0.0029 | −0.0054 ± 0.0029 (E−C +0.0003 ± 0.0016) | 0.042 | 2.6% |
+
+Baseline cert under the old 1% bar: `pi/iter1/cert_bar1pct_failed.json`
+(t0 defender trump lead 1.7%, bar now 4%, cap now 10). Artifacts:
+`pi/iter1_ablations/<arm>/` with `ablations.log` as the ledger.
+
+Research path now running: `analysis/search_bias_calibration.py`
+(`5ad851e`) — fresh self-play with committee acting, sampled play nodes
+searched by the production committee (256; t0 leads 1024, t1 leads 512)
+AND a 2048-iteration committee from the same state; per class b^2 =
+E[(ybar_lo − ybar_hi)^2] − noise_lo − noise_hi, the production label's
+systematic error in the noise model's units. Run
+`pi/iter1_ablations/search_bias_2048` (300 games, p by trick
+0.05/0.1/0.2/0.35/0.35/0.35, ~1,600 nodes, ~3-4 h from 11:40). Next if
+b^2 is a sizeable multiple of the late-trick replicate noise: a
+`--search-bias` allowance in `apply_noise_model` (sigma_n,eff^2 =
+sigma_n^2 + b^2 per class, a stated knob) and arm F = cross-fit + class
+pooling + allowance, paired vs the baseline; adopt the first honest
+recipe that matches it. Relaunch (`training-program --run-name
+202609_recall_rc`, no --stop-after; it re-certs then enters bidding)
+awaits that read. The reviewer's note with the agent's verified comments
+is notebooks/Arm_D_Review_202610.md (operator's, uncommitted).
