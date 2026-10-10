@@ -69,6 +69,7 @@ from sheepshead.training.reward_shaping import RETURN_SCALE
 from sheepshead.training.search_advantage import (
     CAPACITIES,
     NOISE_MODELS,
+    NOISE_POOLS,
     AdvantageModel,
     FitReport,
     RowTable,
@@ -330,11 +331,20 @@ def stage_fit(args) -> FitReport:
 def _log_noise_model(table: RowTable, args, log) -> dict:
     """Set the table's working noise variance (search_advantage.apply_noise_model)
     and say what it did; fit and target must agree, so both call this."""
-    st = apply_noise_model(table, args.noise_model, args.noise_shrink_nu)
+    st = apply_noise_model(
+        table, args.noise_model, args.noise_shrink_nu, pool=args.noise_pool
+    )
     if st["mode"] == "centered" and st.get("rows_centered"):
+        by_class = st["s2_centered_by_class"]
+        pooled = (
+            f"{len(by_class)} class targets {min(by_class.values()):.2e}-"
+            f"{max(by_class.values()):.2e} around the corpus-wide"
+            if by_class
+            else "corpus-wide target"
+        )
         log(
             f"[noise] centered-label noise on {st['rows_centered']} rows "
-            f"(corpus-wide centered s2 {st['s2_centered_global']:.3e}, nu "
+            f"({pooled} centered s2 {st['s2_centered_global']:.3e}, nu "
             f"{args.noise_shrink_nu}); {st['rows_independent']} rows without the "
             f"field use the per-card independence formula; label noise mean "
             f"{st['noise_mean']:.3e} vs raw {st['noise_raw_mean']:.3e}"
@@ -1260,7 +1270,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--noise-shrink-nu",
         type=float,
         default=4.0,
-        help="shrinkage weight of the corpus-wide centered variance per action",
+        help="shrinkage weight of the pooled centered variance per action",
+    )
+    fit.add_argument(
+        "--noise-pool",
+        default="class",
+        choices=NOISE_POOLS,
+        help="shrinkage target of the centered noise: the row's telemetry "
+        "class mean (default) or the corpus-wide mean (the 2026-10-07 recipe, "
+        "which overstated quiet classes' noise up to 25x)",
     )
     tgt = ap.add_argument_group("target")
     tgt.add_argument(

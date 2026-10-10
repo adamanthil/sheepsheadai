@@ -326,7 +326,17 @@ def build_row_table(
 NOISE_MODELS = ("centered", "independent", "raw")
 
 
-def apply_noise_model(table: RowTable, mode: str, shrink_nu: float) -> dict:
+NOISE_POOLS = ("class", "corpus")
+# df weight of the corpus-wide centered variance when a class's own mean is
+# the shrinkage target: a class with this many replicate degrees of freedom
+# counts as much as the corpus. Only thin classes feel it (a 3,000-row
+# class carries ~30,000 df).
+NOISE_POOL_DF = 200.0
+
+
+def apply_noise_model(
+    table: RowTable, mode: str, shrink_nu: float, pool: str = "class"
+) -> dict:
     """Set the table's WORKING label noise — ``noise_var_action`` (R, A), the
     measurement noise of each labeled action's label (the pooled Q centered
     over the legal set), and ``noise_var`` (R,), its mean over the labeled
@@ -344,13 +354,31 @@ def apply_noise_model(table: RowTable, mode: str, shrink_nu: float) -> dict:
                  sum_b s_b^2 / n^2 over the n labeled actions. A lower bound
                  on the correction when replicates share noise.
     centered     per action, the measured across-replicate variance of the
-                 centered Q, shrunk toward the corpus-wide (df-weighted)
-                 mean with ``shrink_nu`` as the corpus does for raw Q, over
-                 the replicate count; actions (or rows) without the field —
-                 a corpus written before it — take ``independent``.
-    Returns counts and the corpus-wide centered variance for the log."""
+                 centered Q, shrunk with ``shrink_nu`` toward a pooled
+                 (df-weighted) mean as the corpus does for raw Q, over the
+                 replicate count; actions (or rows) without the field — a
+                 corpus written before it — take ``independent``.
+
+    ``pool`` names the shrinkage target of the centered model. With three
+    replicates a card carries 2 df against shrink_nu = 4, so the target
+    takes two thirds of every label's noise:
+
+    corpus       the corpus-wide mean (the 2026-10-07 recipe). Quiet
+                 classes inherit the loud ones' noise — the recall run's
+                 iteration-1 table pooled at 1.46e-3 while defender follows
+                 measured 0.04-0.39 of that, so their noise was overstated
+                 by up to 25x, the held-out residual sat BELOW the noise
+                 floor, and sigma_u^2 came out at the floor in every one;
+                 picker follows (1.7-2.9x the mean) ran the other way.
+    class        the row's telemetry class mean (tens of thousands of df in
+                 the big classes), itself shrunk toward the corpus-wide mean
+                 by df with ``NOISE_POOL_DF``. Classes fix the search
+                 budget, so this is per budget too.
+    Returns counts and the pooled centered variances for the log."""
     if mode not in NOISE_MODELS:
         raise ValueError(f"noise model must be one of {NOISE_MODELS}, got {mode!r}")
+    if pool not in NOISE_POOLS:
+        raise ValueError(f"noise pool must be one of {NOISE_POOLS}, got {pool!r}")
     lab = table.label_mask
     raw = table.noise_var_raw
     n = lab.sum(dim=1, keepdim=True).to(raw.dtype)
@@ -374,13 +402,31 @@ def apply_noise_model(table: RowTable, mode: str, shrink_nu: float) -> dict:
             df_total = float(df.sum())
             if df_total > 0.0:
                 s2_global = float((df * s2c).sum() / df_total)
-                blend = (shrink_nu * s2_global + df * s2c) / (shrink_nu + df)
+                target = torch.full_like(s2c, s2_global)
+                by_class: dict[str, float] = {}
+                if pool == "class":
+                    names = sorted(set(table.node_class))
+                    index = {c: i for i, c in enumerate(names)}
+                    cls = torch.tensor([index[c] for c in table.node_class])
+                    df_c = torch.zeros(len(names), dtype=df.dtype).index_add_(
+                        0, cls, df.sum(dim=1)
+                    )
+                    s2_c = torch.zeros(len(names), dtype=df.dtype).index_add_(
+                        0, cls, (df * s2c).sum(dim=1)
+                    )
+                    pooled = (s2_c + NOISE_POOL_DF * s2_global) / (df_c + NOISE_POOL_DF)
+                    target = pooled[cls].unsqueeze(1).expand_as(s2c)
+                    by_class = {
+                        c: float(pooled[i]) for c, i in index.items() if df_c[i] > 0
+                    }
+                blend = (shrink_nu * target + df * s2c) / (shrink_nu + df)
                 per_action = torch.where(ok, blend / nobs.clamp(min=1), independent)
                 use = table.has_q & ok.any(dim=1)
                 stats.update(
                     rows_centered=int(use.sum()),
                     rows_independent=int((table.has_q & ~use).sum()),
                     s2_centered_global=s2_global,
+                    s2_centered_by_class=by_class,
                 )
             else:
                 stats.update(rows_centered=0, rows_independent=stats["rows_with_q"])

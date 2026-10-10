@@ -785,6 +785,52 @@ def test_noise_model_centered_independent_raw():
         apply_noise_model(t, "bogus", 4.0)
 
 
+def test_noise_pool_by_class_targets_the_class_mean():
+    """Class pooling shrinks each card toward its telemetry class's df-
+    weighted centered variance (itself shrunk toward the corpus-wide mean
+    by NOISE_POOL_DF), so a quiet class no longer inherits the loud one's
+    noise; corpus pooling (the 2026-10-07 recipe) gives every card the
+    same target. A single-class table makes the two agree."""
+    from sheepshead.training.search_advantage import NOISE_POOL_DF
+
+    nan = float("nan")
+    t = _noise_table(
+        raw=[4e-4] * 4,
+        label_counts=[2, 2, 2, 2],
+        q_var_rows=[[3e-4, 3e-4, nan, nan]] * 4,
+        s2c_rows=[
+            [1e-4, 1e-4, nan, nan],  # quiet class, two rows
+            [1e-4, 1e-4, nan, nan],
+            [9e-4, 9e-4, nan, nan],  # loud class, two rows
+            [9e-4, 9e-4, nan, nan],
+        ],
+        nobs_rows=[[3, 3, 0, 0]] * 4,
+    )
+    t.node_class = ["quiet", "quiet", "loud", "loud"]
+    nu = 4.0
+    st_corpus = apply_noise_model(t, "centered", nu, pool="corpus")
+    g = 5e-4  # df-weighted corpus mean (equal df everywhere)
+    assert st_corpus["s2_centered_global"] == pytest.approx(g)
+    assert st_corpus["s2_centered_by_class"] == {}
+    corpus_quiet = float(t.noise_var[0])
+    st = apply_noise_model(t, "centered", nu, pool="class")
+    df_c = 2 * 2 * 2  # two rows x two cards x 2 df
+    pooled = {
+        c: (df_c * m + NOISE_POOL_DF * g) / (df_c + NOISE_POOL_DF)
+        for c, m in (("quiet", 1e-4), ("loud", 9e-4))
+    }
+    assert st["s2_centered_by_class"] == pytest.approx(pooled)
+    blend = lambda s2, tgt: (nu * tgt + 2 * s2) / (nu + 2) / 3  # noqa: E731
+    assert float(t.noise_var[0]) == pytest.approx(blend(1e-4, pooled["quiet"]))
+    assert float(t.noise_var[2]) == pytest.approx(blend(9e-4, pooled["loud"]))
+    assert float(t.noise_var[0]) < corpus_quiet < float(t.noise_var[2])
+    t.node_class = ["x"] * 4
+    apply_noise_model(t, "centered", nu, pool="class")
+    assert float(t.noise_var[0]) == pytest.approx(corpus_quiet)
+    with pytest.raises(ValueError):
+        apply_noise_model(t, "centered", nu, pool="bogus")
+
+
 def test_nll_accepts_per_action_noise():
     from sheepshead.training.search_advantage import gaussian_nll_rows
 
