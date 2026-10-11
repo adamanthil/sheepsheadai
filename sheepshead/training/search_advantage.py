@@ -1168,17 +1168,47 @@ def build_tilt_target(
     *,
     kappa: float,
     tilt_max: float,
+    eta: float | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """(target, z): t ∝ prior * exp(z) over the legal set with
-    z = clip(a_hat / (kappa * sqrt(v_post)), ±tilt_max). Identities: a_hat
-    = 0 gives the prior back exactly; a large positive edge on one action
-    gives ~one-hot; the clip bounds any single update."""
-    scale = kappa * torch.sqrt(v_post.clamp(min=1e-12)).unsqueeze(1)
+    z = clip(a_hat / scale, ±tilt_max). Identities: a_hat = 0 gives the
+    prior back exactly; a large positive edge on one action gives ~one-hot;
+    the clip bounds any single update.
+
+    ``scale`` is the tilt temperature. Default: kappa * sqrt(v_post), the
+    posterior SE (§20.9) — a row's temperature shrinks as its posterior
+    tightens, so the quiet late-trick rows with the least at stake get the
+    sharpest targets (Arm_D_Review §6.1). With ``eta`` the temperature is
+    ONE value in advantage units for every row (the KL-regularized policy-
+    improvement step, MPO/AWR form): the posterior enters through a_hat
+    alone, and a row's target moves by how much its decision is worth."""
+    if eta is not None:
+        scale = torch.full((a_hat.size(0), 1), float(eta), dtype=a_hat.dtype)
+    else:
+        scale = kappa * torch.sqrt(v_post.clamp(min=1e-12)).unsqueeze(1)
     z = (a_hat / scale).clamp(-tilt_max, tilt_max)
     z = torch.where(legal, z, torch.zeros_like(z))
     logits = torch.log(prior.clamp(min=1e-12)) + z
     logits = torch.where(legal, logits, torch.full_like(logits, -1e9))
     return F.softmax(logits, dim=-1), z
+
+
+CE_WEIGHTS = ("precision", "uniform")
+TILT_SCALES = ("posterior", "global")
+
+
+def ce_weights(v_post: torch.Tensor, mode: str, weight_max: float) -> torch.Tensor:
+    """Per-row CE weights, mean 1 over the targeted rows (the same dose as
+    the uniform loss). ``precision``: 1 / v_post (§20.9), capped at
+    ``weight_max`` then re-normalized — allocates the dose by posterior
+    precision, i.e. toward quiet rows. ``uniform``: every row 1."""
+    if mode not in CE_WEIGHTS:
+        raise ValueError(f"weights must be one of {CE_WEIGHTS}, got {mode!r}")
+    if mode == "uniform":
+        return torch.ones_like(v_post)
+    prec = 1.0 / v_post.clamp(min=1e-9)
+    weights = (prec / prec.mean()).clamp(max=weight_max)
+    return weights / weights.mean()
 
 
 def clipped_disagreement(
@@ -1238,13 +1268,15 @@ def targets_for_table(
     batch_rows: int = 2048,
     node_variance: bool = False,
     oof: "tuple[torch.Tensor, torch.Tensor | None] | None" = None,
+    eta: float | None = None,
 ) -> dict:
     """Stage 1b + 2 over every targetable row. Returns dense tensors
     (targets, z, gamma, v_post, a_hat) aligned with ``table``.
     ``sigma_u2``: one value, or a per-row tensor aligned with ``table``;
     ``node_variance`` uses the heteroscedastic head's per-row sigma_u^2
     instead (ignored for a homoscedastic model); ``oof`` supplies
-    out-of-fold a_model / per-row sigma_u^2 in place of the model's."""
+    out-of-fold a_model / per-row sigma_u^2 in place of the model's;
+    ``eta`` is the global value-unit tilt temperature (build_tilt_target)."""
     su2_rows = (
         sigma_u2
         if isinstance(sigma_u2, torch.Tensor)
@@ -1273,7 +1305,13 @@ def targets_for_table(
                 su2_b,
             )
             t, z = build_tilt_target(
-                table.prior[b], a_hat, v_post, legal, kappa=kappa, tilt_max=tilt_max
+                table.prior[b],
+                a_hat,
+                v_post,
+                legal,
+                kappa=kappa,
+                tilt_max=tilt_max,
+                eta=eta,
             )
             out_t.append(t)
             out_z.append(z)
