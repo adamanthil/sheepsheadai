@@ -211,3 +211,464 @@ baseline −0.0054 ± 0.0029; paired vs C +0.0003 ± 0.0016. §4.1 second
 branch: the loss is allocation, not step size → §4.2 (search-bias
 allowance) is the next arm, calibration pending. §5 followed: iteration
 1 relaunched on master's recipe.
+
+---
+
+## 6. Second review (2026-10-10 evening) — after the null bias calibration
+
+Status: **FOR COMMENT.** A review of CE_Teacher §22.6 third addendum
+(`214f5a6`) and its candidate arms F/G/H, with a different reading of the
+C/E gap and two proposed arms. Requested: verify §6.2 (script below),
+comment on §6.3-§6.4, choose in §6.5.
+
+### 6.1 The fundamental problem
+
+The recipe sizes each update by how SURE the search is, not by how much
+the decision is WORTH. Both Stage-2 knobs scale with posterior precision
+1/v_post:
+
+- tilt `z = a_hat / (kappa sqrt v_post)` — in value units the temperature
+  is `kappa sqrt v_post`, which shrinks as confidence grows;
+- CE weight `omega ∝ 1/v_post` (§20.9, cap 5).
+
+Uncertainty is already accounted for once, by the Fay-Herriot shrinkage
+(gamma). Using precision again in the tilt and again in the weight counts
+it twice more. Precision is highest late in the hand, where few hidden
+cards remain — exactly where the least is at stake. The baseline's
+corpus-pooled noise made sigma_n^2 roughly constant within a role, which
+turned both knobs, by accident, into a fixed value-unit temperature and
+near-uniform weights. Fixing the noise model (correctly) exposed the
+allocation.
+
+### 6.2 Evidence (iteration-1 targets, baseline vs arm C)
+
+Per-row targets, v_post, gamma and weights read from each arm's
+`targeted/` shards, aligned on `row_table.pt`; a_hat reconstructed as
+`kappa sqrt(v_post) · (log t − log p)` centered over the legal set (the
+~5% clipped rows are slightly understated; no effect on the picture).
+"Dose" = weight × KL(target ‖ prior), as a share of the total; "stake" =
+the dose-weighted top centered advantage (C's a_hat). The fixed-eta rows
+tilt C's a_hat by one global eta = 0.0097, which matches the baseline's
+KL p50 of 0.0427.
+
+| recipe | t0 | t1 | t2 | t3 | t4 | picker rows | stake |
+|---|---|---|---|---|---|---|---|
+| baseline (z, 1/v) | .21 | .17 | .18 | .22 | .23 | .04 | .017 |
+| **C (z, 1/v)** | .13 | .09 | .10 | .19 | **.50** | .04 | .017 |
+| C tilt, omega = 1 | .16 | .13 | .17 | .26 | .28 | .15 | .023 |
+| fixed eta, 1/v weights | .14 | .11 | .13 | .22 | .42 | .08 | .021 |
+| **fixed eta, omega = 1** | .16 | .15 | .20 | .27 | .21 | .32 | .030 |
+
+By class (medians; tau = kappa sqrt v_post in value units; top = C's top
+centered advantage):
+
+| class | gamma base → C | tau base → C | top | weight base → C | dose share base → C |
+|---|---|---|---|---|---|
+| std t4-defender-follow | 0.10 → 0.93 | .0057 → .0039 | .0040 | 1.90 → 2.61 | .179 → .246 |
+| alone t4-defender-follow | 0.22 → 0.92 | .0085 → .0035 | .0034 | 0.84 → 3.43 | .019 → .126 |
+| std t0-defender-follow | 0.09 → 0.22 | .0056 → .0059 | .0096 | 1.92 → 1.27 | .169 → .079 |
+| std t1-defender-follow | 0.10 → 0.33 | .0059 → .0070 | .0106 | 1.75 → 0.89 | .129 → .044 |
+| std t2-defender-follow | 0.10 → 0.58 | .0059 → .0076 | .0110 | 1.73 → 0.76 | .140 → .047 |
+| std t3-defender-follow | 0.10 → 0.80 | .0058 → .0067 | .0099 | 1.79 → 0.96 | .163 → .083 |
+
+Readings:
+
+- **C spends half its update on trick 4**, mostly two-card endgames whose
+  median top advantage is ~0.004, against ~0.011 at earlier defender
+  rows. Early defender follows (t0-t2) fall from 44% of the dose to 17%.
+  Even with perfect targets C would spend its distillation epochs on
+  near-worthless decisions.
+- **The 1/v weights are the main driver**: removing them alone takes the
+  t4 share from 0.50 to 0.28; a fixed eta with the weights kept still
+  leaves 0.42.
+- **This is why E did nothing** (E − C +0.0003 ± 0.0016): kappa scales the
+  amount of movement uniformly, not where it lands. (The §4.1 second
+  branch was right that the loss is allocation; §6 identifies which.)
+- **The baseline's temperature really was fixed**: tau ≈ 0.0057 at every
+  std defender-follow class t0-t4; under C it ranges 0.0035-0.022.
+
+Scripts (reviewing session's scratchpad, uncommitted; run from the repo
+root with `uv run python`): `/private/tmp/claude-501/-Volumes-Nargothrond-dev-sheepsheadai/e4e1ea6c-83aa-4867-b852-dd7afcbf8811/scratchpad/temp_alloc.py <out.pt>`
+(extract, ~1 min) then `temp_an.py <out.pt>` (tables).
+
+### 6.3 Comments on `214f5a6`
+
+- **The null calibration stands** and is a good result: the class-pooled
+  noise model predicts the 256-vs-2048 disagreement on fresh data at
+  every trick. The stated caveat (a bigger budget shares the structural
+  errors) is right.
+- **The convexity argument is correct math, wrong frame.** For a
+  KL-regularized step the Bayes-optimal target given the data is
+  `p · exp(a_hat / eta)`: the expected objective E[sum pi A] − eta KL is
+  linear in A, so the posterior mean passes through and no convexity
+  correction is needed. The label noise only bites because eta =
+  kappa sqrt v_post shrinks with v, amplifying near-tie noise at quiet
+  nodes — §6.1 seen from another side. (The 35% argmax-moved figure is
+  consistent with near-ties at d^2 ≈ noise and is harmless under a
+  value-unit tilt, which barely moves near-ties.)
+- **G (probability-of-best) would make this worse**: P(a = best |
+  posterior) goes one-hot as v → 0 whatever the stakes, so the t4
+  two-card rows would become the sharpest targets in the corpus.
+- **F (model-only)** is a useful diagnostic, not a recipe; with gamma = 0,
+  v_post = class sigma_u^2 still sets tilt and weight, so it confounds
+  the source with the allocation.
+- **H (minimum model weight)** is the baseline's accident as a knob;
+  agreed it is the weakest.
+
+### 6.4 Proposed arms (same corpus, ~4 h each)
+
+1. **Arm V — principled form (run first).** Honest posterior mean a_hat
+   (cross-fit 5 + class pooling, unchanged); target
+   `t ∝ p · exp(clip(a_hat / eta, ±tilt_max))` with ONE global eta in
+   value units; omega = 1. v_post enters only through gamma. eta set
+   offline to match the baseline's KL p50 (≈ 0.0097 on C's a_hat) — a
+   dose calibration, not a tuning against h2h. This is the standard
+   KL-regularized policy-improvement step (MPO / AWR form). Its trick
+   profile is close to the baseline's, but it moves ~1/3 of the dose to
+   picker rows, a regime no tested recipe has visited.
+2. **Arm W — one-factor bridge.** Arm C with omega = 1, nothing else
+   changed. Isolates the weights as the cause.
+
+Code: a `--tilt-scale {posterior,global}` (+ `--eta`) and
+`--weights {precision,uniform}` pair in `stage_target` /
+`build_tilt_target`; defaults keep the current recipe.
+
+### 6.5 Decision rule
+
+- **V matches the baseline** (paired within ~1 SE or better): adopt V
+  (cross-fit + class pooling + value-unit tilt + uniform weights) as the
+  recipe; relaunch.
+- **W matches, V loses**: the extra picker dose is what hurts. Picker
+  rows carry the largest advantages (0.03-0.09, alone picker the
+  highest) and are where structural search bias the replicates and the
+  budget probe cannot see is most plausible (strategy fusion, oracle-
+  leaf optimism). Next measurement: an estimator outside the search
+  family (oracle referee / exhaustive late-trick play) on picker rows.
+- **Both lose**: the "model beats label" reading regains weight; arm F
+  becomes the next diagnostic.
+
+### Comments / decisions (§6)
+
+_(for the orchestration agent and operator)_
+
+**Orchestration agent, 2026-10-10 evening — AGREED; arm V building.**
+§6.2 reproduced exactly from the reviewing session's extraction
+(`temp_an.py` on its `alloc.pt`): dose shares by trick baseline .206/
+.165/.182/.221/.225 (picker .036, stake .0171) vs C .125/.088/.097/.187/
+.504 (picker .038, stake .0166); C with omega = 1 → t4 .283, picker
+.153; global eta with omega = 1 → .164/.151/.204/.274/.207, picker .324,
+stake .0302. Agreed on §6.1: the §20.9 design counted posterior precision
+in gamma, in the tilt temperature and in the weight; the baseline's
+corpus-pooled noise flattened the last two by accident (tau ≈ 0.0057 at
+every std defender-follow class) and the honest noise model exposed the
+allocation. Agreed on §6.3: for the KL-regularized step the posterior
+mean passes through linearly, so the convexity argument in §22.6's third
+addendum is the same defect seen from the SE-unit tilt and needs no
+separate correction; G would sharpen the quiet rows further and is
+dropped; F stays a diagnostic. Built on branch `value-unit-tilt`
+(worktree, from master `214f5a6`): `--tilt-scale {posterior,global}` +
+`--eta`, `--weights {precision,uniform}` (`ce_weights`), defaults = the
+current recipe; eta calibrated target-only on C's cache to the baseline's
+KL p50 0.0427, then arm V (`valueunit_uniform`) and the one-factor bridge
+W (`classpool_uniform`) run sequentially from `iter1_arms_vw.sh`, each
+paired vs the baseline and vs C. §6.5 decision rule adopted as written.
+
+---
+
+## 7. Third review (2026-10-10 night) — does V override a confident policy, and is the advantage model calibrated?
+
+Status: **FOR COMMENT.** Operator's question, prompted by §6: the §20
+design deferred to theta_k unless the search's evidence was significant
+(the SE-unit tilt). Arm V removes that guard. How often does V override a
+confident policy, and on whose evidence? Operator's correction on the
+framing, adopted here: overriding a confident prior is sometimes exactly
+the goal — the defender fail-lead and called-suit conventions were
+confident wrong priors — and the advantage model exists to find such
+pockets from signal too close to the noise floor to resolve per node,
+without hand-defined classes. The standard is therefore not "never
+override a confident prior" but "override only on an overwhelming
+preponderance of the aggregate evidence." §7.3 tests the model against
+that standard; §7.5 applies it to the t0 defender trump lead. All
+numbers are from arm V's actual targets and the out-of-fold predictions
+in `pi/iter1_ablations/valueunit_uniform/`.
+
+### 7.1 Where deference lives under Fay-Herriot
+
+In the §20 design, deference came from the SE-unit tilt: a card moved
+only when the search's evidence was statistically significant. Under
+Fay-Herriot the fallback for an unreliable node is the advantage MODEL,
+not zero: a_hat → a_model as gamma → 0. The target therefore defers to
+theta_k only insofar as the model does, and it overrides theta_k only as
+well as the model's overrides are supported. V gives up the SE guard and
+relies on a_hat being calibrated (§7.4).
+
+### 7.2 Search-driven overrides of a confident policy: rare, well supported
+
+"Flip" = the target's top card is not theta_k's top card. P(wrong) = the
+honest posterior's probability that the flipped-to card is the worse one,
+Phi(−gain / sqrt(2 v_post)) with V's a_hat and v_post (the same judge for
+all three recipes).
+
+| theta_k top-card prob | share of rows | flip rate base / C / V | V flips: P(wrong) | search label agrees | model agrees |
+|---|---|---|---|---|---|
+| < 0.5 | 17% | 44% / 48% / 46% | 0.23 | 94% | 67% |
+| 0.5-0.8 | 42% | 23% / 25% / 23% | 0.17 | 94% | 68% |
+| 0.8-0.95 | 18% | 4.5% / 6.3% / 5.2% | 0.04 | 98% | 68% |
+| >= 0.95 | 23% | 1.1% / 1.7% / 1.4% | 0.02 | 99% | 43% |
+
+- V overrides a confident theta_k at ~1-5% of those rows, near the
+  baseline's rate. Those flips need a large gain (median 0.036-0.075).
+- The honest posterior puts only 2-4% of those flips as wrong. Under the
+  same judge the baseline's confident flips were 7-13% wrong: with its
+  noise model off, the baseline was the less deferential recipe there.
+- On average V's targets sharpen theta_k's top card rather than take
+  mass from it.
+- At p >= 0.95 the flips are search-driven: the model agrees with only
+  43% of them.
+- Caveat: P(wrong) cannot see structural search error. The budget probe
+  (§22.6 third addendum) found no bias that a bigger budget removes, and
+  that is the limit of what has been checked.
+
+### 7.3 Model-driven overrides: the aggregate test
+
+Out of fold, the fold model that predicts a row never saw that row's
+label, so the model's choice is independent of the label's noise. For
+every row where the OOF model's top card differs from theta_k's,
+compare the edge the model claims for its card with the edge the search
+labels show, averaged over the group. This is the "preponderance of
+evidence" test run directly.
+
+The OOF model's top card differs from theta_k's at 45,273 of 137,765
+rows (33%).
+
+| group | rows | model's claimed edge | search's edge (z) | when theta_k confident (p >= 0.8) |
+|---|---|---|---|---|
+| std defender lead t0 | 929 | .0033 | +.0001 (z +0.1) | — |
+| std defender lead t1 | 1,405 | .0038 | +.0003 (z +0.7) | — |
+| std defender lead t3 | 1,290 | .0072 | +.0017 (z +2.7) | −.0015 (z −0.5) |
+| std defender follow | 16,982 | .0084 | +.0012 (z +6.5) | −.0042 (z −6.7) |
+| alone defender follow | 5,204 | .0096 | +.0047 (z +14.5) | +.0014 (z +1.1) |
+| std partner follow | 4,569 | .0100 | +.0001 (z +0.2) | −.0039 (z −3.9) |
+| std partner lead | 2,290 | .0083 | −.0006 (z −1.6) | −.0053 (z −5.9) |
+| std picker follow | 4,655 | .0181 | −.0031 (z −3.0) | −.0131 (z −6.1) |
+| std picker lead | 3,095 | .0132 | −.0018 (z −2.2) | −.0078 (z −4.8) |
+| alone picker follow | 834 | .0331 | −.0106 (z −2.2) | −.0240 (z −3.4) |
+
+By the size of the model's claimed edge (all groups):
+
+| model's claimed edge | rows | search's edge | theta_k confident |
+|---|---|---|---|
+| < .002 | 11,318 | −.0023 (z −10.7) | −.0117 (z −10.5) |
+| .002-.0055 | 11,318 | −.0023 (z −9.1) | −.0103 (z −10.6) |
+| .0055-.013 | 11,318 | −.0008 (z −2.6) | −.0080 (z −8.7) |
+| .013-.024 | 6,791 | +.0023 (z +4.4) | −.0057 (z −4.3) |
+| > .024 | 4,528 | +.0144 (z +12.4) | +.0030 (z +1.2) |
+
+Readings:
+
+- The search backs at most about a third of the model's claimed edge,
+  and only for large claimed edges (> ~0.024) or at alone-defender
+  follows. Calibration slope of the search's edge on the model's,
+  per group: 0.03-0.69.
+- Small claimed edges point the wrong way: about half the overrides
+  claim < 0.0055, and there the search says theta_k's card is better.
+- When theta_k is confident, the search sides with the policy in every
+  group except alone-defender follows, by 0.004-0.024. By the
+  operator's standard these overrides should not happen, and the model
+  makes them.
+- The convention classes (t0/t1 defender leads) carry no aggregate
+  signal for the model's top-card overrides. That does not contradict
+  the convention story: theta_0 already leads fail ~96% of the time, so
+  those overrides are mostly one fail card over another. The
+  convention's own contrast (trump vs fail), which this test does not
+  isolate, is strongly supported and is carried by the model (§7.5).
+
+### 7.4 The violated assumption, and its size in V
+
+Fay-Herriot assumes the regression part is calibrated:
+E[y − a_model | a_model] = 0. sigma_u^2 covers how far the model
+scatters, not a systematic lean, so neither gamma nor any variance term
+can absorb it. Here the model is over-confident in its own deviations
+from theta_k (§7.3).
+
+The same defect read at theta_k's top card (theta_k's choice is
+independent of the label noise, so the mean OOF residual there is a clean
+bias read): the residual y − a_model is positive in 28 of 29 classes
+(z up to +11), about +0.0008 at defender rows and +0.005-0.009 at picker
+rows (+0.0225 alone picker). A per-class regression
+y ~ b1·a_model + b2·(centered log p) gives a positive, significant b2 in
+every class checked: the model under-uses theta_k's prior, whose
+covariate scale was learned at ~0.005.
+
+Average tilt this bias takes off theta_k's top card, in nats:
+(1 − gamma)·resid/eta for V, (1 − gamma)·resid/(kappa sqrt v_post) for
+the baseline.
+
+| group | baseline | arm V | V after per-class linear calibration |
+|---|---|---|---|
+| std defender | 0.13 | 0.06 | 0.03 |
+| std partner | 0.09 | 0.08 | 0.04 |
+| alone defender | 0.07 | 0.05 | 0.01 |
+| std picker | 0.15 | 0.39 | 0.20 |
+| alone picker | 0.18 | 0.97 | 0.47 |
+
+- At defender rows V is better than the baseline: its higher gamma
+  leans less on the model.
+- At picker rows V is clearly worse: the fixed temperature lets the
+  larger picker residuals through, and V also moves ~1/3 of the dose
+  onto picker rows (vs ~4%).
+- If V loses and W matches (§6.5 second branch), this is now the leading
+  suspect, ahead of structural search bias.
+- Linear calibration on log p removes 60-75% of the lean but leaves
+  picker rows at 0.2-0.5 nats: the bias concentrates at the top card and
+  is not linear in log p.
+
+### 7.5 Case study: who lowered the t0 defender trump lead?
+
+Operator goal: the t0 defender trump lead as close to 0 as possible. On
+this lineage theta_0 (`checkpoint_8000000`) probed 3.4-4.1%; the
+iteration-1 candidates probe 1.7% (baseline), 1.9% (C), 1.7% (E). Was
+the drop the search's doing or the model's?
+
+**Method.** The target is
+`theta_0 prior · exp((gamma·y + (1 − gamma)·a_model) / tau)`, a sum in log
+space of a search term (gamma·y) and a model term ((1 − gamma)·a_model).
+Rebuilding each recipe's target from the two terms together reproduces
+the stored target to the fourth decimal, so the target can be split
+exactly into "search term only" and "model term only." For the baseline
+the in-sample a_model is recovered from its stored target as
+(a_hat − gamma·y)/(1 − gamma); C and V use the OOF predictions. Trump
+cards from `game.TRUMP_SET`; rows restricted to those with both a trump
+and a fail lead legal.
+
+**Trump-lead mass at std t0 defender leads** (2,953 rows):
+
+| | trump mass |
+|---|---|
+| theta_0 prior | 5.0% (argmax trump 4.1%, consistent with the 3.4-4.1% probe) |
+| baseline: search term only | 4.0% |
+| baseline: model term only | 2.6% |
+| **baseline target (both)** | **2.4%** |
+| arm C / arm V target | 2.4% / 2.6% |
+
+Alone t0 defender leads (896 rows): 0.8% → 0.2% (baseline), same
+pattern. Std t1 defender leads: 5.8% → 5.2%, again mostly the model term.
+
+**Reading.**
+
+- The model term carries most of the push (gamma ≈ 0.26 at these rows,
+  so ~3/4 of the target's weight is on the model).
+- But the model is not inventing the signal. Prior-weighted trump-minus-
+  fail edge averaged over the rows: search labels −0.0335 (z −70), OOF
+  model −0.0317 (z −94); alone: −0.051 vs −0.049. The model, scoring
+  rows whose labels it never saw, reproduces the search's aggregate
+  verdict almost 1:1.
+- This is the design intent: each node's search is too noisy to resolve
+  the convention alone (gamma 0.26), the aggregate evidence is
+  overwhelming, and the model pools it into every row. The search
+  supplies the evidence; the model amplifies it.
+- V does not weaken this convention at the target level (2.6% vs 2.4%).
+
+**Where the residual 2.4% sits** (sums of per-row trump mass; 148 = 5.0%):
+
+| rows | prior mass | target mass | note |
+|---|---|---|---|
+| 206 rows where the label's best trump ≥ best fail | 27.8 | 27.1 | OOF model disagrees at 89% of them |
+| 2,747 rows where the label prefers fail | 120.2 | 43.2 | mostly theta_0 at 10-50% trump |
+
+By theta_0's trump mass: < 2% → 8.6 to 0.5 (edge −0.039); 2-10% → 33.7
+to 6.7 (−0.026); 10-50% → 89.8 to 52.6 (−0.015); > 50% (25 rows) →
+15.9 to 10.6 (−0.019).
+
+- ~40% of the residual is at rows where the node's own 1,024-iteration
+  search prefers the trump lead; the model votes no, but the label
+  outweighs it there. Genuine exceptions or search artifacts — this
+  corpus cannot tell. The earlier convention study (C1 residual trump
+  leads mildly bad; fail-preference exceptions hindsight-suspect) leans
+  toward artifacts.
+- ~60% is at rows where the edge against trump is real but smaller; one
+  KL-limited step only halves it. This is the per-iteration step limit,
+  not a disagreement; further iterations continue it.
+- Levers toward 0: iterate; and adjudicate the search-endorsed
+  exceptions with an estimator outside the search family (oracle
+  referee, or hindsight replay of those nodes).
+
+### 7.6 Proposed fix: OOF-calibrated model deviations — REVISED
+
+Original proposal (superseded in part, kept for the record): split the
+model's prediction into theta_k's ordering plus the model's deviation,
+and scale the deviation by an OOF calibration factor beta (mean search
+edge over mean claimed edge), fitted per class or per claimed-edge bin.
+
+**Why a scalar beta fails, from §7.5:**
+
+- Per class: in std t0 defender leads the model's top-card overrides are
+  mostly one fail card over another, aggregate support ratio +0.02
+  (§7.3). A class beta would be ≈ 0 and would scale away the trump-vs-
+  fail push along with them — yet that contrast is calibrated ~1:1
+  (model −0.032 vs search −0.034).
+- Per claimed-edge bin: the trump-vs-fail edge (~0.03) falls in the
+  > 0.024 bin, ratio 0.34; it would be cut to a third.
+- Selection effect in §7.3: the model's top card is chosen by the
+  model's own predictions, so its claimed edge is inflated by its own
+  errors (winner's curse). Part of the overrides' weak support is that
+  selection, not a general miscalibration of the model. The trump-vs-
+  fail contrast is defined by a fixed feature, not selected by the
+  model, and is clean.
+
+So the model is calibrated on large, consistent contrasts (trump vs
+fail) and over-confident on small, selected ones (one fail card over
+another, picker-row top cards). A calibration must separate the two,
+which no single scalar per class or per edge bin can. Candidate forms,
+not yet designed: calibrate along fixed contrasts (card type, suit
+relation, point value) rather than along the model's own argmax; or a
+deviation-size-dependent shrinkage fitted on contrasts not selected by
+the model.
+
+**Standing recommendation:** do NOT ship a calibration factor yet. Keep
+the gate as a diagnostic only: per class, mean OOF residual at theta_k's
+top card ≈ 0 (|z| < 3) and the aggregate support of the model's
+overrides, reported in `target_report.json`. Any future calibration must
+pass a regression test: the §7.5 decomposition on this corpus must keep
+the t0 defender-lead target at or below the baseline's 2.4% trump mass
+(and the alone 0.2%).
+
+### 7.7 Checks
+
+1. **Would it have kept the overrides that mattered?** PARTLY ANSWERED by
+   §7.5 for the t0 trump lead on this corpus: the model carries the push
+   and the search backs it 1:1. Still open: the called-suit convention,
+   and an iteration where a convention was being installed rather than
+   finished — e.g. the `rc_validate_v2` iteration whose lead schedule
+   took called-suit to 56%. Those runs predate cross-fitting, so use
+   their 10% held-out games (`evaluate_rows` on the fit holdout) and run
+   the §7.5 decomposition plus the aggregate trump-vs-fail /
+   called-suit-vs-other contrast.
+2. **Is the search label leaning toward theta_k's card?** PUCT spends
+   most visits under theta_k's top card; if that inflates its Q, "the
+   search sides with the policy" is partly the search echoing the prior,
+   which would bias both V and the §7.3 test against legitimate
+   overrides. The bias probe did not save the prior per node; re-run it
+   with theta_k's prior recorded (~4 h) and read the signed 256-vs-2048
+   difference at theta_k's top card.
+3. **The 206 search-endorsed t0 trump leads** (§7.5): adjudicate with an
+   estimator outside the search family before deciding whether the
+   residual should be pushed to 0 or is a genuine exception set.
+
+### 7.8 Effect on the V/W read
+
+None: V and W are read by §6.5 as written. If V loses at the picker
+rows, the next arm is no longer "V with a calibrated model" directly —
+the calibration must first be designed per §7.6 and pass its trump-lead
+regression test.
+
+Scripts (reviewing session's scratchpad, uncommitted; run from the repo
+root with `uv run python`): `/private/tmp/claude-501/-Volumes-Nargothrond-dev-sheepsheadai/e4e1ea6c-83aa-4867-b852-dd7afcbf8811/scratchpad/temp_alloc_v.py <alloc_v.pt>`
+(extract arm V), then `temp_defer.py <dir>` (§7.2, top-card residuals),
+`temp_bias.py <dir>` (§7.4 tilt and calibration), `temp_override.py
+<dir>` (§7.3), `temp_trump.py <dir>` and `temp_trump2.py <dir>` (§7.5),
+where `<dir>` holds `alloc.pt` and `alloc_v.pt`.
+
+### Comments / decisions (§7)
+
+_(for the orchestration agent and operator)_
