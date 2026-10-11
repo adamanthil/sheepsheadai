@@ -5671,3 +5671,40 @@ baseline's accident as a knob — theoretically weakest). Argmax moved
 35% between the two budgets at every trick: with d^2 ≈ noise, the
 label's ordering is a coin flip within its own noise far more often
 than the 5% clipped-row rate suggests.
+
+**22.6 fourth addendum (10-10 22:20) — ARM V MATCHES THE BASELINE;
+recipe adopted.** Second review (Arm_D_Review §6, verified): the §20.9
+target stage counted posterior precision three times — in gamma, in the
+tilt temperature kappa·sqrt(v_post) and in the CE weight 1/v_post — so
+under an honest noise model the quiet trick-4 rows (median top advantage
+0.004) took 50% of the distill dose and the early defender rows (0.011)
+fell from 44% to 17%; the baseline's corpus-pooled noise had flattened
+the last two by accident (tau ≈ 0.0057 at every std defender-follow
+class). Fix (`dbe4e2a`, merged `23b8d5d`): `--tilt-scale global --eta`
+(one temperature in advantage units for every row — the KL-regularized
+improvement step, MPO/AWR form; the posterior enters through a_hat
+alone) and `--weights uniform` (`ce_weights`). eta dose-calibrated
+target-only on C's cache: 0.0090 → KL p50 0.0469, 0.0097 → 0.0426,
+0.0105 → 0.0384; eta 0.0097 matches the baseline's 0.0427 (clipped 8.0%,
+mostly picker rows with |a_hat| > 0.078).
+
+| arm | recipe | vs theta_0 h2h | play-only | bidding | t0 lead | paired vs baseline | paired vs C |
+|---|---|---|---|---|---|---|---|
+| V `valueunit_uniform` | cross-fit 5 + class pool + eta 0.0097 + uniform w | +0.0210 ± 0.0031 | +0.0198 ± 0.0029 | +0.0007 ± 0.0010 | 2.6% | **+0.0007 ± 0.0029** (called +0.0023 / jd −0.0009) | pending |
+| W `classpool_uniform` | C + uniform w (one-factor bridge) | running | | | | | |
+
+V is the first honest-posterior recipe to match the §20.9 baseline
+paired (within 0.25 SE); unpaired it reads 1 SE above. §6.5 first
+branch → ADOPTED as the pinned recipe: policy_iteration defaults flipped
+to `--tilt-scale global --eta 0.0097 --weights uniform`, ProgramConfig
+`cross_fit = 5`, noise pooling by class (since `c15491b`); `posterior` /
+`precision` remain reachable for comparison. Watch item: V's t0
+defender trump lead 2.6% (baseline 1.7%, bar 4%) — defender-lead rows
+carry more dose under the value-unit tilt. Relaunch plan: after W
+finishes (its read attributes the gain between the tilt and the
+weights), archive the §20.9 baseline's iteration-1 artifacts to
+`pi/iter1_ablations/baseline_master/`, clear `pi/iter1` from fit onward
+(corpus kept) and relaunch `training-program --run-name 202609_recall_rc`
+so iteration 1 is re-fit/targeted/distilled/certified on the adopted
+recipe by the orchestrator itself (deterministic seeds → arm V's
+numbers), then bidding.
