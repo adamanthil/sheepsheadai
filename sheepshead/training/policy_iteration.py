@@ -95,11 +95,11 @@ TARGETED_SUBDIR = "targeted"
 OOF_FILE = "oof_predictions.pt"
 
 # Partition codes for the per-row policy-loss channel (0 = no policy loss).
-# override  = searched play rows (CE toward the Stage-2 target);
+# targeted  = searched play rows with a Stage-2 target (CE toward it);
 # retention = bidding-head and leaster-play rows (KL to theta_k's act-time
 #             policy — search cannot speak there, so the projection must
 #             not move them: Learning without Forgetting, Li & Hoiem 2016).
-SET_CODES = {"none": 0, "override": 1, "retention": 3}
+SET_CODES = {"none": 0, "targeted": 1, "retention": 3}
 
 # Adoption bars for ``cert`` (Training_Program_Redesign §4.4 / §20.9).
 CERT_SEEDS = (98765, 98766, 98767, 98768)
@@ -479,7 +479,7 @@ def stage_target(args) -> dict:
         t = built["target"][r]
         event["search_target"] = [float(t[a - 1]) for a in valid]
         event["has_search_target"] = True
-        event["distill_set"] = "override"
+        event["distill_set"] = "targeted"
         event["pi_target_source"] = "blend" if bool(table.has_q[r]) else "model"
         event["pi_gamma"] = float(built["gamma"][r])
         event["pi_v_post"] = float(built["v_post"][r])
@@ -768,7 +768,7 @@ def kd_kl(anchor_flat: torch.Tensor, logits_flat: torch.Tensor) -> torch.Tensor:
 
 
 def distill_losses(agent, minibatch, forward, flat, dchan, args):
-    """Total loss + telemetry for one minibatch: weighted CE on override
+    """Total loss + telemetry for one minibatch: weighted CE on targeted
     rows, retention KL on retention rows, value / aux / oracle regression
     on every row."""
     set_flat, weight_flat, anchor_flat = dchan
@@ -776,19 +776,19 @@ def distill_losses(agent, minibatch, forward, flat, dchan, args):
     logp = F.log_softmax(flat.logits_flat, dim=-1)
     zero = flat.logits_flat.new_zeros(())
 
-    ov = set_flat == SET_CODES["override"]
-    if ov.any():
-        target = flat.search_target_flat[ov]
-        ce = -(target * logp[ov]).sum(dim=-1)
-        override_loss = (weight_flat[ov] * ce).mean()
+    tg = set_flat == SET_CODES["targeted"]
+    if tg.any():
+        target = flat.search_target_flat[tg]
+        ce = -(target * logp[tg]).sum(dim=-1)
+        target_loss = (weight_flat[tg] * ce).mean()
         with torch.no_grad():
             ent = -(target.clamp(min=1e-12) * target.clamp(min=1e-12).log()).sum(-1)
-            stats["override_ce"] = float(ce.mean())
-            stats["override_kl"] = float((ce - ent).mean())
-            stats["override_weight"] = float(weight_flat[ov].mean())
+            stats["target_ce"] = float(ce.mean())
+            stats["target_kl"] = float((ce - ent).mean())
+            stats["target_weight"] = float(weight_flat[tg].mean())
     else:
-        override_loss = zero
-    stats["override_rows"] = int(ov.sum())
+        target_loss = zero
+    stats["target_rows"] = int(tg.sum())
 
     rt = set_flat == SET_CODES["retention"]
     if rt.any():
@@ -801,7 +801,7 @@ def distill_losses(agent, minibatch, forward, flat, dchan, args):
     value_loss = F.mse_loss(flat.values_flat, flat.returns_flat)
     stats["value_mse"] = float(value_loss.detach())
     total = (
-        args.lambda_ce * override_loss
+        args.lambda_ce * target_loss
         + args.lambda_ret * retention_loss
         + agent.value_loss_coeff * value_loss
     )
@@ -948,15 +948,15 @@ def run_epoch(agent, episodes, args, train: bool):
                 agent.optimizer_steps_total += 1
             steps += 1
             row_weights = {
-                "override_ce": stats["override_rows"],
-                "override_kl": stats["override_rows"],
-                "override_weight": stats["override_rows"],
+                "target_ce": stats["target_rows"],
+                "target_kl": stats["target_rows"],
+                "target_weight": stats["target_rows"],
                 "retention_kl": stats["retention_rows"],
             }
             for key in (
-                "override_ce",
-                "override_kl",
-                "override_weight",
+                "target_ce",
+                "target_kl",
+                "target_weight",
                 "retention_kl",
                 "value_mse",
                 "oracle_loss",
@@ -966,7 +966,7 @@ def run_epoch(agent, episodes, args, train: bool):
                     if w:
                         totals[key] = totals.get(key, 0.0) + stats[key] * w
                         weights[key] = weights.get(key, 0.0) + w
-            for key in ("override_rows", "retention_rows"):
+            for key in ("target_rows", "retention_rows"):
                 totals[key] = totals.get(key, 0.0) + stats[key]
                 weights[key] = 1.0
     agent.reset_storage()
@@ -978,9 +978,9 @@ def run_epoch(agent, episodes, args, train: bool):
 def fmt_stats(stats: dict) -> str:
     parts = []
     for k in (
-        "override_ce",
-        "override_kl",
-        "override_weight",
+        "target_ce",
+        "target_kl",
+        "target_weight",
         "retention_kl",
         "value_mse",
         "oracle_loss",
@@ -988,8 +988,8 @@ def fmt_stats(stats: dict) -> str:
         if k in stats:
             parts.append(f"{k} {stats[k]:.4f}")
     parts.append(
-        "rows ov/rt {:.0f}/{:.0f}".format(
-            stats.get("override_rows", 0), stats.get("retention_rows", 0)
+        "rows tg/rt {:.0f}/{:.0f}".format(
+            stats.get("target_rows", 0), stats.get("retention_rows", 0)
         )
     )
     for k in (
@@ -1039,7 +1039,7 @@ def stage_distill(args) -> list[str]:
         best_kl, best_epoch = float("inf"), 0
         if holdout:
             init_stats, _ = run_epoch(agent, holdout, args, train=False)
-            best_kl = float(init_stats.get("override_kl", float("inf")))
+            best_kl = float(init_stats.get("target_kl", float("inf")))
             log(f"[distill epoch 0] holdout: {fmt_stats(init_stats)}")
             log_row({"kind": "holdout", "epoch": 0, **init_stats})
         n_epochs = args.trunk_epochs + args.head_epochs
@@ -1078,7 +1078,7 @@ def stage_distill(args) -> list[str]:
                 hold_stats, _ = run_epoch(agent, holdout, args, train=False)
                 log(f"[distill epoch {epoch}] holdout: {fmt_stats(hold_stats)}")
                 log_row({"kind": "holdout", "epoch": epoch, **hold_stats})
-                kl = float(hold_stats.get("override_kl", float("inf")))
+                kl = float(hold_stats.get("target_kl", float("inf")))
                 if kl < best_kl:
                     best_kl, best_epoch = kl, epoch
             if args.probe_games:
@@ -1091,7 +1091,7 @@ def stage_distill(args) -> list[str]:
             log(f"[distill epoch {epoch}] saved {ckpt_path}")
         # The candidate is the last epoch of the pinned schedule (§20.14
         # step 4, amended add. 31). Held-out target KL is a fidelity
-        # average over every override row and does not track EV (add. 14,
+        # average over every targeted row and does not track EV (add. 14,
         # 20); selecting on it dropped the epochs that carried the gain.
         chosen = n_epochs
         with open(os.path.join(args.out_dir, "distill_best.json"), "w") as f:
@@ -1099,7 +1099,7 @@ def stage_distill(args) -> list[str]:
                 {
                     "best_epoch": chosen,
                     "best_epoch_by_kl": best_epoch,
-                    "holdout_override_kl": best_kl,
+                    "holdout_target_kl": best_kl,
                     "checkpoint": os.path.join(
                         args.out_dir, f"distill_epoch{chosen}.pt"
                     ),

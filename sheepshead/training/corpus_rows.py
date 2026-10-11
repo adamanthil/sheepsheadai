@@ -206,11 +206,25 @@ def sorted_valid_to_dense(
     return dense
 
 
+def canonical_distill_set(event: dict) -> None:
+    """Rewrite a legacy ``distill_set`` label in place. Targeted corpora
+    written before the rename call the rows Stage 2 built a target for
+    "override"; only Stage 2 writes ``search_weight``, which tells them
+    apart from a raw corpus's searched rows."""
+    if event.get("distill_set") == "override" and "search_weight" in event:
+        event["distill_set"] = "targeted"
+
+
 def load_shard(path: str) -> dict:
-    """One corpus shard: ``{"episodes": [...], "games": [...]}``. Shards
-    carry numpy scalars/arrays in their event dicts, so the weights-only
-    unpickler is off."""
-    return torch.load(path, map_location="cpu", weights_only=False)
+    """One corpus shard: ``{"episodes": [...], "games": [...]}``, with
+    legacy ``distill_set`` labels rewritten (``canonical_distill_set``).
+    Shards carry numpy scalars/arrays in their event dicts, so the
+    weights-only unpickler is off."""
+    shard = torch.load(path, map_location="cpu", weights_only=False)
+    for episode in shard["episodes"]:
+        for event in episode:
+            canonical_distill_set(event)
+    return shard
 
 
 def shard_paths(corpus_dir: str) -> list[str]:

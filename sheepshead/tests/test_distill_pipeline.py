@@ -14,6 +14,7 @@ import torch
 
 from sheepshead.game import ACTIONS, PARTNER_BY_CALLED_ACE
 from sheepshead.tests.distill_test_helpers import (
+    as_targeted,
     fresh_agent,
     generate_game,
     worker_state,
@@ -183,6 +184,7 @@ def _store_and_batch(agent, episodes):
 def test_channel_alignment_and_loss_masking():
     agent = fresh_agent()
     res = generate_game(agent, game_idx=3)
+    as_targeted(res["episodes"])
     with torch.no_grad():
         minibatch, forward, flat, dchan = _store_and_batch(agent, res["episodes"])
         set_flat, weight_flat, anchor_flat = dchan
@@ -193,19 +195,19 @@ def test_channel_alignment_and_loss_masking():
             assert int((set_flat == code).sum()) == sum(
                 e["distill_set"] == name for e in src
             )
-        # Alignment: override rows carry the dense target exactly where
+        # Alignment: targeted rows carry the dense target exactly where
         # has_search does; anchors normalize on anchor rows and are zero
         # elsewhere.
-        ov = set_flat == SET_CODES["override"]
-        assert torch.equal(ov, flat.has_search_flat > 0.5)
-        assert torch.all(flat.search_target_flat[ov].sum(dim=-1) > 0.99)
+        tg = set_flat == SET_CODES["targeted"]
+        assert torch.equal(tg, flat.has_search_flat > 0.5)
+        assert torch.all(flat.search_target_flat[tg].sum(dim=-1) > 0.99)
         anchored = set_flat == SET_CODES["retention"]
         assert torch.allclose(
             anchor_flat[anchored].sum(dim=-1),
             torch.ones(int(anchored.sum())),
             atol=1e-5,
         )
-        # Schema 2 stores the stash on every multi-action row (override
+        # Schema 2 stores the stash on every multi-action row (targeted
         # rows included); only forced rows carry no anchor. Which rows get
         # an anchor LOSS is decided by the partition code in
         # distill_losses, not by data presence.
@@ -223,7 +225,7 @@ def test_channel_alignment_and_loss_masking():
             agent, minibatch, forward, flat, dchan, _trainer_args()
         )
         assert torch.isfinite(total)
-        assert stats["override_rows"] == int(ov.sum())
+        assert stats["target_rows"] == int(tg.sum())
         # Zero-gradient-at-init property (§17.3): the anchors were stashed
         # from THIS agent's own act() calls, and the replayed unroll
         # reproduces them — the retention/endorsed KL starts ~0.
@@ -316,7 +318,7 @@ def test_run_epoch_steps_and_updates_weights():
     overrides = 0
     for g in range(10, 20):  # collect until an override row exists
         res = generate_game(agent, game_idx=g)
-        episodes.extend(res["episodes"])
+        episodes.extend(as_targeted(res["episodes"]))
         overrides += sum(c["override"] for c in res["counts"].values())
         if len(episodes) >= 10 and overrides:
             break
@@ -325,7 +327,7 @@ def test_run_epoch_steps_and_updates_weights():
     args = _trainer_args(batch_segments=4, buffer_episodes=16)
     stats, steps = policy_iteration.run_epoch(agent, episodes, args, train=True)
     assert steps > 0
-    assert stats["override_rows"] > 0
+    assert stats["target_rows"] > 0
     assert torch.isfinite(torch.tensor(stats["value_mse"]))
     assert not torch.equal(ref, agent.encoder.card.weight.detach())
     # Eval pass leaves weights untouched.

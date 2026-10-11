@@ -8,8 +8,8 @@ a thinner p-schedule:
 
   games        keep the first N games (episodes are game-contiguous, five
                per game, in shard order) — the corpus-size difference;
-  follow-keep  each SEARCHED follow row (override or endorsed) stays with
-               this probability, otherwise it becomes "none" (no policy
+  follow-keep  each TARGETED follow row (every searched follow row once
+               Stage 2 has run) stays with this probability, otherwise it becomes "none" (no policy
                loss, value stream only) — exactly what the p-schedule does
                to a follow node it passes over. Lead rows and retention
                rows are untouched.
@@ -17,7 +17,7 @@ a thinner p-schedule:
 Targets, anchors and the value stream of the kept rows are unchanged, so
 the only difference between a distill on the output and one on the input
 is the number of rows carrying a policy loss. ``search_weight`` is
-re-normalized to mean 1 over the remaining override rows, matching the
+re-normalized to mean 1 over the remaining targeted rows, matching the
 target stage's own normalization on a corpus of that composition.
 
 Usage:
@@ -37,8 +37,9 @@ from collections import Counter
 
 import torch
 
+from sheepshead.training.corpus_rows import load_shard
+
 EPISODES_PER_GAME = 5
-SEARCHED_SETS = ("override", "endorsed")
 
 
 def is_follow_row(event: dict) -> bool:
@@ -50,30 +51,29 @@ def is_follow_row(event: dict) -> bool:
 def subsample_episodes(
     episodes: list, follow_keep: float, rng: random.Random
 ) -> tuple[list, Counter, float]:
-    """Demote searched follow rows to "none" with probability 1 - follow_keep
-    and re-normalize override weights. Mutates and returns ``episodes``,
-    the per-set counts and the override weight mean before renormalization."""
+    """Demote targeted follow rows to "none" with probability 1 - follow_keep
+    and re-normalize the targeted rows' weights. Mutates and returns
+    ``episodes``, the counts and the weight mean before renormalization."""
     counts: Counter = Counter()
     mean = 1.0
     for ep in episodes:
         for ev in ep:
-            dset = ev.get("distill_set")
-            if ev.get("kind") != "action" or dset not in SEARCHED_SETS:
+            if ev.get("kind") != "action" or ev.get("distill_set") != "targeted":
                 continue
             if not is_follow_row(ev):
-                counts[f"lead_{dset}_kept"] += 1
+                counts["lead_targeted_kept"] += 1
                 continue
             if rng.random() < follow_keep:
-                counts[f"follow_{dset}_kept"] += 1
+                counts["follow_targeted_kept"] += 1
             else:
                 ev["distill_set"] = "none"
-                counts[f"follow_{dset}_dropped"] += 1
+                counts["follow_targeted_dropped"] += 1
     weights = [
         float(ev["search_weight"])
         for ep in episodes
         for ev in ep
         if ev.get("kind") == "action"
-        and ev.get("distill_set") == "override"
+        and ev.get("distill_set") == "targeted"
         and ev.get("search_weight") is not None
     ]
     if weights:
@@ -82,7 +82,7 @@ def subsample_episodes(
             for ev in ep:
                 if (
                     ev.get("kind") == "action"
-                    and ev.get("distill_set") == "override"
+                    and ev.get("distill_set") == "targeted"
                     and ev.get("search_weight") is not None
                 ):
                     ev["search_weight"] = float(ev["search_weight"]) / mean
@@ -113,11 +113,7 @@ def main(argv=None) -> int:
     for name in names:
         if budget <= 0:
             break
-        shard = torch.load(
-            os.path.join(args.targeted_dir, name),
-            map_location="cpu",
-            weights_only=False,
-        )
+        shard = load_shard(os.path.join(args.targeted_dir, name))
         episodes = shard["episodes"][:budget]
         budget -= len(episodes)
         episodes, counts, weight_mean = subsample_episodes(
@@ -128,7 +124,7 @@ def main(argv=None) -> int:
         torch.save(shard, os.path.join(args.out_dir, name))
         written.append(name)
         print(
-            f"[subsample] {name}: {len(episodes)} episodes kept; override weight "
+            f"[subsample] {name}: {len(episodes)} episodes kept; target weight "
             f"mean before renormalization {weight_mean:.4f}",
             flush=True,
         )

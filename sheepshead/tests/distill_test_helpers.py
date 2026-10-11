@@ -69,3 +69,14 @@ def fresh_agent():
 def generate_game(agent, game_idx=0, **overrides):
     worker_state(agent, **overrides)
     return play_corpus_game((game_idx, PARTNER_BY_CALLED_ACE))
+
+
+def as_targeted(episodes):
+    """Relabel the raw corpus rows that carry a search target "targeted",
+    as Stage 2 does, so the trainer's channels can run on a generated
+    game without the fit/target stages. Mutates and returns ``episodes``."""
+    for ep in episodes:
+        for ev in ep:
+            if ev.get("kind") == "action" and ev.get("has_search_target"):
+                ev["distill_set"] = "targeted"
+    return episodes

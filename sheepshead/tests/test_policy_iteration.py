@@ -15,6 +15,7 @@ from sheepshead.training import policy_iteration as tpi
 from sheepshead.training.corpus_rows import (
     encode_rows,
     iter_row_batches,
+    load_shard,
     store_corpus_episodes,
 )
 from sheepshead.training.distill_corpus import ROW_SCHEMA_VERSION
@@ -267,7 +268,7 @@ def test_end_to_end_stages_on_tiny_corpus(tmp_path):
             if e.get("kind") != "action" or "pi_target_source" not in e:
                 continue
             relabeled += 1
-            assert e["distill_set"] == "override" and e["has_search_target"]
+            assert e["distill_set"] == "targeted" and e["has_search_target"]
             assert len(e["search_target"]) == len(e["valid_actions"])
             assert sum(e["search_target"]) == pytest.approx(1.0, abs=1e-5)
             assert e["pi_target_source"] == "blend"
@@ -288,8 +289,8 @@ def test_end_to_end_stages_on_tiny_corpus(tmp_path):
         for line in (out_dir / "distill_log.jsonl").read_text().splitlines()
     ]
     train = next(r for r in log if r["kind"] == "train")
-    assert train["override_rows"] > 0 and train["retention_rows"] > 0
-    assert np.isfinite(train["override_ce"])
+    assert train["target_rows"] > 0 and train["retention_rows"] > 0
+    assert np.isfinite(train["target_ce"])
     best = json.loads((out_dir / "distill_best.json").read_text())
     assert best["best_epoch"] == 1  # the last epoch of the schedule
 
@@ -382,7 +383,7 @@ def test_distill_runs_the_full_schedule_and_certifies_the_last_epoch(tmp_path):
     ]
     hold = {r["epoch"]: r for r in rows if r["kind"] == "holdout"}
     assert 0 in hold and 1 in hold
-    assert hold[1]["override_kl"] < hold[0]["override_kl"]
+    assert hold[1]["target_kl"] < hold[0]["target_kl"]
     best = json.loads((out_dir / "distill_best.json").read_text())
     assert best["best_epoch"] == 3  # 1 trunk + 2 head epochs: the last one
     assert best["best_epoch_by_kl"] >= 1
@@ -1057,3 +1058,29 @@ def test_cross_fit_and_distill_holdout_through_the_stages(tmp_path):
         ]
     )
     assert rc == 0 and not (out_dir / tpi.OOF_FILE).exists()
+
+
+def test_load_shard_relabels_legacy_targeted_rows(tmp_path):
+    """Targeted corpora written before the rename say "override"; Stage 2's
+    search_weight marks them, and they load as "targeted". A raw corpus's
+    searched rows (no search_weight) keep their label."""
+    shard = {
+        "games": [],
+        "episodes": [
+            [
+                {"kind": "action", "distill_set": "override", "search_weight": 1.2},
+                {"kind": "action", "distill_set": "override"},
+                {"kind": "action", "distill_set": "retention"},
+                {"kind": "trick"},
+            ]
+        ],
+    }
+    path = tmp_path / "corpus_0000.pt"
+    torch.save(shard, path)
+    events = load_shard(str(path))["episodes"][0]
+    assert [e.get("distill_set") for e in events] == [
+        "targeted",
+        "override",
+        "retention",
+        None,
+    ]

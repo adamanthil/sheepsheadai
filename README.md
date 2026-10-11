@@ -505,7 +505,7 @@ What each step does and leaves behind:
    `distill_log.jsonl`, `distill_best.json` naming the candidate: the
    LAST epoch of the schedule (held-out target KL is logged per epoch as
    a fidelity check but selects nothing — CE_Teacher add. 31). Per-epoch
-   lines: `[distill epoch 6] train (1152 steps, 15.3 min): override_ce 0.3855  override_kl 0.0949 ... retention_kl 0.0014 ...`,
+   lines: `[distill epoch 6] train (1152 steps, 15.3 min): target_ce 0.3855  target_kl 0.0949 ... retention_kl 0.0014 ...`,
    a `holdout:` line, a `probe:` line (500 greedy games) and `saved ...`.
 3. **cert** — the adoption battery vs θ_k, `cert.json`: four 1,000-game
    convention probes (seeds 98765–98768), the duplicate-deal h2h at 8,000
