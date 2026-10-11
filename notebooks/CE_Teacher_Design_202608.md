@@ -5708,3 +5708,41 @@ weights), archive the §20.9 baseline's iteration-1 artifacts to
 so iteration 1 is re-fit/targeted/distilled/certified on the adopted
 recipe by the orchestrator itself (deterministic seeds → arm V's
 numbers), then bidding.
+
+**22.6 fifth addendum (10-10 23:00).** V − C paired +0.0064 ± 0.0027
+(called +0.0096 / jd +0.0033): the value-unit tilt + uniform weights are
+worth ~0.006 over the SE-unit recipe on the same honest posterior. Arm W
+(C + uniform weights only) started 22:44 for attribution; reads ~02:30.
+Relaunch on V CANCELLED by the operator for now (refactor first); the
+waiter `relaunch_after_w.sh` is killed. Third review (Arm_D_Review §7,
+verified on the extracts): (i) V overrides a confident theta_k (p ≥ 0.8)
+at 1.4-5.2% of rows, near the baseline's rate, with the honest posterior
+putting 2-4% of those flips wrong (the baseline's 7-13% under the same
+judge); (ii) the advantage model's top-card overrides of theta_k (33% of
+rows) are backed by the search labels only for large claimed edges
+(> 0.024: ratio 0.34) and point the WRONG way for small ones (< 0.0055:
+search −0.0023, z −10); where theta_k is confident the search sides with
+the policy in every group but alone-defender follows — the model is
+over-confident in its own small, self-selected deviations; (iii) the FH
+calibration assumption fails in a clean read: OOF residual y − a_model
+at theta_k's top card positive in 28/29 classes (defender ~+0.0008,
+picker +0.005-0.009, alone picker +0.0225), significant positive
+coefficient on centered log p everywhere — the fit under-uses the prior;
+V's tilt from that lean is 0.03-0.08 nats at defender rows (better than
+the baseline's 0.07-0.13) but 0.39-0.97 at picker rows (baseline 0.15-
+0.18), where V also puts a third of the dose; (iv) the t0 defender trump
+lead: at std t0 defender leads the target's trump mass goes 5.0% → 2.4%
+(baseline) / 2.6% (V), the MODEL term carries ~3/4 of the push but
+reproduces the search's aggregate trump-vs-fail verdict 1:1 (−0.032 vs
+−0.034, z −94 / −70) — the design intent (per-node search too noisy at
+gamma 0.26; the model pools the evidence) — and the residual splits 40%
+at 206 rows where the node's own 1,024-iteration search prefers the
+trump lead (model votes no) and 60% at rows where one KL-limited step
+only halves a real edge. Correction to the fourth addendum's watch item:
+V does NOT weaken the convention at the target level and its convention
+rows carry LESS dose than the baseline's; the probe gap (2.6% vs 1.7%)
+is student-side or noise. Standing recommendation adopted: no model
+calibration factor; diagnostics (per-class top-card residual z, override
+support) to be added to target_report; bias probe to record theta_k's
+prior; the 206 search-endorsed trump leads to an oracle referee. All
+queued behind the operator's refactor.

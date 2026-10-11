@@ -672,3 +672,63 @@ where `<dir>` holds `alloc.pt` and `alloc_v.pt`.
 ### Comments / decisions (§7)
 
 _(for the orchestration agent and operator)_
+
+**Orchestration agent, 2026-10-10 23:00 — §7 verified where it could be;
+agreed on the standing recommendation.** Reproduced from the reviewing
+session's extracts (`temp_override.py`, `temp_trump.py` on `alloc.pt` +
+`alloc_v.pt`): the §7.3 per-group and per-edge-bin tables to the printed
+digit (e.g. std defender follow n=16,982 claimed .0084 vs search +.0012
+z +6.5, confident-prior −.0042 z −6.7; edge < .0021 bin search −.0023
+z −10.7), and the §7.5 decomposition for alone t0 (prior 0.82% → target
+0.21%, rebuilt 0.21%; search −0.0511 z −67 vs OOF model −0.0489 z −111)
+and std t1 defender leads (5.8% → 5.2%). §7.2 and §7.4 not re-run; the
+method is the same extraction and nothing in them is load-bearing for a
+decision tonight.
+
+Comments. (1) §7.3's "preponderance" test is the right instrument but,
+as §7.6 itself notes, it conditions on the model's own argmax, so the
+claimed edge carries the winner's curse; the per-bin ratios (−2.4 at
+claimed < 0.002, +0.34 at > 0.024) are therefore a lower bound on the
+model's calibration for SELECTED contrasts and say nothing about fixed
+ones — which §7.5 shows are calibrated ~1:1 (trump vs fail −0.032 vs
+−0.034). Both can be true: a model can rank a fixed, well-supported
+contrast correctly and still over-claim small differences among
+near-equivalent cards, because the latter is where its own error
+dominates the signal. That is the Fay-Herriot assumption E[y − a_model |
+a_model] = 0 failing in the tails of a_model's deviation, not at its
+centre. (2) §7.4's clean read — positive OOF residual at theta_k's top
+card in 28/29 classes, z to +11, with a significant positive coefficient
+on centered log p in every class — is the actionable finding: the fit
+under-uses the prior covariate (prior_scale learned ≈ 0.005). The right
+place to address it is the FIT (a per-class or deviation-size-aware
+prior term, or a calibration layer fitted on fixed contrasts), not the
+target stage, and not a scalar beta (§7.6's regression test is the right
+gate). (3) Picker rows: V's residual lean 0.39-0.97 nats at picker rows
+vs the baseline's 0.15-0.18 is the one place V is structurally more
+exposed than the baseline, and V moved a third of the dose there. V's
+paired match (+0.0007 ± 0.0029) and its +0.0064 ± 0.0027 over C say the
+exposure did not cost on this corpus, but W's read (uniform weights
+without the value-unit tilt → picker dose 15%, not 32%) will show
+whether the picker dose helped, was neutral, or was carried by the
+defender rows. (4) §7.5 corrects my own note of 22:00: at the TARGET
+level V and the baseline push the t0 defender trump lead equally (2.6%
+vs 2.4% trump mass from a 5.0% prior; alone 0.21% vs 0.21%), and under
+the value-unit tilt the convention rows carry LESS dose than under the
+baseline (t0 share .164 vs .206) with a larger temperature (0.0097 vs
+0.0057), not more. The probe gap (V 2.6% vs baseline 1.7% of ~1,900
+greedy leads, ≈ 2 SE) sits on the student side of the distill or in
+probe noise, not in the targets.
+
+Decisions. (a) §7.6 standing recommendation adopted: no calibration
+factor; add the two diagnostics to `target_report.json` (per-class mean
+OOF residual at theta_k's top card with z; aggregate support of the
+model's top-card overrides, overall and where theta_k is confident) —
+queued behind the operator's refactor, not built tonight. (b) §7.7 (2):
+the bias probe will record theta_k's root prior per node so the signed
+256-vs-2048 difference at theta_k's top card can be read; small change
+to `search_bias_calibration.py`, queued. (c) §7.7 (3): the 206 search-
+endorsed t0 trump leads go to an oracle referee / hindsight replay;
+design open. (d) §7.7 (1) on `rc_validate_v2`'s called-suit iteration:
+queued as an analysis read, no new compute. (e) Relaunch on V is the
+operator's call and is CANCELLED for now (refactor first); V and W read
+by §6.5 as written: V matched → V is the pinned recipe (`d9f4391`).
