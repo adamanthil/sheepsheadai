@@ -7,11 +7,13 @@ episode streams) and searches a schedule of PLAY decisions with the ISMCTS
 committee (``CommitteeConfig``). Every row carries a partition label the
 projection reads (``policy_iteration.py``):
 
-  override   searched, material (shrink w > 0): the committee's pooled
-             evidence — the §20 target is built from it in Stage 2.
-  endorsed   searched, abstained (w = 0): same evidence, same Stage-2
-             treatment (the split dissolves there: where the pooled
-             advantage is ~0 the target IS the prior).
+  resolved   searched, and the committee's between-card Q spread beats
+             its own replicate noise (shrink w > 0). Committee acting
+             plays here; the §20 target is built in Stage 2.
+  unresolved searched, the spread within the noise (w = 0): same
+             evidence, same Stage-2 treatment (Stage 2 relabels both
+             "targeted"; where the pooled advantage is ~0 the target IS
+             the prior). The split never reads theta_k's policy.
   retention  search cannot speak there: bidding heads (pick/partner/bury,
              ALONE declaration included) and leaster play — anchored to
              theta_k's act-time policy. Alone-game PLAY is searched
@@ -24,7 +26,7 @@ Offline phase purity (Expert Iteration — Anthony et al. 2017; AlphaGo
 Zero / AlphaZero — Silver et al. 2017/2018): nothing updates during
 generation, so the expert, the acting policy and the anchor are the SAME
 frozen network. Acting is the policy's own stochastic self-play (DAgger —
-Ross et al. 2011) except at override rows of committee-acted games
+Ross et al. 2011) except at resolved rows of committee-acted games
 (``--committee-act-frac``, 1.0 in the §20.14 recipe: +0.0055 play vs
 student acting, CE_Teacher_Design §20.13 add. 16), where the argmax of
 the legacy pi_gumbel readout (``tilt_summary_to_target``) replaces the
@@ -38,7 +40,7 @@ at the true recurrent state of the realized trajectory, stored on every
 row with two or more legal actions. Every SEARCHED row stores the pooled
 committee evidence (``search_q`` / ``search_q_var`` / ``search_n`` /
 ``search_prior`` / ``search_noise_var`` / ``search_spread``; see
-``pfsp_runtime.CommitteeSummary``) — row schema 2.
+``pfsp_runtime.CommitteeSummary``) — row schema 3.
 
 The search schedule (§20.10): leads at ``p_base * boost_lead`` (clipped
 to ``p_max``), follows at ``p_base``; a nonzero floor keeps every eligible
@@ -78,9 +80,11 @@ from sheepshead.training.reward_shaping import RETURN_SCALE
 
 _W: dict = {}  # per-worker state (agent, teacher, config)
 
-# Corpus row schema version written to the manifest (2 = the rows described
-# in the module docstring; the §17 pilot's schema 1 is no longer produced).
-ROW_SCHEMA_VERSION = 2
+# Corpus row schema version written to the manifest (3 = the rows described
+# in the module docstring; 2 = the same rows with searched rows labeled
+# "override" / "endorsed", read through corpus_rows.load_shard; the §17
+# pilot's schema 1 is no longer produced).
+ROW_SCHEMA_VERSION = 3
 
 
 # --------------------------------------------------------------------------- #
@@ -344,7 +348,7 @@ def play_corpus_game(task: tuple) -> dict:
     forced_public: list[tuple[int, int]] = []
     telemetry_rows: list[dict] = []
     counts: dict[str, dict] = defaultdict(
-        lambda: {"nodes": 0, "searched": 0, "override": 0, "endorsed": 0, "failed": 0}
+        lambda: {"nodes": 0, "searched": 0, "resolved": 0, "unresolved": 0, "failed": 0}
     )
     gaps: list[float] = []
     committee_acted = 0
@@ -431,12 +435,12 @@ def play_corpus_game(task: tuple) -> dict:
                                 dset = "none"
                                 counts[cls]["failed"] += 1
                             elif info is not None and info["w"] > 0.0:
-                                dset = "override"
-                                counts[cls]["override"] += 1
+                                dset = "resolved"
+                                counts[cls]["resolved"] += 1
                                 gaps.append(info["gap"])
                             else:
-                                dset = "endorsed"
-                                counts[cls]["endorsed"] += 1
+                                dset = "unresolved"
+                                counts[cls]["unresolved"] += 1
                             telemetry_rows.append(
                                 {
                                     "game": game_idx,
@@ -460,7 +464,7 @@ def play_corpus_game(task: tuple) -> dict:
                             # act-time policy's for the acted card.
                             if (
                                 committee_act
-                                and dset == "override"
+                                and dset == "resolved"
                                 and target_list is not None
                                 and anchor is not None
                             ):
@@ -489,8 +493,8 @@ def play_corpus_game(task: tuple) -> dict:
                     "distill_set": dset,
                     "node_class": cls,
                     "conv_cs_ids": cs_ids,
-                    "has_search_target": dset == "override",
-                    "search_target": target_list if dset == "override" else None,
+                    "has_search_target": dset == "resolved",
+                    "search_target": target_list if dset == "resolved" else None,
                     "search_gap": float(info["gap"]) if info else 0.0,
                     "search_w": float(info["w"]) if info else 0.0,
                     # Schema 2: the act-time stash on every multi-action row;
@@ -697,7 +701,7 @@ def main() -> int:
     }
     all_gaps: list[float] = []
     class_totals: dict[str, dict] = defaultdict(
-        lambda: {"nodes": 0, "searched": 0, "override": 0, "endorsed": 0, "failed": 0}
+        lambda: {"nodes": 0, "searched": 0, "resolved": 0, "unresolved": 0, "failed": 0}
     )
     shard_idx = 0
     kept = 0
@@ -711,6 +715,11 @@ def main() -> int:
         prior_path = os.path.join(args.out_dir, "manifest.json")
         with open(prior_path) as f:
             prior = json.load(f)
+        if prior.get("row_schema", 1) != ROW_SCHEMA_VERSION:
+            raise SystemExit(
+                f"cannot resume a row-schema {prior.get('row_schema', 1)} corpus "
+                f"with schema {ROW_SCHEMA_VERSION} rows (labels would mix)"
+            )
         for key in ("games", "kept_games", "episodes"):
             manifest[key] = prior.get(key, 0)
         manifest["shards"] = prior["shards"]
@@ -814,12 +823,12 @@ def main() -> int:
                 write_manifest()
             if done % 25 == 0 or done == len(tasks):
                 searched = sum(c["searched"] for c in class_totals.values())
-                override = sum(c["override"] for c in class_totals.values())
+                resolved = sum(c["resolved"] for c in class_totals.values())
                 rate = done / max(time.time() - t_start, 1e-9)
                 print(
                     f"[{done}/{len(tasks)} games, {rate:.2f} g/s] "
-                    f"searched {searched} override {override} "
-                    f"endorsed {sum(c['endorsed'] for c in class_totals.values())} "
+                    f"searched {searched} resolved {resolved} "
+                    f"unresolved {sum(c['unresolved'] for c in class_totals.values())} "
                     f"failed {sum(c['failed'] for c in class_totals.values())}",
                     flush=True,
                 )

@@ -75,7 +75,7 @@ def test_partition_assignment_and_schema():
     agent = fresh_agent()
     res = generate_game(agent, collect_oracle=True)
     assert len(res["episodes"]) == 5
-    saw = {"override": 0, "retention": 0, "none": 0, "endorsed": 0}
+    saw = {"resolved": 0, "retention": 0, "none": 0, "unresolved": 0}
     for ep in res["episodes"]:
         actions = [e for e in ep if e["kind"] == "action"]
         assert actions, "every seat stream has action rows"
@@ -93,7 +93,7 @@ def test_partition_assignment_and_schema():
                 assert sum(ev["anchor_probs"]) == pytest.approx(1.0, abs=1e-6)
             else:
                 assert ev["anchor_probs"] is None
-            if ev["distill_set"] == "override":
+            if ev["distill_set"] == "resolved":
                 assert head_is_play
                 assert ev["has_search_target"]
                 assert len(ev["search_target"]) == n_valid
@@ -114,12 +114,12 @@ def test_partition_assignment_and_schema():
                 assert "search_q" not in ev
     # p=1 + scripted-material committee: every eligible non-leaster play
     # node (std AND alone) searched and material; bidding rows all retention
-    assert saw["override"] > 0
+    assert saw["resolved"] > 0
     assert saw["retention"] > 0
-    assert saw["endorsed"] == 0
+    assert saw["unresolved"] == 0
     counts = res["counts"]
     play_cells = [c for c in counts if c.startswith(("std|", "alone|"))]
-    assert sum(counts[c]["searched"] for c in play_cells) == saw["override"]
+    assert sum(counts[c]["searched"] for c in play_cells) == saw["resolved"]
     assert all(
         counts[h]["searched"] == 0 for h in ("pick", "partner", "bury") if h in counts
     )
@@ -228,7 +228,7 @@ def test_channel_alignment_and_loss_masking():
         assert stats["target_rows"] == int(tg.sum())
         # Zero-gradient-at-init property (§17.3): the anchors were stashed
         # from THIS agent's own act() calls, and the replayed unroll
-        # reproduces them — the retention/endorsed KL starts ~0.
+        # reproduces them — the retention KL starts ~0.
         assert stats["retention_kl"] < 1e-3
 
 
@@ -315,14 +315,14 @@ def test_split_by_game_keeps_siblings_together():
 def test_run_epoch_steps_and_updates_weights():
     agent = fresh_agent()
     episodes = []
-    overrides = 0
-    for g in range(10, 20):  # collect until an override row exists
+    resolved = 0
+    for g in range(10, 20):  # collect until a resolved row exists
         res = generate_game(agent, game_idx=g)
         episodes.extend(as_targeted(res["episodes"]))
-        overrides += sum(c["override"] for c in res["counts"].values())
-        if len(episodes) >= 10 and overrides:
+        resolved += sum(c["resolved"] for c in res["counts"].values())
+        if len(episodes) >= 10 and resolved:
             break
-    assert overrides
+    assert resolved
     ref = agent.encoder.card.weight.detach().clone()
     args = _trainer_args(batch_segments=4, buffer_episodes=16)
     stats, steps = policy_iteration.run_epoch(agent, episodes, args, train=True)

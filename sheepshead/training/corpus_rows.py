@@ -206,13 +206,21 @@ def sorted_valid_to_dense(
     return dense
 
 
+# Row-schema-2 labels of a raw corpus's searched rows.
+LEGACY_SEARCHED_SETS = {"override": "resolved", "endorsed": "unresolved"}
+
+
 def canonical_distill_set(event: dict) -> None:
-    """Rewrite a legacy ``distill_set`` label in place. Targeted corpora
-    written before the rename call the rows Stage 2 built a target for
-    "override"; only Stage 2 writes ``search_weight``, which tells them
-    apart from a raw corpus's searched rows."""
-    if event.get("distill_set") == "override" and "search_weight" in event:
+    """Rewrite a legacy ``distill_set`` label in place. Schema-2 corpora
+    call searched rows "override" / "endorsed" (now "resolved" /
+    "unresolved"), and targeted corpora written before the rename call the
+    rows Stage 2 built a target for "override"; only Stage 2 writes
+    ``search_weight``, which tells the two "override"s apart."""
+    label = event.get("distill_set")
+    if label == "override" and "search_weight" in event:
         event["distill_set"] = "targeted"
+    elif label in LEGACY_SEARCHED_SETS:
+        event["distill_set"] = LEGACY_SEARCHED_SETS[label]
 
 
 def load_shard(path: str) -> dict:

@@ -66,8 +66,8 @@ LOGVAR_INIT = 1e-3
 LOGVAR_MIN, LOGVAR_MAX = math.log(1e-7), math.log(1.0)
 
 # Corpus rows the §20 recipe can TARGET: searched play rows, whatever the
-# committee concluded there (the endorsed/override split dissolves).
-TARGETABLE_SETS = ("override", "endorsed")
+# committee concluded there (the resolved/unresolved split dissolves).
+TARGETABLE_SETS = ("resolved", "unresolved")
 # ... and the subset that carries usable pooled Q for Stage 1.
 Q_SOURCES = ("committee", "recovered")
 

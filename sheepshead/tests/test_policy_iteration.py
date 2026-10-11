@@ -222,7 +222,7 @@ def test_end_to_end_stages_on_tiny_corpus(tmp_path):
         1
         for ep in shard["episodes"]
         for e in ep
-        if e.get("kind") == "action" and e["distill_set"] in ("override", "endorsed")
+        if e.get("kind") == "action" and e["distill_set"] in ("resolved", "unresolved")
     )
     out_dir = tmp_path / "iter1"
     rc = tpi.main(
@@ -1060,16 +1060,17 @@ def test_cross_fit_and_distill_holdout_through_the_stages(tmp_path):
     assert rc == 0 and not (out_dir / tpi.OOF_FILE).exists()
 
 
-def test_load_shard_relabels_legacy_targeted_rows(tmp_path):
-    """Targeted corpora written before the rename say "override"; Stage 2's
-    search_weight marks them, and they load as "targeted". A raw corpus's
-    searched rows (no search_weight) keep their label."""
+def test_load_shard_relabels_legacy_rows(tmp_path):
+    """Schema-2 labels load under the current names: a targeted row
+    ("override" with Stage 2's search_weight) as "targeted", a raw
+    corpus's searched rows as "resolved" / "unresolved"."""
     shard = {
         "games": [],
         "episodes": [
             [
                 {"kind": "action", "distill_set": "override", "search_weight": 1.2},
                 {"kind": "action", "distill_set": "override"},
+                {"kind": "action", "distill_set": "endorsed"},
                 {"kind": "action", "distill_set": "retention"},
                 {"kind": "trick"},
             ]
@@ -1080,7 +1081,8 @@ def test_load_shard_relabels_legacy_targeted_rows(tmp_path):
     events = load_shard(str(path))["episodes"][0]
     assert [e.get("distill_set") for e in events] == [
         "targeted",
-        "override",
+        "resolved",
+        "unresolved",
         "retention",
         None,
     ]
