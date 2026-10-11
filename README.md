@@ -483,24 +483,32 @@ What each step does and leaves behind:
 1. **Corpus.** The frozen θ_k plays 8,000 games; at every play node an
    ISMCTS committee (3 replicates, 256 iterations; 1,024 at trick-0 leads
    and 512 at trick-1 leads, one-ply rollouts to oracle-valued leaves)
-   scores the legal cards, and the committee's choice is played
-   (`--committee-act-frac 1.0`). Rows are partitioned into *override*
-   (search disagrees with the policy), *endorsed* and *retention* (bidding
-   and leaster nodes, unsearched). Output: `corpus/corpus_<shard>.pt`,
-   `corpus/manifest.json` (per-class counts), `corpus/nodes.jsonl`
-   (per-node telemetry incl. the budget used). Progress line:
-   `[1150/8000 games, 0.04 g/s] searched 19199 override 9386 endorsed 9723 failed 90`,
+   scores the legal cards. Searched rows are *resolved* (the committee's
+   between-card Q spread beats its own replicate noise; there the
+   committee's choice is played, `--committee-act-frac 1.0`) or
+   *unresolved* (the spread is within the noise; the policy samples);
+   bidding and leaster nodes are *retention* (unsearched). Output:
+   `corpus/corpus_<shard>.pt`, `corpus/manifest.json` (per-class
+   counts), `corpus/nodes.jsonl` (per-node telemetry incl. the budget
+   used). Progress line:
+   `[1150/8000 games, 0.04 g/s] searched 19199 resolved 9386 unresolved 9723 failed 90`,
    ending in `DONE: 8000 games kept, 40000 episodes, 40 shards -> ...`.
    An interrupted corpus resumes with `--start-game <n>`.
 2. **fit / target / distill** (`policy_iteration all`). *fit*: a
    heteroscedastic advantage model (an adapter twin of the play pointer with
-   the log-prior as covariate) is fit to the committee Q on a 10% game-level
-   holdout → `advantage_model.pt`, `fit_report.json`, `row_table.pt`.
-   *target*: per-row Fay–Herriot posterior variances and the tilted class-
-   mode targets t(a) ∝ p_θk(a) · exp(Â(a)/√v), precision weights capped at
-   5 → `targeted/`, `target_report.json`. *distill*: six trunk epochs at
-   3e-5 (everything trains: weighted CE on searched rows, retention KL ×10
-   to θ_k on bidding and leaster rows, value / oracle regression), then
+   the log-prior as covariate) is fit to the centered committee Q, whose
+   replicate noise is pooled per node class; a 10% game-level holdout sets
+   the epoch count, then five fold models refit across games so every
+   row's prediction is out of fold → `advantage_model.pt`,
+   `oof_predictions.pt`, `fit_report.json`, `row_table.pt`. *target*:
+   per-class out-of-fold residual variances set each node's Fay–Herriot
+   weight between its own search and the model; the posterior-mean
+   advantage Â tilts θ_k at one temperature in advantage units,
+   t(a) ∝ p_θk(a) · exp(clip(Â(a)/η, ±8)) with η = 0.0097, every
+   targeted row weighted equally → `targeted/`, `target_report.json`.
+   *distill*: six trunk epochs at 3e-5 (everything trains: CE on
+   targeted rows, retention KL ×10 to θ_k on bidding and leaster rows,
+   value / oracle regression), then
    bilinear-only head epochs at 1e-3 → `distill_epoch<e>.pt`,
    `distill_log.jsonl`, `distill_best.json` naming the candidate: the
    LAST epoch of the schedule (held-out target KL is logged per epoch as
@@ -589,7 +597,7 @@ adopted checkpoint. Measured on the perceiver-shared-v2 lineage
 | stage | wall time | read vs the previous checkpoint |
 |---|---|---|
 | bidding phase, 200k episodes | 8.0 h | +0.0054 ± 0.0036 (adopted); leaster hands +0.024 ± 0.009 |
-| corpus, 8,000 games | 60.6 h | 133k searched / 64.5k override rows |
+| corpus, 8,000 games | 60.6 h | 133k searched / 64.5k resolved rows |
 | fit + target + distill | 2.1 h | held-out target KL 0.124 → 0.100 |
 | cert with routed reads | 1.2 h | play-only +0.0036 ± 0.0023, bidding-only −0.0008 ± 0.0008 |
 

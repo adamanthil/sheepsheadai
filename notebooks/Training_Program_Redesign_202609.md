@@ -333,19 +333,34 @@ cert:
    lead conventions; t0 leads want 1024, t1 leads 512; leads are ~5.5% of
    searched nodes per trick so the schedule costs ~+22% over all-256, add.
    29/29b), d_rollout 1 with oracle leaves, every play node searched
-   (p_base 1.0, boost_lead 1.0, boost_cs 1.5, p_min 0.05), schema 2,
-   oracle states stored. ~55 h on the M1 Max (0.04-0.05 games/s).
+   (p_base 1.0, boost_lead 1.0, boost_cs 1.5, p_min 0.05), row schema 3
+   (searched rows `resolved` / `unresolved`; schema 2 called them
+   `override` / `endorsed`), oracle states stored. ~55 h on the M1 Max
+   (0.04-0.05 games/s).
 2. **Stage 1 (evaluation)** — heteroscedastic weighted least squares of
    the centered committee Q onto θ_k's frozen features through a twin of
    the play pointer, with the centered log-prior as a covariate; held-out
-   weighted MSE selects capacity. **Stage 1b** — Fay–Herriot blend:
-   γ_n = σ²_u/(σ²_u + σ²_n), per-class residual variance, posterior
-   variance v_n = γ_n σ²_n[^fh][^efron].
-3. **Stage 2 (improvement)** — t_n(a) ∝ p_θk(a|s) · exp(clip(Â_n(a)/
-   (κ √v_n), ±8)), κ = 1: the KL-regularized mirror-descent step with
-   the posterior SE as temperature[^vieillard][^awr]; precision weights
-   ω_n ∝ 1/v_n, mean-normalized, cap 5 (never binds; §20.11).
-4. **Stage 3 (projection)** — PG off. Weighted CE on searched play rows;
+   weighted MSE selects capacity and epoch count. Amended 10-10
+   (CE_Teacher §22.5-22.6): the label noise σ²_n is the centered-Q
+   replicate variance pooled per node class (`--noise-pool class`), and
+   the model is cross-fit — five fold models refit across games so every
+   row's a_model is out of fold (`cross_fit = 5`). **Stage 1b** —
+   Fay–Herriot blend: γ_n = σ²_u/(σ²_u + σ²_n) with σ²_u the per-class
+   out-of-fold residual variance (no held-out floor), posterior mean
+   Â_n = γ_n y_n + (1 − γ_n) a_model, posterior variance
+   v_n = γ_n σ²_n[^fh][^efron].
+3. **Stage 2 (improvement)** — t_n(a) ∝ p_θk(a|s) · exp(clip(Â_n(a)/η,
+   ±8)), η = 0.0097 in advantage units: the KL-regularized mirror-descent
+   step on the posterior-mean advantage[^vieillard][^awr]; every targeted
+   row weighs the same in the CE (`--tilt-scale global --weights
+   uniform`). Amended 10-10 (CE_Teacher §22.6, arm V; η matches the
+   former recipe's median target KL, 0.043): the temperature was κ √v_n
+   (κ = 1) with precision weights ω_n ∝ 1/v_n, which spends the update
+   where the search is most certain — late-trick endgames — rather than
+   where the decision is worth most; uncertainty now enters only through
+   γ_n. Paired vs the former recipe on the recall run's iteration-1
+   corpus: +0.0007 ± 0.0029 (+0.0210 ± 0.0031 vs θ_0).
+4. **Stage 3 (projection)** — PG off. CE on targeted play rows;
    retention KL(p_θk ‖ π_θ) on bidding-head and leaster-play rows[^lwf]
    at λ_ret = 10 (halves the bidding drift; does not pin it); value/aux/
    oracle regression on all rows. Schedule (amended 09-12): SIX trunk
@@ -766,12 +781,14 @@ cited plus three targeted searches on 2026-09-02 (no systematic review).
    node as a Fay–Herriot "area" — a known-variance measurement (committee
    replicate SE) with a covariate regression (a twin of the play pointer
    on θ_k's frozen readout + hand tokens, log-prior covariate) — and
-   using the posterior variance as the tilt temperature. Empirical-Bayes
+   using the posterior-mean advantage as the KL-regularized improvement
+   step (through 10-10 the posterior SE also set the tilt temperature;
+   CE_Teacher §22.6 retired that). Empirical-Bayes
    shrinkage of MCTS values exists in single-search settings (Tesauro et
    al. 2010[^tesauro]), and heteroscedastic regression heads are standard
    (Kendall & Gal[^kg]), but pooling search labels across states through
-   the student's representation to estimate a shared advantage, with the
-   improvement step tempered by the pooled posterior SE, appears to be
+   the student's representation to estimate a shared advantage, with each
+   node's own search shrunk toward it by the pooled posterior, appears to be
    new. It is the program's answer to a specific measured fact: per-node
    determinized-search labels at convention nodes sit at the noise null
    however much budget is spent (§20.1, §12.8).
