@@ -68,13 +68,16 @@ from sheepshead.training.corpus_rows import load_shard, shard_paths
 from sheepshead.training.reward_shaping import RETURN_SCALE
 from sheepshead.training.search_advantage import (
     CAPACITIES,
+    CE_WEIGHTS,
     NOISE_MODELS,
     NOISE_POOLS,
+    TILT_SCALES,
     AdvantageModel,
     FitReport,
     RowTable,
     apply_noise_model,
     build_row_table,
+    ce_weights,
     class_residual_variances,
     clipped_disagreement,
     cross_fit_predictions,
@@ -436,8 +439,22 @@ def stage_target(args) -> dict:
                 f"(all-rows {su2_all_rows[cls]:.2e} held-out "
                 f"{su2_holdout.get(cls, float('nan')):.2e}) gamma {g:.2f}"
             )
+    eta = float(args.eta) if args.tilt_scale == "global" else None
+    if eta is not None:
+        log(
+            f"[target] tilt scale global: eta {eta:.4g} advantage units for every "
+            f"row (kappa ignored); CE weights {args.weights}"
+        )
+    elif args.weights != "precision":
+        log(f"[target] CE weights {args.weights}")
     built = targets_for_table(
-        model, table, sigma_u2=su2, kappa=args.kappa, tilt_max=args.tilt_max, oof=oof
+        model,
+        table,
+        sigma_u2=su2,
+        kappa=args.kappa,
+        tilt_max=args.tilt_max,
+        oof=oof,
+        eta=eta,
     )
 
     shards, manifest = load_corpus(args.corpus_dir)
@@ -445,12 +462,10 @@ def stage_target(args) -> dict:
     overconf = clipped_disagreement(
         built["target"], z_abs, table, tilt_max=args.tilt_max
     )
-    # §20.9 posterior-precision CE weights: 1 / v_post, mean-normalized over
-    # the targeted rows (same dose as the uniform loss, different
-    # allocation), capped so no row dominates.
-    prec = 1.0 / built["v_post"].clamp(min=1e-9)
-    weights = (prec / prec.mean()).clamp(max=args.weight_max)
-    weights = weights / weights.mean()
+    # CE weights (ce_weights): §20.9 posterior precision 1 / v_post, mean-
+    # normalized and capped, or uniform (Arm_D_Review §6: precision weights
+    # put half the dose on trick-4 rows under an honest noise model).
+    weights = ce_weights(built["v_post"], args.weights, args.weight_max)
     kl_prior = (
         built["target"]
         * (
@@ -483,7 +498,10 @@ def stage_target(args) -> dict:
         "rows_with_q": int(table.has_q.sum()),
         "sigma_u2": sigma_u2,
         "kappa": args.kappa,
+        "tilt_scale": args.tilt_scale,
+        "eta": eta,
         "tilt_max": args.tilt_max,
+        "weights": args.weights,
         "weight_max": args.weight_max,
         "weight_p50": float(weights.median()),
         "weight_p90": float(weights.quantile(0.9)),
@@ -1284,7 +1302,28 @@ def build_parser() -> argparse.ArgumentParser:
     tgt.add_argument(
         "--kappa", type=float, default=1.0, help="tilt temperature in posterior SEs"
     )
+    tgt.add_argument(
+        "--tilt-scale",
+        default="posterior",
+        choices=TILT_SCALES,
+        help="tilt temperature: posterior = kappa * posterior SE per row "
+        "(§20.9); global = one --eta in advantage units for every row (the "
+        "KL-regularized improvement step; Arm_D_Review §6.4)",
+    )
+    tgt.add_argument(
+        "--eta",
+        type=float,
+        default=None,
+        help="global tilt temperature in advantage units (--tilt-scale global)",
+    )
     tgt.add_argument("--tilt-max", type=float, default=8.0, help="|z| clip (nats)")
+    tgt.add_argument(
+        "--weights",
+        default="precision",
+        choices=CE_WEIGHTS,
+        help="CE weights per targeted row: precision = 1 / v_post capped "
+        "(§20.9) or uniform",
+    )
     tgt.add_argument("--weight-max", type=float, default=5.0, help="CE weight cap")
     dst = ap.add_argument_group("distill")
     # §20.14 step 4 (pinned 2026-09-12): six trunk epochs at 3e-5, then
@@ -1326,6 +1365,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
+    if args.tilt_scale == "global" and args.eta is None:
+        raise SystemExit("--tilt-scale global needs --eta")
     os.makedirs(args.out_dir, exist_ok=True)
     if args.stage in ("fit", "target", "distill", "all") and not args.corpus_dir:
         raise SystemExit(f"stage {args.stage} needs --corpus-dir")

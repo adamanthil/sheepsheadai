@@ -831,6 +831,31 @@ def test_noise_pool_by_class_targets_the_class_mean():
         apply_noise_model(t, "centered", nu, pool="bogus")
 
 
+def test_global_eta_tilt_and_ce_weight_modes():
+    """With ``eta`` the tilt temperature is one value in advantage units for
+    every row (v_post and kappa ignored): the same a_hat gets the same z
+    whatever its posterior SE. ce_weights: precision = capped, mean-1
+    1 / v_post; uniform = ones."""
+    from sheepshead.training.search_advantage import ce_weights
+
+    prior = torch.tensor([[0.5, 0.3, 0.2, 0.0]] * 2)
+    legal = torch.tensor([[True, True, True, False]] * 2)
+    a_hat = torch.tensor([[0.01, 0.0, 0.0, 0.0]] * 2)
+    v_post = torch.tensor([1e-6, 1e-4])  # a quiet row and a noisy one
+    _, z_se = build_tilt_target(prior, a_hat, v_post, legal, kappa=1.0, tilt_max=8.0)
+    assert z_se[0, 0] == pytest.approx(8.0) and z_se[1, 0] == pytest.approx(1.0)
+    t, z = build_tilt_target(
+        prior, a_hat, v_post, legal, kappa=1.0, tilt_max=8.0, eta=0.01
+    )
+    assert torch.allclose(z[:, 0], torch.ones(2)) and torch.allclose(t[0], t[1])
+    assert t[0, 3] == 0.0 and torch.all(z[:, 1:] == 0.0)
+    w = ce_weights(torch.tensor([1e-6, 1e-4, 1e-4]), "precision", 5.0)
+    assert float(w.mean()) == pytest.approx(1.0) and w[0] > w[1] == w[2]
+    assert torch.all(ce_weights(v_post, "uniform", 5.0) == 1.0)
+    with pytest.raises(ValueError):
+        ce_weights(v_post, "bogus", 5.0)
+
+
 def test_nll_accepts_per_action_noise():
     from sheepshead.training.search_advantage import gaussian_nll_rows
 
