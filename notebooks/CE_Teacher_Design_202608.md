@@ -5746,3 +5746,44 @@ calibration factor; diagnostics (per-class top-card residual z, override
 support) to be added to target_report; bias probe to record theta_k's
 prior; the 206 search-endorsed trump leads to an oracle referee. All
 queued behind the operator's refactor.
+
+**22.6 sixth addendum (10-11 02:20) — arm W read; attribution; RELAUNCHED
+on V.** W = arm C + uniform CE weights only (one-factor bridge; SE-unit
+tilt kept, so targets identical to C's: KL p50 0.0589, clipped 5.0%).
+
+| arm | recipe | vs theta_0 h2h | play-only | bidding | t0 lead | paired vs baseline | paired vs C |
+|---|---|---|---|---|---|---|---|
+| C | cross-fit + class pool (SE tilt, 1/v weights) | +0.0107 ± 0.0031 | +0.0106 ± 0.0030 | −0.0002 ± 0.0009 | 1.9% | −0.0049 ± 0.0029 | — |
+| W | C + uniform weights | +0.0153 ± 0.0032 | +0.0125 ± 0.0029 | +0.0025 ± 0.0014 | 1.4% | −0.0037 ± 0.0027 | +0.0034 ± 0.0026 |
+| V | C + value-unit tilt (eta 0.0097) + uniform weights | +0.0210 ± 0.0031 | +0.0198 ± 0.0029 | +0.0007 ± 0.0010 | 2.6% | **+0.0007 ± 0.0029** | +0.0064 ± 0.0027 |
+
+Attribution on the same honest posterior (paired edges, SE ≈ 0.0027):
+uniform weights alone +0.0034 (W − C); the value-unit tilt on top of
+them +0.0030 (V − W, by difference); together +0.0064 (V − C). The two
+changes contribute about equally and neither alone reaches the
+baseline: W still reads −0.0037 ± 0.0027 against it, so the trick-4
+dose share (C 0.50 → W 0.28 → V 0.21) and the per-row temperature both
+matter, as Arm_D_Review §6.2's dose table predicted. Not dramatic, not
+unexpected; W does not beat V. Distill holdout override KL: C 0.125,
+W 0.121, V 0.098. W's t0 defender trump lead 1.4% is the lowest of the
+arms (V 2.6%, baseline 1.7%, C 1.9%) — consistent with the view that
+the probe gap is student-side noise around identical targets (W's
+targets are C's).
+
+Gate passed (W vs baseline −0.0037 ≤ +0.0070) and the operator's
+standing instruction executed at 02:20: the §20.9 baseline's iteration-
+1 artifacts archived to `pi/iter1_ablations/baseline_master/` (fit,
+target shards, distill checkpoints, the failed 1%-bar cert), `pi/iter1`
+cleared to the corpus, orchestrator RELAUNCHED on master `cc72877` (pid
+45546; operator refactor + arm V recipe pinned `d9f4391`; smoke and 46
+tests green). It re-fits/targets/distills/certifies iteration 1 on the
+adopted recipe (fixed seeds → arm V's numbers), then the bidding phase
+(200k episodes, ~11 h), bidding cert, iteration 2's corpus (~2.5 days
+at 0.03 g/s). Iteration-1 recipe research is CLOSED: honest posterior
+(cross-fit, class-pooled noise) + KL-regularized step (one value-unit
+temperature, uniform weights) matches the accidental baseline paired and
+beats it unpaired. Open research items carried forward: §7 fit-side
+prior calibration diagnostics; bias probe with theta_k's prior; oracle
+referee for the search-endorsed t0 trump leads; eta fixed across
+iterations (dose will drift as advantages shrink — read KL p50/clipped
+per iteration).
