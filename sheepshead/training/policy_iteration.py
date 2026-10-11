@@ -1304,25 +1304,28 @@ def build_parser() -> argparse.ArgumentParser:
     )
     tgt.add_argument(
         "--tilt-scale",
-        default="posterior",
+        default="global",
         choices=TILT_SCALES,
-        help="tilt temperature: posterior = kappa * posterior SE per row "
-        "(§20.9); global = one --eta in advantage units for every row (the "
-        "KL-regularized improvement step; Arm_D_Review §6.4)",
+        help="tilt temperature: global (default; the pinned recipe since the "
+        "2026-10-10 arm V) = one --eta in advantage units for every row, the "
+        "KL-regularized improvement step (Arm_D_Review §6.4); posterior = "
+        "kappa * posterior SE per row (§20.9, the recipe before)",
     )
     tgt.add_argument(
         "--eta",
         type=float,
-        default=None,
-        help="global tilt temperature in advantage units (--tilt-scale global)",
+        default=0.0097,
+        help="global tilt temperature in advantage units (--tilt-scale global); "
+        "0.0097 = the dose calibration that matches the §20.9 recipe's "
+        "KL(target||prior) p50 on the recall run's iteration-1 corpus",
     )
     tgt.add_argument("--tilt-max", type=float, default=8.0, help="|z| clip (nats)")
     tgt.add_argument(
         "--weights",
-        default="precision",
+        default="uniform",
         choices=CE_WEIGHTS,
-        help="CE weights per targeted row: precision = 1 / v_post capped "
-        "(§20.9) or uniform",
+        help="CE weights per targeted row: uniform (default; arm V) or "
+        "precision = 1 / v_post capped (§20.9, the recipe before)",
     )
     tgt.add_argument("--weight-max", type=float, default=5.0, help="CE weight cap")
     dst = ap.add_argument_group("distill")
