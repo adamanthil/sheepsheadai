@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import { STORAGE_KEYS } from "../../../lib/storage";
@@ -180,18 +180,34 @@ export default function TablePage() {
     lastTrickPlay.length === 1 && validActionStrings.size === 1
       ? actionIdByString[lastTrickPlay[0]]
       : undefined;
+  // One card play in flight at a time: a tap on the last card and the
+  // auto-play racing it would otherwise both post, and the loser is
+  // refused as not_your_turn.
+  const playPending = useRef(false);
+  const playCard = useCallback(
+    async (actionId: number) => {
+      if (playPending.current) return;
+      playPending.current = true;
+      try {
+        await takeAction(actionId);
+      } finally {
+        playPending.current = false;
+      }
+    },
+    [takeAction],
+  );
   useEffect(() => {
     if (autoPlayId === undefined) return;
-    const timer = setTimeout(() => void takeAction(autoPlayId), 1000);
+    const timer = setTimeout(() => void playCard(autoPlayId), 1000);
     return () => clearTimeout(timer);
-  }, [autoPlayId, takeAction]);
+  }, [autoPlayId, playCard]);
 
   const handleCardClick = (card: string) => {
     if (!isYourTurn || !card) return;
     if (stageCard(card)) return;
     if (validActionStrings.has(`PLAY ${card}`)) {
       const id = actionIdByString[`PLAY ${card}`];
-      if (id !== undefined) void takeAction(id);
+      if (id !== undefined) void playCard(id);
     }
   };
 
