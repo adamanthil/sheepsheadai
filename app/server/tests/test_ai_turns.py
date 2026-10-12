@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from server.runtime import dealing, turn_timer
-from server.runtime.ai_loop import ai_take_turns
+import types
+
+from server.runtime import ai_loop, dealing, turn_timer
+from server.runtime.ai_loop import TRICK_COLLECT_SECONDS, ai_take_turns
 from server.runtime.dealing import new_game_for_table
 from server.runtime.models import ClientConn, Occupant, Table
 from server.runtime.views import get_actor_seat
@@ -49,3 +51,39 @@ async def test_seat_lost_to_ai_on_an_all_human_deal_is_played(monkeypatch):
     assert get_actor_seat(table) != 1
     if table.turn_timer_task:
         table.turn_timer_task.cancel()
+
+
+async def test_ai_lead_waits_out_the_collect_animation(monkeypatch):
+    # A human just completed a trick: the next lead must not be played under
+    # the client's collect animation of that trick.
+    sleeps: list[float] = []
+
+    async def record_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    async def no_turns(table: Table) -> None:
+        return None
+
+    monkeypatch.setattr(
+        ai_loop,
+        "asyncio",
+        types.SimpleNamespace(
+            sleep=record_sleep,
+            create_task=ai_loop.asyncio.create_task,
+            CancelledError=ai_loop.asyncio.CancelledError,
+        ),
+    )
+    monkeypatch.setattr(ai_loop, "ai_take_turns", no_turns)
+    table = Table(id="t", name="collect")
+    table.game = types.SimpleNamespace(was_trick_just_completed=True)  # type: ignore[assignment]
+
+    ai_loop.schedule_ai_turns(table)
+    assert table.ai_task is not None
+    await table.ai_task
+    assert sleeps == [TRICK_COLLECT_SECONDS]
+
+    sleeps.clear()
+    table.game.was_trick_just_completed = False
+    ai_loop.schedule_ai_turns(table)
+    await table.ai_task
+    assert sleeps == []

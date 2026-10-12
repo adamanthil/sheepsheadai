@@ -13,6 +13,11 @@ from server.runtime.turn_timer import arm_turn_timer
 from server.runtime.views import get_actor_seat
 from server.services.persistence.games import fire_game_hooks
 
+# How long the table client spends on a completed trick: a 2.0s look at the
+# finished trick, then a 1.3s collect animation (see useTrickAnimation.ts).
+# The next card must not land underneath it.
+TRICK_COLLECT_SECONDS = 3.3
+
 
 async def ai_take_turns(table: Table) -> None:
     """Loop AI moves until a human is the actor or the game ends.
@@ -63,7 +68,7 @@ async def ai_take_turns(table: Table) -> None:
             await asyncio.sleep(0.5)
         await broadcast_table_state(table)
         if getattr(table.game, "was_trick_just_completed", False):
-            await asyncio.sleep(3.3)
+            await asyncio.sleep(TRICK_COLLECT_SECONDS)
         else:
             if isinstance(action_str, str) and action_str == "PASS":
                 await asyncio.sleep(0.5)
@@ -80,6 +85,10 @@ def schedule_ai_turns(table: Table, initial_delay: float = 0.0) -> None:
     """Schedule background AI turns for a table, cancelling any prior task."""
     if table.settling:
         return  # settle_hand is playing every seat itself
+    if table.game is not None and table.game.was_trick_just_completed:
+        # A human (or a timeout move) just completed a trick; hold the next
+        # lead until the client's collect animation has finished.
+        initial_delay = max(initial_delay, TRICK_COLLECT_SECONDS)
 
     async def _runner():
         if initial_delay > 0:
