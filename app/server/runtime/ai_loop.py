@@ -66,6 +66,10 @@ async def ai_take_turns(table: Table) -> None:
 
         if isinstance(action_str, str) and action_str.startswith("PLAY "):
             await asyncio.sleep(0.5)
+        if table.game and table.game.is_done():
+            # finish_hand records the hand before anyone is shown it ended:
+            # a redeal from the game-over banner would otherwise discard it.
+            break
         await broadcast_table_state(table)
         if getattr(table.game, "was_trick_just_completed", False):
             await asyncio.sleep(TRICK_COLLECT_SECONDS)
@@ -85,7 +89,11 @@ def schedule_ai_turns(table: Table, initial_delay: float = 0.0) -> None:
     """Schedule background AI turns for a table, cancelling any prior task."""
     if table.settling:
         return  # settle_hand is playing every seat itself
-    if table.game is not None and table.game.was_trick_just_completed:
+    if (
+        table.game is not None
+        and table.game.was_trick_just_completed
+        and not table.game.is_done()
+    ):
         # A human (or a timeout move) just completed a trick; hold the next
         # lead until the client's collect animation has finished.
         initial_delay = max(initial_delay, TRICK_COLLECT_SECONDS)

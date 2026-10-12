@@ -117,7 +117,10 @@ async def _expire(
                 author=conn.display_name,
             )
             await broadcast_chat_append(table, msg_dict)
-        await broadcast_table_state(table)
+        if table.game is None or not table.game.is_done():
+            # A hand this move ended is shown by the AI loop's finish_hand,
+            # once it is recorded.
+            await broadcast_table_state(table)
         on_expired(table)
     except asyncio.CancelledError:
         return

@@ -253,10 +253,11 @@ async def post_action(
     # client.
     await redeal_passed_out_hand(table)
 
-    await broadcast_table_state(table)
-    schedule_ai_turns(table)
-
     if table.game and table.game.is_done():
+        # Records the hand before broadcasting that it ended.
         await finish_hand(table)
+    else:
+        await broadcast_table_state(table)
+    schedule_ai_turns(table)
 
     return {"ok": True}

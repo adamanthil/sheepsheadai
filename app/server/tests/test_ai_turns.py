@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import types
 
-from server.runtime import ai_loop, dealing, turn_timer
+from server.runtime import ai_loop, dealing, lifecycle, turn_timer
 from server.runtime.ai_loop import TRICK_COLLECT_SECONDS, ai_take_turns
 from server.runtime.dealing import new_game_for_table
 from server.runtime.models import ClientConn, Occupant, Table
@@ -75,7 +75,9 @@ async def test_ai_lead_waits_out_the_collect_animation(monkeypatch):
     )
     monkeypatch.setattr(ai_loop, "ai_take_turns", no_turns)
     table = Table(id="t", name="collect")
-    table.game = types.SimpleNamespace(was_trick_just_completed=True)  # type: ignore[assignment]
+    table.game = types.SimpleNamespace(  # type: ignore[assignment]
+        was_trick_just_completed=True, is_done=lambda: False
+    )
 
     ai_loop.schedule_ai_turns(table)
     assert table.ai_task is not None
@@ -87,3 +89,49 @@ async def test_ai_lead_waits_out_the_collect_animation(monkeypatch):
     ai_loop.schedule_ai_turns(table)
     await table.ai_task
     assert sleeps == []
+
+
+async def test_hand_is_recorded_before_anyone_sees_it_end(monkeypatch):
+    # The game-over banner offers a redeal: were the ended hand shown before
+    # finish_hand records it, a redeal would discard the result.
+    monkeypatch.setattr(
+        dealing, "build_table_agent", lambda settings, table_id: StubAgent()
+    )
+    monkeypatch.setattr(dealing, "get_settings", lambda: None)
+
+    async def no_pause(seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr(
+        ai_loop,
+        "asyncio",
+        types.SimpleNamespace(
+            sleep=no_pause,
+            create_task=ai_loop.asyncio.create_task,
+            CancelledError=ai_loop.asyncio.CancelledError,
+        ),
+    )
+    shown_ended_unrecorded = []
+
+    async def record_broadcast(table: Table) -> None:
+        if table.game and table.game.is_done() and not table.results_counted:
+            shown_ended_unrecorded.append(True)
+
+    monkeypatch.setattr(ai_loop, "broadcast_table_state", record_broadcast)
+    monkeypatch.setattr(lifecycle, "broadcast_table_state", record_broadcast)
+
+    table = Table(id="t", name="ais")
+    for seat in range(1, 6):
+        table.occupants[f"ai{seat}"] = Occupant(
+            id=f"ai{seat}", display_name="AI", is_ai=True
+        )
+        table.seats[seat] = f"ai{seat}"
+    table.game = new_game_for_table(table)
+    table.status = "playing"
+    dealing.refresh_table_agent(table)
+
+    await ai_take_turns(table)
+
+    assert table.game.is_done()
+    assert table.results_counted
+    assert shown_ended_unrecorded == []
