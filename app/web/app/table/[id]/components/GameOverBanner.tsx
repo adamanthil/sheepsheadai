@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { ds } from "../../../../lib/ds";
-import { nameForSeat } from "../utils/seatMath";
+import HandSummary, { SeatGrid } from "./HandSummary";
 import type { FinalState, TableView } from "../../../../lib/types";
 import styles from "./GameOverBanner.module.css";
 
@@ -23,38 +23,8 @@ export default function GameOverBanner({
   onCloseTable,
   onLeave,
 }: GameOverBannerProps) {
-  const seats = [1, 2, 3, 4, 5];
   const [confirmClose, setConfirmClose] = useState(false);
-
-  const scoresGrid = (scores: number[] | undefined, label?: string) => (
-    <>
-      {label && <div className={styles.gridLabel}>{label}</div>}
-      <div className={styles.scoresGrid}>
-        {seats.map((seat) => (
-          <div key={seat} className={styles.scoreCell}>
-            <div className={styles.scoreName}>{nameForSeat(seat, table)}</div>
-            <div className={styles.scoreValue}>
-              {(scores && scores[seat - 1]) || 0}
-            </div>
-          </div>
-        ))}
-      </div>
-    </>
-  );
-
   const isLeaster = final.mode === "leaster";
-  const multiplier = final.multiplier ?? 1;
-
-  // Names run inline here ("Picker: X · Partner: Y"); clamp them so a long
-  // one ellipsizes rather than wrapping the line.
-  const name = (seat: number) => {
-    const label = nameForSeat(seat, table);
-    return (
-      <strong className={`${ds.nameClamp} ${styles.subName}`} title={label}>
-        {label}
-      </strong>
-    );
-  };
 
   return (
     <div className={styles.overlay}>
@@ -62,32 +32,25 @@ export default function GameOverBanner({
         <div className={styles.header}>
           {isLeaster ? "Game Over · Leaster" : "Game Over"}
         </div>
-        {multiplier > 1 && (
-          <div className={styles.sub}>
-            <span className={`${ds.badge} ${ds.badgeAccent}`}>
-              {multiplier}× Doubler
-            </span>
-          </div>
+        <HandSummary final={final} table={table} />
+        <SeatGrid
+          table={table}
+          values={final.scores}
+          label="Scores by player"
+        />
+        {isLeaster && (
+          <SeatGrid
+            table={table}
+            values={final.points_taken}
+            label="Points taken"
+          />
         )}
-        {isLeaster ? (
-          <div className={styles.sub}>Winner: {name(final.winner || 0)}</div>
-        ) : (
-          <>
-            <div className={styles.sub}>
-              Picker: {name(final.picker || 0)} · Partner:{" "}
-              {name(final.partner || 0)}
-            </div>
-            <div className={styles.sub}>
-              Picker score: <strong>{final.picker_score}</strong> · Defenders:{" "}
-              <strong>{final.defender_score}</strong>
-            </div>
-          </>
-        )}
-        {scoresGrid(final.scores, "Scores by player")}
-        {isLeaster && scoresGrid(final.points_taken, "Points taken")}
         <div className={styles.buttons}>
-          {/* Only the host can redeal (the server refuses anyone else). */}
-          {isHost ? (
+          {/* Only the host can redeal (the server refuses anyone else), and
+              not at a table closing after this hand. */}
+          {table.closingAfterHand ? (
+            <span className={styles.waitingHost}>Closing the table…</span>
+          ) : isHost ? (
             <button className={`${ds.btn} ${ds.btnAccent}`} onClick={onRedeal}>
               Redeal →
             </button>

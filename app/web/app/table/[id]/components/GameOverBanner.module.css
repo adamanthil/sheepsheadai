@@ -24,57 +24,6 @@
   font-size: 34px;
   margin-bottom: 6px;
 }
-.sub {
-  font-family: var(--font-ui);
-  font-size: 14px;
-  color: var(--ink-soft);
-  margin-bottom: 4px;
-}
-.sub strong {
-  color: var(--ink);
-}
-/* Generous on desktop; the mobile block below tightens it. */
-.subName {
-  --name-clamp: 18ch;
-}
-
-.scoresGrid {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 10px;
-  margin: 14px 0;
-}
-.scoreCell {
-  border: 1px solid var(--rule);
-  border-radius: 3px;
-  padding: 8px 6px;
-  text-align: center;
-  min-width: 0;
-}
-.scoreName {
-  font-family: var(--font-ui);
-  font-size: 11px;
-  color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.scoreValue {
-  font-family: var(--font-mono);
-  font-size: 20px;
-  font-variant-numeric: tabular-nums;
-  color: var(--ink);
-  margin-top: 2px;
-}
-.gridLabel {
-  font-family: var(--font-ui);
-  font-size: 11px;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--muted);
-  margin-top: 8px;
-}
-
 .buttons {
   display: flex;
   flex-wrap: wrap;
@@ -99,25 +48,6 @@
   }
   .header {
     font-size: 28px;
-  }
-  .sub {
-    font-size: 13px;
-  }
-  .subName {
-    --name-clamp: 11ch;
-  }
-  .scoresGrid {
-    gap: 6px;
-    margin: 12px 0;
-  }
-  .scoreCell {
-    padding: 7px 3px;
-  }
-  .scoreName {
-    font-size: 10px;
-  }
-  .scoreValue {
-    font-size: 17px;
   }
   .buttons {
     margin-top: 16px;

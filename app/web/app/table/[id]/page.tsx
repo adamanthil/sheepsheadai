@@ -403,6 +403,7 @@ export default function TablePage() {
               ? `You left after hand ${table.resultsHistory.length}`
               : "The host ended the table"
           }
+          lastHand={(view.is_done && view.final) || undefined}
           onClose={() => router.push("/")}
           actions={
             <>

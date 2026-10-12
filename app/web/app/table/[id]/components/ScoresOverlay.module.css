@@ -40,6 +40,21 @@
   padding: 8px 20px 20px;
 }
 
+.lastHand {
+  padding: 12px 0 10px;
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: 4px;
+}
+.lastHandLabel {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+
 .scoresTable {
   width: 100%;
   border-collapse: collapse;

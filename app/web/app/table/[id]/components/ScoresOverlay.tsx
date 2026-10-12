@@ -1,6 +1,7 @@
 import React from "react";
-import type { TableView, HandResult } from "../../../../lib/types";
+import type { FinalState, TableView, HandResult } from "../../../../lib/types";
 import { ds } from "../../../../lib/ds";
+import HandSummary, { SeatGrid } from "./HandSummary";
 import styles from "./ScoresOverlay.module.css";
 
 interface ScoresOverlayProps {
@@ -9,6 +10,9 @@ interface ScoresOverlayProps {
   title?: string;
   /** Replace the Close button, for a card the player can't dismiss. */
   actions?: React.ReactNode;
+  /** The hand just finished, summarized above the totals: the table has
+   * ended, so the game-over banner that would show it never appears. */
+  lastHand?: FinalState;
 }
 
 export default function ScoresOverlay({
@@ -16,6 +20,7 @@ export default function ScoresOverlay({
   table,
   title = "Running totals",
   actions,
+  lastHand,
 }: ScoresOverlayProps) {
   const history: HandResult[] = table?.resultsHistory || [];
   const seats = table?.seats || {};
@@ -88,6 +93,23 @@ export default function ScoresOverlay({
           </div>
         </div>
         <div className={styles.scoresBody}>
+          {lastHand && (
+            <div className={styles.lastHand}>
+              <div className={styles.lastHandLabel}>
+                {lastHand.mode === "leaster"
+                  ? "Last hand · Leaster"
+                  : "Last hand"}
+              </div>
+              <HandSummary final={lastHand} table={table} />
+              {lastHand.mode === "leaster" && (
+                <SeatGrid
+                  table={table}
+                  values={lastHand.points_taken}
+                  label="Points taken"
+                />
+              )}
+            </div>
+          )}
           <div>
             <table className={styles.scoresTable}>
               <thead>

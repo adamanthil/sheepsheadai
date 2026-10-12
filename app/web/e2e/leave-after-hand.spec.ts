@@ -42,4 +42,8 @@ test("the host ends the table once the hand ends", async ({ page }) => {
   });
   await expect(page.getByRole("button", { name: "Lobby" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Rejoin" })).toHaveCount(0);
+  // The game-over banner never shows, so the final hand is summarized here,
+  // and its Redeal is never offered.
+  await expect(page.getByText(/^Last hand/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Redeal →" })).toHaveCount(0);
 });
