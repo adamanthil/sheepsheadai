@@ -1838,6 +1838,16 @@
       },
       "LeaderboardResponse": {
         "properties": {
+          "board": {
+            "enum": [
+              "overall",
+              "called_ace",
+              "jd",
+              "vs_ai"
+            ],
+            "title": "Board",
+            "type": "string"
+          },
           "min_hands": {
             "title": "Min Hands",
             "type": "integer"
@@ -1872,6 +1882,7 @@
           }
         },
         "required": [
+          "board",
           "sort",
           "min_hands",
           "rows",
@@ -2954,6 +2965,22 @@
       "get": {
         "operationId": "leaderboard_api_leaderboard_get",
         "parameters": [
+          {
+            "in": "query",
+            "name": "board",
+            "required": false,
+            "schema": {
+              "default": "overall",
+              "enum": [
+                "overall",
+                "called_ace",
+                "jd",
+                "vs_ai"
+              ],
+              "title": "Board",
+              "type": "string"
+            }
+          },
           {
             "in": "query",
             "name": "sort",

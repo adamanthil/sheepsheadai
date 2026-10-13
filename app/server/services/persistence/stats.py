@@ -25,6 +25,10 @@ import asyncpg
 SortKey = Literal["total", "sph", "win_pct", "pick_pct", "hands"]
 SORT_KEYS: tuple[SortKey, ...] = ("total", "sph", "win_pct", "pick_pct", "hands")
 
+# Which hands a board counts: all of them, one partner mode, or only
+# hands played against the AI alone.
+BoardKey = Literal["overall", "called_ace", "jd", "vs_ai"]
+
 # More AI decisions than this in a hand, not excused, abandon it.
 ABANDON_AI_ACTIONS = 2
 
@@ -36,6 +40,7 @@ COUNTED_SCORE_SQL = (
 )
 
 LEADERBOARD_MIN_HANDS = 20
+VS_AI_LEADERBOARD_MIN_HANDS = 40
 LEADERBOARD_SIZE = 20
 _CACHE_TTL = 60.0
 
@@ -80,6 +85,19 @@ VS_AI_SQL = """
                ))
     )
 """
+
+# Extra conditions on the hands each board counts, over gp and g.
+_BOARD_SQL: dict[BoardKey, str] = {
+    "overall": "",
+    "called_ace": " AND g.is_called_partner",
+    "jd": " AND NOT g.is_called_partner",
+    "vs_ai": f" AND {VS_AI_SQL}",
+}
+
+
+def board_min_hands(board: BoardKey) -> int:
+    return VS_AI_LEADERBOARD_MIN_HANDS if board == "vs_ai" else LEADERBOARD_MIN_HANDS
+
 
 # One row per company for the caller: vs_ai or with other people.
 _SPLITS = f"""
@@ -127,9 +145,10 @@ _PICKING = """
       AND NOT gp.is_substituted_pick
 """
 
-# sort key -> (monotonic time cached, full ranking). The ranking holds every
-# eligible player; only the top rows and the caller's own row are served.
-_cache: dict[SortKey, tuple[float, list[dict]]] = {}
+# (board, sort key) -> (monotonic time cached, full ranking). The ranking
+# holds every eligible player; only the top rows and the caller's own row
+# are served.
+_cache: dict[tuple[BoardKey, SortKey], tuple[float, list[dict]]] = {}
 
 
 def clear_cache() -> None:
@@ -183,17 +202,24 @@ async def player_picking(pool: asyncpg.Pool, player_id: UUID) -> dict:
     return dict(row)
 
 
-async def ranking(pool: asyncpg.Pool, sort: SortKey) -> list[dict]:
-    """Every verified account with enough hands, best first by ``sort``
-    (ties: more hands, then username). Cached for a minute per sort."""
-    hit = _cache.get(sort)
+async def ranking(
+    pool: asyncpg.Pool, sort: SortKey, board: BoardKey = "overall"
+) -> list[dict]:
+    """Every verified account with enough of ``board``'s hands, best first
+    by ``sort`` (ties: more hands, then username). Cached for a minute per
+    board and sort."""
+    hit = _cache.get((board, sort))
     now = time.monotonic()
     if hit is not None and now - hit[0] < _CACHE_TTL:
         return hit[1]
-    assert sort in SORT_KEYS  # interpolated below; never caller-controlled
+    # Both interpolated below; never caller-controlled.
+    assert sort in SORT_KEYS and board in _BOARD_SQL
     rows = await pool.fetch(
         f"""
-        WITH stats AS ({_HAND_STATS} GROUP BY gp.player_id HAVING count(*) >= $1)
+        WITH stats AS (
+            {_HAND_STATS}{_BOARD_SQL[board]}
+            GROUP BY gp.player_id HAVING count(*) >= $1
+        )
         SELECT row_number() OVER (
                    ORDER BY s.{sort} DESC, s.hands DESC, lower(a.username)
                )::int AS rank,
@@ -203,10 +229,10 @@ async def ranking(pool: asyncpg.Pool, sort: SortKey) -> list[dict]:
           ON a.player_id = s.player_id AND a.email_verified_at IS NOT NULL
         ORDER BY rank
         """,
-        LEADERBOARD_MIN_HANDS,
+        board_min_hands(board),
     )
     result = [dict(r) for r in rows]
-    _cache[sort] = (now, result)
+    _cache[board, sort] = (now, result)
     return result
 
 

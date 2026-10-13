@@ -23,6 +23,7 @@ from server.services.persistence.stats import (
     LEADERBOARD_MIN_HANDS,
     LEADERBOARD_SIZE,
     SPLIT_MARGIN_MIN_HANDS,
+    BoardKey,
     SortKey,
 )
 
@@ -43,16 +44,19 @@ def _public_row(row: dict, you: bool) -> dict:
 
 
 @router.get("/api/leaderboard", response_model=LeaderboardResponse)
-async def leaderboard(request: Request, sort: SortKey = "total"):
+async def leaderboard(
+    request: Request, board: BoardKey = "overall", sort: SortKey = "total"
+):
     # Always best-first and a single page: the bottom of the board is never
     # served, so nobody can sort the weakest players to the top.
-    ranking = await stats_db.ranking(get_db_pool(), sort)
+    ranking = await stats_db.ranking(get_db_pool(), sort, board)
     identity = await optional_player(request)
     player_id = identity.id if identity is not None else None
     mine = stats_db.row_of(ranking, player_id)
     return {
+        "board": board,
         "sort": sort,
-        "min_hands": LEADERBOARD_MIN_HANDS,
+        "min_hands": stats_db.board_min_hands(board),
         "rows": [
             _public_row(r, r["player_id"] == player_id)
             for r in ranking[:LEADERBOARD_SIZE]

@@ -15,6 +15,7 @@ export type HandHistoryRow = components["schemas"]["HandHistoryRow"];
 export type Leaderboard = components["schemas"]["LeaderboardResponse"];
 export type LeaderboardRow = components["schemas"]["LeaderboardRow"];
 export type LeaderboardSort = Leaderboard["sort"];
+export type LeaderboardBoard = Leaderboard["board"];
 
 export type TableSummary = TablePublic;
 

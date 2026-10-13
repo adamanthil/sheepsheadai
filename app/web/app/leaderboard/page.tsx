@@ -8,6 +8,7 @@ import { useAccount } from "../../lib/account";
 import type {
   AccountStats,
   Leaderboard,
+  LeaderboardBoard,
   LeaderboardRow,
   LeaderboardSort,
 } from "../../lib/types";
@@ -22,7 +23,43 @@ const COLUMNS: { key: LeaderboardSort; label: string; short: string }[] = [
   { key: "pick_pct", label: "Pick rate", short: "Pick" },
 ];
 const SORTS = COLUMNS.map((c) => c.key);
-const DEFAULT_SORT: LeaderboardSort = "total";
+
+/** Each board counts only its own kind of hand; `hands` names that kind
+ * in the captions. */
+const BOARDS: {
+  key: LeaderboardBoard;
+  label: string;
+  hands: string;
+  defaultSort: LeaderboardSort;
+}[] = [
+  {
+    key: "overall",
+    label: "Overall",
+    hands: "finished hands",
+    defaultSort: "total",
+  },
+  {
+    key: "called_ace",
+    label: "Called Ace",
+    hands: "finished called-ace hands",
+    defaultSort: "total",
+  },
+  {
+    key: "jd",
+    label: "Jack of Diamonds",
+    hands: "finished jack-of-diamonds hands",
+    defaultSort: "total",
+  },
+  {
+    key: "vs_ai",
+    label: "Vs AI",
+    hands: "finished hands against only the AI",
+    defaultSort: "sph",
+  },
+];
+const DEFAULT_BOARD: LeaderboardBoard = "overall";
+
+const boardInfo = (key: LeaderboardBoard) => BOARDS.find((b) => b.key === key)!;
 
 const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
 const signed = (x: number) => (x > 0 ? `+${x}` : String(x));
@@ -42,31 +79,53 @@ function cell(row: LeaderboardRow, key: LeaderboardSort): string {
   }
 }
 
-function sortFromUrl(): LeaderboardSort {
-  const s = new URLSearchParams(window.location.search).get("sort");
-  return SORTS.includes(s as LeaderboardSort)
+type View = { board: LeaderboardBoard; sort: LeaderboardSort };
+
+function viewFromUrl(): View {
+  const params = new URLSearchParams(window.location.search);
+  const b = params.get("board");
+  const board = BOARDS.some((x) => x.key === b)
+    ? (b as LeaderboardBoard)
+    : DEFAULT_BOARD;
+  const s = params.get("sort");
+  const sort = SORTS.includes(s as LeaderboardSort)
     ? (s as LeaderboardSort)
-    : DEFAULT_SORT;
+    : boardInfo(board).defaultSort;
+  return { board, sort };
 }
 
-/** The public board: one page, best first by the chosen column. Clicking a
- * header re-sorts by that column; there is deliberately no reverse order,
- * and nothing below the top of the board is ever served. */
+/** The view's URL, leaving out whatever is already the default. */
+function viewUrl({ board, sort }: View): string {
+  const params = new URLSearchParams();
+  if (board !== DEFAULT_BOARD) params.set("board", board);
+  if (sort !== boardInfo(board).defaultSort) params.set("sort", sort);
+  const query = params.toString();
+  return query ? `?${query}` : "/leaderboard";
+}
+
+/** The public boards: one page each, best first by the chosen column. Tabs
+ * pick which hands count; clicking a header re-sorts by that column. There
+ * is deliberately no reverse order, and nothing below the top of a board is
+ * ever served. */
 export default function LeaderboardPage() {
-  const [sort, setSort] = useState<LeaderboardSort | null>(null);
+  const [view, setView] = useState<View | null>(null);
   const [board, setBoard] = useState<Leaderboard | null>(null);
   const [failed, setFailed] = useState(false);
+  const sort = view?.sort ?? null;
+  const info = boardInfo(view?.board ?? DEFAULT_BOARD);
 
   useEffect(() => {
-    setSort(sortFromUrl());
+    setView(viewFromUrl());
   }, []);
 
   useEffect(() => {
-    if (!sort) return;
+    if (!view) return;
     let cancelled = false;
     (async () => {
       try {
-        const res = await apiFetch(`/api/leaderboard?sort=${sort}`);
+        const res = await apiFetch(
+          `/api/leaderboard?board=${view.board}&sort=${view.sort}`,
+        );
         if (!res.ok) throw new Error(String(res.status));
         const data = (await res.json()) as Leaderboard;
         if (!cancelled) {
@@ -80,19 +139,37 @@ export default function LeaderboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [sort]);
+  }, [view]);
 
-  const choose = (key: LeaderboardSort) => {
-    setSort(key);
-    const url = key === DEFAULT_SORT ? "/leaderboard" : `?sort=${key}`;
-    window.history.replaceState(null, "", url);
+  const show = (next: View) => {
+    if (next.board !== view?.board) setBoard(null);
+    setView(next);
+    window.history.replaceState(null, "", viewUrl(next));
   };
+  const choose = (key: LeaderboardSort) => show({ board: info.key, sort: key });
+  const chooseBoard = (key: LeaderboardBoard) =>
+    show({ board: key, sort: boardInfo(key).defaultSort });
 
   return (
     <PageShell title="Leaderboard" wide>
+      <div className={styles.tabs} role="tablist">
+        {BOARDS.map((b) => (
+          <button
+            key={b.key}
+            type="button"
+            role="tab"
+            aria-selected={view?.board === b.key}
+            className={`${styles.tab} ${view?.board === b.key ? styles.tabActive : ""}`}
+            onClick={() => chooseBoard(b.key)}
+          >
+            {b.label}
+          </button>
+        ))}
+      </div>
       <p className={styles.caption}>
-        Confirmed accounts with {board?.min_hands ?? 50}+ finished hands · top
-        20.
+        {board
+          ? `Confirmed accounts with ${board.min_hands}+ ${info.hands} · top 20.`
+          : "\u00a0"}
       </p>
       {failed && (
         <p className={styles.error}>Couldn&rsquo;t load the leaderboard.</p>
@@ -146,7 +223,7 @@ export default function LeaderboardPage() {
         </table>
         {board && board.rows.length === 0 && (
           <p className={styles.empty}>
-            Nobody has qualified yet. {board.min_hands} finished hands with a
+            Nobody has qualified yet. {board.min_hands} {info.hands} with a
             confirmed account gets you on the board.
           </p>
         )}
@@ -226,7 +303,7 @@ function YourStanding({ board }: { board: Leaderboard }) {
         </Link>
       </>
     );
-  } else if (stats?.qualifies_in) {
+  } else if (board.board === "overall" && stats?.qualifies_in) {
     text = (
       <>
         @{account.username}: {stats.qualifies_in} more finished hand

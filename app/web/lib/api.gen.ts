@@ -1207,6 +1207,11 @@ export interface components {
         };
         /** LeaderboardResponse */
         LeaderboardResponse: {
+            /**
+             * Board
+             * @enum {string}
+             */
+            board: "overall" | "called_ace" | "jd" | "vs_ai";
             /** Min Hands */
             min_hands: number;
             /** Rows */
@@ -1884,6 +1889,7 @@ export interface operations {
     leaderboard_api_leaderboard_get: {
         parameters: {
             query?: {
+                board?: "overall" | "called_ace" | "jd" | "vs_ai";
                 sort?: "total" | "sph" | "win_pct" | "pick_pct" | "hands";
             };
             header?: never;

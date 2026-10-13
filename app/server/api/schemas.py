@@ -208,7 +208,10 @@ class LeaderboardRow(BaseModel):
 
 
 class LeaderboardResponse(BaseModel):
+    # overall, one partner mode (called_ace / jd), or hands vs the AI alone.
+    board: Literal["overall", "called_ace", "jd", "vs_ai"]
     sort: Literal["total", "sph", "win_pct", "pick_pct", "hands"]
+    # Hands of this board's kind needed to qualify for it.
     min_hands: int
     # The top of the board only; nothing below it is ever served.
     rows: List[LeaderboardRow]

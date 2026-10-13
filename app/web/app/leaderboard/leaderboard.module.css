@@ -1,3 +1,32 @@
+/* Board tabs, styled like the account page's. Four of them overflow a
+   narrow phone, so the row scrolls sideways rather than wrapping. */
+.tabs {
+  display: flex;
+  gap: 24px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: 16px;
+}
+.tab {
+  font-family: var(--font-ui);
+  font-size: 14px;
+  white-space: nowrap;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0 0 8px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.tab:hover {
+  color: var(--accent);
+}
+.tabActive {
+  color: var(--ink);
+  border-bottom-color: var(--ink);
+}
+
 .caption {
   font-size: 13px;
   color: var(--muted);
@@ -126,6 +155,9 @@
   display: none;
 }
 @media (max-width: 640px) {
+  .tabs {
+    gap: 16px;
+  }
   .longLabel {
     display: none;
   }

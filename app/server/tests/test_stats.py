@@ -76,6 +76,7 @@ class Seeder:
         other_humans: list[int] | None = None,
         ai_seat: list[str | None] | None = None,
         closed: bool = True,
+        called: bool = True,
     ) -> None:
         n = len(scores)
         hand_ids = [self.cardset] * n
@@ -87,7 +88,7 @@ class Seeder:
             INSERT INTO game (game_id, game_table_id, is_double_on_the_bump,
                               is_called_partner, is_leaster, time_created,
                               time_closed, blind_id)
-            SELECT g, $2, true, true, l, now(), CASE WHEN $3 THEN now() END, $4
+            SELECT g, $2, true, $6, l, now(), CASE WHEN $3 THEN now() END, $4
             FROM unnest($1::uuid[], $5::bool[]) AS t(g, l)
             """,
             games,
@@ -95,6 +96,7 @@ class Seeder:
             closed,
             self.cardset,
             leaster or [False] * n,
+            called,
         )
         await self.pool.execute(
             """
@@ -466,3 +468,44 @@ async def test_leaderboard_ranks_by_counted_scores(seeded):
         (f"aquit_{tag}", 0),
     ]
     assert ours[1]["win_pct"] == 0
+
+
+async def test_partner_mode_and_vs_ai_boards_count_only_their_hands(seeded):
+    seeder, client = seeded
+    tag = _tag()
+    # Called-ace hands with people, and jack-of-diamonds hands vs the AI.
+    ace = await seeder.player(username=f"ace_{tag}")
+    await seeder.hands(ace, [3] * 25, other_humans=[1] * 25)
+    jd = await seeder.player(username=f"jd_{tag}")
+    await seeder.hands(jd, [1] * 45, called=False)
+    # Enough hands overall, but not enough of either mode or vs the AI.
+    mixed = await seeder.player(username=f"mixed_{tag}")
+    await seeder.hands(mixed, [2] * 15, other_humans=[1] * 15)
+    await seeder.hands(mixed, [2] * 15, called=False, other_humans=[1] * 15)
+    # 39 called-ace hands vs the AI at a far better rate: one short of the
+    # AI board.
+    short = await seeder.player(username=f"aishort_{tag}")
+    await seeder.hands(short, [9] * 39)
+
+    async def ours(board: str, **params) -> tuple[dict, set[str]]:
+        r = await client.get("/api/leaderboard", params={"board": board, **params})
+        assert r.status_code == 200, r.text
+        names = {row["username"] for row in r.json()["rows"]}
+        return r.json(), {n for n in names if n.endswith(tag)}
+
+    board, names = await ours("overall")
+    assert (board["board"], board["min_hands"]) == ("overall", 20)
+    assert names == {f"ace_{tag}", f"jd_{tag}", f"mixed_{tag}", f"aishort_{tag}"}
+
+    board, names = await ours("called_ace")
+    assert (board["min_hands"], names) == (20, {f"ace_{tag}", f"aishort_{tag}"})
+    board, names = await ours("jd")
+    assert (board["min_hands"], names) == (20, {f"jd_{tag}"})
+
+    board, names = await ours("vs_ai", sort="sph")
+    assert (board["min_hands"], names) == (40, {f"jd_{tag}"})
+    row = next(r for r in board["rows"] if r["username"] == f"jd_{tag}")
+    assert (row["hands"], row["total"]) == (45, 45)
+
+    bad = await client.get("/api/leaderboard", params={"board": "worst"})
+    assert bad.status_code == 422
