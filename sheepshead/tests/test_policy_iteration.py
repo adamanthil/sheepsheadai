@@ -32,8 +32,10 @@ from sheepshead.training.search_advantage import (
     fit_advantage_model,
     fit_advantage_model_iterated,
     floor_class_variances,
+    model_push_diagnostics,
     sigma_u2_rows,
     split_rows_by_game,
+    tilt_scale,
 )
 
 
@@ -278,6 +280,9 @@ def test_end_to_end_stages_on_tiny_corpus(tmp_path):
     report = json.loads((out_dir / "target_report.json").read_text())
     assert report["rows"] == n_targetable and report["frac_z_clipped"] <= 1.0
     assert report["clipped"]["n_eligible"] > 0
+    diag = report["model_diagnostics"]
+    assert diag["a_model_out_of_fold"] is False and diag["rows"] > 0
+    assert diag["push"]["n"] == diag["rows"]
     assert all(
         report["sigma_u2_by_class"][c] >= report["sigma_u2_by_class_all_rows"][c]
         for c in report["sigma_u2_by_class"]
@@ -857,6 +862,80 @@ def test_global_eta_tilt_and_ce_weight_modes():
         ce_weights(v_post, "bogus", 5.0)
 
 
+def test_model_push_diagnostics_value_the_target_split_honestly():
+    """Synthetic rows with known true advantages mu, labels y = mu + noise
+    centered over the legal set (covariance s2 (I - 11'/k)). With a_model =
+    mu (an out-of-fold model that is right), the model-only push is worth
+    what it claims and the theta_k top-card residual is ~0; the Stein-
+    corrected value of the full target matches its true value, while the
+    uncorrected label value is biased up by fitting the noise. A model that
+    under-rates theta_k's top card shows a positive top-card residual."""
+    gen = torch.Generator().manual_seed(0)
+    R, A, k, s2, eta = 40000, 5, 4, 1e-4, 0.0097
+    legal = torch.zeros(R, A, dtype=torch.bool)
+    legal[:, :k] = True
+    mu = 0.01 * torch.randn(R, A, generator=gen)
+    mu = torch.where(legal, mu - mu[:, :k].mean(1, keepdim=True), torch.zeros_like(mu))
+    eps = s2**0.5 * torch.randn(R, A, generator=gen)
+    eps = torch.where(
+        legal, eps - eps[:, :k].mean(1, keepdim=True), torch.zeros_like(eps)
+    )
+    y = mu + eps
+    logits = torch.randn(R, A, generator=gen)
+    prior = torch.softmax(logits.masked_fill(~legal, -1e9), dim=1)
+    table = RowTable(
+        features=torch.zeros(R, 2),
+        hand_tokens=torch.zeros(R, 8, 2),
+        hand_ids=torch.zeros(R, 8, dtype=torch.long),
+        masks=legal.clone(),
+        advantage=y,
+        label_mask=legal.clone(),
+        noise_var=torch.full((R,), s2),
+        prior=prior,
+        has_q=torch.ones(R, dtype=torch.bool),
+        node_class=["a" if i % 2 else "b" for i in range(R)],
+        refs=[(0, 0, i) for i in range(R)],
+        game=torch.zeros(R, dtype=torch.long),
+        noise_var_raw=torch.full((R,), s2),
+        noise_q_var=torch.full((R, A), s2),
+        noise_s2c=torch.full((R, A), float("nan")),
+        noise_nobs=torch.zeros(R, A, dtype=torch.long),
+        noise_var_action=torch.full((R, A), s2),
+    )
+    gamma = torch.full((R,), 0.5)
+    scale = tilt_scale(torch.zeros(R), kappa=1.0, eta=eta)
+    diag = model_push_diagnostics(
+        table, mu, gamma, scale, table.noise_var, tilt_max=8.0, out_of_fold=True
+    )
+    p = diag["push"]
+    assert p["n"] == R and p["stein"]["full"] > 0.0
+    gain = p["model_gain"]
+    assert abs(gain["mean"] - p["model_claim"]) < 4 * gain["mean"] / gain["z"]
+
+    a_hat = 0.5 * y + 0.5 * mu
+    t, _ = build_tilt_target(
+        prior, a_hat, torch.zeros(R), legal, kappa=1.0, tilt_max=8.0, eta=eta
+    )
+    truth = ((t - prior) * mu).sum(1)
+    raw = ((t - prior) * y).sum(1)
+    se = float((raw - truth).std()) / R**0.5
+    assert abs(p["full"]["mean"] - float(truth.mean())) < 4 * se
+    assert float((raw - truth).mean()) > 8 * se  # the bias the correction removes
+    for cls in ("a", "b"):
+        assert abs(diag["per_class"][cls]["top_card_residual"]["z"]) < 4
+
+    top = torch.where(legal, prior, torch.full_like(prior, -1e9)).argmax(1)
+    under = mu.clone()
+    under[torch.arange(R), top] -= 0.005
+    diag = model_push_diagnostics(
+        table, under, gamma, scale, table.noise_var, tilt_max=8.0, out_of_fold=True
+    )
+    resid = diag["per_class"]["a"]["top_card_residual"]
+    assert resid["mean"] == pytest.approx(0.005, abs=1e-3) and resid["z"] > 10
+    assert diag["top_card_residual_classes_abs_z_ge_3"] == ["a", "b"]
+    assert diag["override_support"]["n"] > 0
+
+
 def test_nll_accepts_per_action_noise():
     from sheepshead.training.search_advantage import gaussian_nll_rows
 
@@ -1032,6 +1111,7 @@ def test_cross_fit_and_distill_holdout_through_the_stages(tmp_path):
     assert (out_dir / tpi.OOF_FILE).exists()
     report = json.loads((out_dir / "target_report.json").read_text())
     assert report["cross_fit"] == 2
+    assert report["model_diagnostics"]["a_model_out_of_fold"] is True
     assert report["sigma_u2"] == pytest.approx(fit["cross_fit"]["sigma_u2"])
     log = (out_dir / "policy_iteration.log").read_text()
     assert "no floor" in log and "[cross-fit] 2 folds" in log

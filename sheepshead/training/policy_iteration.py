@@ -85,9 +85,12 @@ from sheepshead.training.search_advantage import (
     evaluate_rows,
     fit_advantage_model_iterated,
     floor_class_variances,
+    format_model_diagnostics,
+    model_push_diagnostics,
     sigma_u2_rows,
     split_rows_by_game,
     targets_for_table,
+    tilt_scale,
 )
 from sheepshead.training.training_utils import greedy_health_probe
 
@@ -457,6 +460,18 @@ def stage_target(args) -> dict:
         eta=eta,
     )
 
+    # Arm_D_Review_202610 §8: is the model's part of each target supported
+    # by the search labels? Diagnostic only; nothing below reads it.
+    model_diag = model_push_diagnostics(
+        table,
+        built["a_model"],
+        built["gamma"],
+        tilt_scale(built["v_post"], kappa=args.kappa, eta=eta),
+        table.noise_var,
+        tilt_max=args.tilt_max,
+        out_of_fold=oof is not None,
+    )
+
     shards, manifest = load_corpus(args.corpus_dir)
     z_abs = built["z"].abs().amax(dim=1)
     overconf = clipped_disagreement(
@@ -520,6 +535,7 @@ def stage_target(args) -> dict:
         "noise_model": args.noise_model,
         "cross_fit": fit.get("cross_fit", {}).get("folds", 0) if oof is not None else 0,
         "clipped": overconf,
+        "model_diagnostics": model_diag,
     }
     by_class: dict[str, list] = {}
     for r, cls in enumerate(table.node_class):
@@ -578,6 +594,8 @@ def stage_target(args) -> dict:
                 f"{_pct(c['clipped_disagree_committee_confident'])} "
                 f"(n={c['n_clipped_committee_confident']})"
             )
+    for line in format_model_diagnostics(model_diag, RETURN_SCALE):
+        log(line)
     return report
 
 

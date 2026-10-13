@@ -1182,15 +1182,22 @@ def build_tilt_target(
     ONE value in advantage units for every row (the KL-regularized policy-
     improvement step, MPO/AWR form): the posterior enters through a_hat
     alone, and a row's target moves by how much its decision is worth."""
-    if eta is not None:
-        scale = torch.full((a_hat.size(0), 1), float(eta), dtype=a_hat.dtype)
-    else:
-        scale = kappa * torch.sqrt(v_post.clamp(min=1e-12)).unsqueeze(1)
+    scale = tilt_scale(v_post, kappa=kappa, eta=eta)
     z = (a_hat / scale).clamp(-tilt_max, tilt_max)
     z = torch.where(legal, z, torch.zeros_like(z))
     logits = torch.log(prior.clamp(min=1e-12)) + z
     logits = torch.where(legal, logits, torch.full_like(logits, -1e9))
     return F.softmax(logits, dim=-1), z
+
+
+def tilt_scale(
+    v_post: torch.Tensor, *, kappa: float, eta: float | None
+) -> torch.Tensor:
+    """(R, 1) tilt temperature of ``build_tilt_target``: ``eta`` on every
+    row, or kappa * sqrt(v_post) when ``eta`` is None."""
+    if eta is not None:
+        return torch.full((v_post.size(0), 1), float(eta), dtype=v_post.dtype)
+    return kappa * torch.sqrt(v_post.clamp(min=1e-12)).unsqueeze(1)
 
 
 CE_WEIGHTS = ("precision", "uniform")
@@ -1258,6 +1265,282 @@ def clipped_disagreement(
     }
 
 
+PRIOR_CONFIDENT = 0.8  # theta_k top-card probability treated as confident
+PRIOR_TOP_BINS = (0.0, 0.5, 0.8, 0.95)
+EXTRA_KL_QUANTILES = (0.5, 0.8, 0.9, 0.95, 0.99)
+
+
+def _mean_z(x: torch.Tensor) -> dict:
+    """Mean of ``x`` with its z against 0 (None below two rows)."""
+    n = int(x.numel())
+    if n < 2:
+        return {"mean": float(x.mean()) if n else None, "z": None}
+    se = float(x.std()) / math.sqrt(n)
+    return {"mean": float(x.mean()), "z": float(x.mean()) / se if se > 0 else None}
+
+
+def model_push_diagnostics(
+    table: RowTable,
+    a_model: torch.Tensor,
+    gamma: torch.Tensor,
+    scale: torch.Tensor,
+    noise_var: torch.Tensor,
+    *,
+    tilt_max: float,
+    out_of_fold: bool,
+) -> dict:
+    """Is the advantage model's part of the target supported by the search
+    labels? (Arm_D_Review_202610 §7.3, §7.4, §8.) Three reads, all in
+    advantage units (score / RETURN_SCALE), judged by each row's own
+    centered search label y:
+
+    ``top_card_residual``  per class, mean y − a_model at theta_k's top
+        card. theta_k's choice is independent of the label noise, so with
+        out-of-fold a_model a nonzero mean is a clean calibration lean
+        (§7.4: positive = the model under-rates theta_k's card).
+    ``override_support``  rows where a_model's top card is not theta_k's:
+        the edge the model claims for its card against the edge the labels
+        show (§7.3). Conditioned on the model's own argmax, so the claim
+        carries the winner's curse; a support ratio below 1 is partly that.
+    ``push``  the target split in log space into a search-only tilt
+        t_s (gamma·y) and a model-only tilt t_m ((1 − gamma)·a_model), each
+        valued as sum((t − prior) · y):
+          model_gain   t_m's value; unbiased for its true search-Q value
+                       when a_model is out of fold.
+          model_claim  t_m valued by a_model itself.
+          full, search the target's and t_s's value, Stein-corrected for
+                       their dependence on y (label noise covariance
+                       noise_var · (I − 11'/k) on the legal set, Gaussian).
+          marginal     full − search: what the model adds inside the
+                       target.
+          stein        the corrections subtracted from full and search:
+                       how far those two reads lean on the noise model.
+          reversed     the target's top card is not t_s's;
+                       ``reversed_vs_evidence`` additionally with the
+                       label favouring t_s's card by > 2 SE.
+        Reported overall, per class, by theta_k's top-card probability and
+        by the model's extra movement KL(target || t_s).
+
+    ``scale`` is the (R, 1) tilt temperature (``tilt_scale``) and
+    ``noise_var`` the WORKING row label noise the blend used. Only rows
+    with Q and at least two labeled actions count."""
+    legal = table.masks.bool()
+    rows = table.has_q & (table.label_mask.sum(dim=1) >= 2)
+    idx = rows.nonzero()[:, 0]
+    legal = legal[idx]
+    y = torch.where(
+        legal,
+        table.advantage[idx],
+        torch.zeros_like(legal, dtype=table.advantage.dtype),
+    )
+    m = torch.where(legal, a_model[idx], torch.zeros_like(y))
+    prior = table.prior[idx]
+    g = gamma[idx].unsqueeze(1)
+    sc = scale[idx]
+    s2 = noise_var[idx]
+    k = legal.sum(dim=1).to(y.dtype)
+    log_p = torch.log(prior.clamp(min=1e-12))
+    neg = torch.full_like(y, -1e9)
+
+    def tilt(u: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        zr = u / sc
+        z = zr.clamp(-tilt_max, tilt_max)
+        t = F.softmax(torch.where(legal, log_p + z, neg), dim=-1)
+        return t, legal & (zr.abs() < tilt_max)
+
+    def stein(t: torch.Tensor, free: torch.Tensor) -> torch.Tensor:
+        # E[sum_a (t_a − p_a) eps_a] = sum_ab C_ab dt_a/dy_b with
+        # dt_a/dy_b = (gamma / scale)(t_a d_ab − t_a t_b) [b unclipped]
+        # and C = s2 (I − 11'/k): s2 (gamma/scale) (tr J − 1'J1 / k).
+        tf = t * free
+        tr = (tf - t * tf).sum(dim=1)
+        tot = tf.sum(dim=1) - t.sum(dim=1) * tf.sum(dim=1)
+        return s2 * (g / sc).squeeze(1) * (tr - tot / k)
+
+    def kl(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+        return (a * (a.clamp(min=1e-12).log() - b.clamp(min=1e-12).log())).sum(dim=1)
+
+    t_full, free_full = tilt(g * y + (1 - g) * m)
+    t_s, free_s = tilt(g * y)
+    t_m, _ = tilt((1 - g) * m)
+    stein_full, stein_s = stein(t_full, free_full), stein(t_s, free_s)
+    gain_full = ((t_full - prior) * y).sum(dim=1) - stein_full
+    gain_s = ((t_s - prior) * y).sum(dim=1) - stein_s
+    gain_m = ((t_m - prior) * y).sum(dim=1)
+    claim_m = ((t_m - prior) * m).sum(dim=1)
+    marginal = gain_full - gain_s
+    kl_prior, kl_extra = kl(t_full, prior), kl(t_full, t_s)
+    top_s = torch.where(legal, t_s, neg).argmax(dim=1)
+    top_f = torch.where(legal, t_full, neg).argmax(dim=1)
+    rev = top_s != top_f
+    label_gap = y.gather(1, top_s[:, None])[:, 0] - y.gather(1, top_f[:, None])[:, 0]
+    rev_strong = rev & (label_gap > 2 * torch.sqrt(2 * s2))
+
+    p_top = torch.where(legal, prior, neg).argmax(dim=1)
+    p_top_prob = prior.gather(1, p_top[:, None])[:, 0]
+    m_top = torch.where(legal, m, neg).argmax(dim=1)
+    resid_top = (y - m).gather(1, p_top[:, None])[:, 0]
+    over = m_top != p_top
+    claimed = m.gather(1, m_top[:, None])[:, 0] - m.gather(1, p_top[:, None])[:, 0]
+    shown = y.gather(1, m_top[:, None])[:, 0] - y.gather(1, p_top[:, None])[:, 0]
+
+    def push(sel: torch.Tensor) -> dict:
+        n = int(sel.sum())
+        if n == 0:
+            return {"n": 0}
+        return {
+            "n": n,
+            "kl_target_prior": float(kl_prior[sel].mean()),
+            "kl_extra": float(kl_extra[sel].mean()),
+            "model_gain": _mean_z(gain_m[sel]),
+            "model_claim": float(claim_m[sel].mean()),
+            "marginal": _mean_z(marginal[sel]),
+            "full": _mean_z(gain_full[sel]),
+            "search": _mean_z(gain_s[sel]),
+            "stein": {
+                "full": float(stein_full[sel].mean()),
+                "search": float(stein_s[sel].mean()),
+            },
+            "reversed": float(rev[sel].float().mean()),
+            "reversed_vs_evidence": float(rev_strong[sel].float().mean()),
+        }
+
+    def support(sel: torch.Tensor) -> dict:
+        sel = sel & over
+        n = int(sel.sum())
+        if n == 0:
+            return {"n": 0}
+        c = float(claimed[sel].mean())
+        s = _mean_z(shown[sel])
+        return {
+            "n": n,
+            "claimed": c,
+            "shown": s,
+            "ratio": s["mean"] / c if c > 0 else None,
+        }
+
+    every = torch.ones_like(rev)
+    confident = p_top_prob >= PRIOR_CONFIDENT
+    classes: dict[str, list[int]] = defaultdict(list)
+    for j, r in enumerate(idx.tolist()):
+        classes[table.node_class[r]].append(j)
+    per_class = {}
+    for cls, js in sorted(classes.items()):
+        sel = torch.zeros_like(rev)
+        sel[torch.tensor(js)] = True
+        per_class[cls] = {
+            "top_card_residual": {"n": len(js), **_mean_z(resid_top[sel])},
+            "override_support": support(sel),
+            "push": push(sel),
+        }
+    bins = [*PRIOR_TOP_BINS, 1.0 + 1e-6]
+    by_prior = {
+        f"[{lo},{min(hi, 1.0)}]": push((p_top_prob >= lo) & (p_top_prob < hi))
+        for lo, hi in zip(bins[:-1], bins[1:])
+    }
+    by_extra = {}
+    if len(idx):
+        cuts = kl_extra.quantile(torch.tensor(EXTRA_KL_QUANTILES, dtype=kl_extra.dtype))
+        edges = [float("-inf"), *cuts.tolist(), float("inf")]
+        labels = [
+            "<q50",
+            *[
+                f"q{int(100 * a)}-q{int(100 * b)}"
+                for a, b in zip(EXTRA_KL_QUANTILES[:-1], EXTRA_KL_QUANTILES[1:])
+            ],
+            f">=q{int(100 * EXTRA_KL_QUANTILES[-1])}",
+        ]
+        for lab, lo, hi in zip(labels, edges[:-1], edges[1:]):
+            entry = push((kl_extra >= lo) & (kl_extra < hi))
+            entry["kl_extra_from"] = lo if math.isfinite(lo) else 0.0
+            by_extra[lab] = entry
+    gated = [
+        c
+        for c, d in per_class.items()
+        if d["top_card_residual"]["z"] is not None
+        and abs(d["top_card_residual"]["z"]) >= 3.0
+    ]
+    return {
+        "units": "advantage (score / RETURN_SCALE)",
+        "a_model_out_of_fold": out_of_fold,
+        "rows": int(len(idx)),
+        "prior_confident": PRIOR_CONFIDENT,
+        "push": push(every),
+        "push_by_prior_top": by_prior,
+        "push_by_extra_kl": by_extra,
+        "override_support": support(every),
+        "override_support_prior_confident": support(confident),
+        "top_card_residual_classes_abs_z_ge_3": sorted(gated),
+        "per_class": per_class,
+    }
+
+
+def format_model_diagnostics(diag: dict, points: float) -> list[str]:
+    """Log lines for ``model_push_diagnostics``; values times ``points``
+    (RETURN_SCALE: game points per decision)."""
+
+    def v(d: dict) -> str:
+        if d.get("mean") is None:
+            return "n/a"
+        z = d.get("z")
+        return f"{points * d['mean']:+.4f}" + (
+            f" (z {z:+.1f})" if z is not None else ""
+        )
+
+    def push(name: str, p: dict) -> str:
+        if not p.get("n"):
+            return f"    {name:28s} n=0"
+        return (
+            f"    {name:28s} n={p['n']:6d} KL {p['kl_target_prior']:.3f} "
+            f"model-extra {p['kl_extra']:.3f} | model-only {v(p['model_gain'])} "
+            f"claims {points * p['model_claim']:+.4f} | marginal {v(p['marginal'])} "
+            f"of target {v(p['full'])} | top card changed "
+            f"{100 * p['reversed']:.1f}% vs >2SE label {100 * p['reversed_vs_evidence']:.2f}%"
+        )
+
+    def support(name: str, s: dict) -> str:
+        if not s.get("n"):
+            return f"    {name}: none"
+        ratio = "n/a" if s["ratio"] is None else f"{s['ratio']:+.2f}"
+        return (
+            f"    {name}: n={s['n']} claimed {points * s['claimed']:+.4f} "
+            f"labels {v(s['shown'])} ratio {ratio}"
+        )
+
+    oof = (
+        "out-of-fold"
+        if diag["a_model_out_of_fold"]
+        else "IN-SAMPLE (model-only biased up)"
+    )
+    lines = [
+        f"[model] model push vs the search labels ({diag['rows']} rows, a_model "
+        f"{oof}; game points per decision):",
+        push("all", diag["push"]),
+    ]
+    lines += [push(f"theta_k top {k}", p) for k, p in diag["push_by_prior_top"].items()]
+    lines += [push(f"model-extra {k}", p) for k, p in diag["push_by_extra_kl"].items()]
+    lines += [
+        "[model] overrides (a_model's top card != theta_k's):",
+        support("all", diag["override_support"]),
+        support(
+            f"theta_k >= {diag['prior_confident']}",
+            diag["override_support_prior_confident"],
+        ),
+    ]
+    gated = diag["top_card_residual_classes_abs_z_ge_3"]
+    lines.append(
+        f"[model] top-card residual |z| >= 3 in {len(gated)} of "
+        f"{len(diag['per_class'])} classes"
+    )
+    for cls in sorted(diag["per_class"]):
+        d = diag["per_class"][cls]
+        if d["push"].get("n", 0) >= 100:
+            lines.append(
+                push(cls, d["push"]) + f" | top-card resid {v(d['top_card_residual'])}"
+            )
+    return lines
+
+
 def targets_for_table(
     model: AdvantageModel,
     table: RowTable,
@@ -1271,7 +1554,7 @@ def targets_for_table(
     eta: float | None = None,
 ) -> dict:
     """Stage 1b + 2 over every targetable row. Returns dense tensors
-    (targets, z, gamma, v_post, a_hat) aligned with ``table``.
+    (targets, z, gamma, v_post, a_hat, a_model) aligned with ``table``.
     ``sigma_u2``: one value, or a per-row tensor aligned with ``table``;
     ``node_variance`` uses the heteroscedastic head's per-row sigma_u^2
     instead (ignored for a homoscedastic model); ``oof`` supplies
@@ -1283,7 +1566,7 @@ def targets_for_table(
         else torch.full((len(table),), float(sigma_u2))
     )
     model.eval()
-    out_t, out_z, out_g, out_v, out_a = [], [], [], [], []
+    out_t, out_z, out_g, out_v, out_a, out_m = [], [], [], [], [], []
     with torch.no_grad():
         for b in _batches(
             torch.arange(len(table)), batch_rows, False, random.Random(0)
@@ -1318,10 +1601,12 @@ def targets_for_table(
             out_g.append(gamma)
             out_v.append(v_post)
             out_a.append(a_hat)
+            out_m.append(a_model)
     return {
         "target": torch.cat(out_t),
         "z": torch.cat(out_z),
         "gamma": torch.cat(out_g),
         "v_post": torch.cat(out_v),
         "a_hat": torch.cat(out_a),
+        "a_model": torch.cat(out_m),
     }
