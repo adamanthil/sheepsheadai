@@ -732,3 +732,190 @@ design open. (d) §7.7 (1) on `rc_validate_v2`'s called-suit iteration:
 queued as an analysis read, no new compute. (e) Relaunch on V is the
 operator's call and is CANCELLED for now (refactor first); V and W read
 by §6.5 as written: V matched → V is the pinned recipe (`d9f4391`).
+
+---
+
+## 8. Fourth review (2026-10-13) — what does the model's push cost where the node's search does not back it?
+
+Status: **MEASURED; recipe unchanged (operator, 2026-10-13).** Operator's
+question: §7.5 is the override we want, where the model amplifies a
+convention that each node's search can't resolve. This is the other
+side. How often, and how far, does the model move θ_k's logits where
+the node's own search doesn't support it, and does that cause harm we
+can measure? Answered on iteration 1's production targets (arm V,
+`pi/iter1`, 137,765 rows, out-of-fold a_model).
+
+### 8.1 Method: split the target and judge each part by the node's label
+
+The target is t = softmax(log p + clip((γy + (1 − γ)a_model)/η, ±8)).
+Rebuild two partial targets from the same terms (the full rebuild
+matches the stored targets exactly):
+
+- t_s: the search term γy alone;
+- t_m: the model term (1 − γ)a_model alone.
+
+Value each move p → q as Σ(q − p)·y, the gain the node's own centered
+search label credits it. All values below are game points per decision
+(advantage × RETURN_SCALE 12).
+
+- **model-only gain** = value of t_m. Clean: the OOF model never saw y,
+  so this is unbiased for t_m's true search-Q value.
+- **model claim** = t_m valued by a_model itself. The ratio gain/claim
+  is the model's calibration on the moves it actually makes.
+- **marginal** = value(t) − value(t_s): what adding the model term adds
+  inside the real target. Both t and t_s depend on y, so their label
+  values are biased up by fitting the noise. They are Stein-corrected,
+  E[Σ d_a ε_a] = Σ_ab C_ab ∂d_a/∂y_b, assuming Gaussian label noise
+  with covariance s2·(I − 11'/k) on the legal set and s2 the WORKING
+  row noise the blend used.
+- **extra movement** = KL(t ‖ t_s), how far the model moves the target
+  beyond what the node's search would.
+- **changed / vs evidence** = the target's top card is not t_s's; then
+  additionally with the node's label favouring t_s's card by > 2 SE.
+
+**Correction to the first pass.** The first pass (reported in the
+session before this section was written) took s2 from `row_table.pt`,
+which stores the RAW corpus noise. The working (class-pooled, centered)
+noise is ~0.5× raw at defender and partner rows and 1.7–2.4× at picker
+rows, so that pass over-corrected at the former and under-corrected at
+the latter. It reported a harmful tail (top 1% of extra movement:
+marginal −0.038, z −3.5, −52 points over the corpus) that does not
+survive the correct noise (§8.3). The diagnostic now takes the working
+noise explicitly (`model_push_diagnostics(..., noise_var)`; post hoc,
+s2 = v_post / γ from the targeted shards).
+
+### 8.2 By group
+
+| group | rows | extra KL | model-only gain | claim | gain/claim | marginal | target | top card changed / vs > 2 SE |
+|---|---|---|---|---|---|---|---|---|
+| std def lead t0 | 3,032 | .042 | +.0220 | +.0255 | 0.86 | +.0152 | +.0114 | 12.8% / 0.00% |
+| std def lead t1 | 3,361 | .036 | +.0161 | +.0199 | 0.81 | +.0104 | +.0065 | 13.4% / 0.03% |
+| std def lead t2–t4 | 8,132 | .015 | +.0088 | +.0126 | 0.70 | +.0027 | +.0338 | 6.5% / 0.30% |
+| std defender follow | 54,124 | .024 | +.0117 | +.0164 | 0.71 | +.0047 | +.0302 | 5.6% / 0.24% |
+| std partner follow | 13,909 | .016 | +.0078 | +.0133 | 0.59 | +.0034 | +.0300 | 4.1% / 0.17% |
+| std partner lead | 5,962 | .021 | +.0071 | +.0138 | 0.52 | +.0045 | +.0143 | 6.5% / 0.13% |
+| std picker follow | 14,857 | .050 | +.0187 | +.0334 | 0.56 | +.0139 | +.0357 | 6.5% / 0.18% |
+| std picker lead | 10,900 | .042 | +.0175 | +.0277 | 0.63 | +.0118 | +.0271 | 6.5% / 0.15% |
+| alone def lead t0 | 955 | .022 | +.0075 | +.0107 | 0.70 | +.0060 | −.0069 | 15.7% / 0.00% |
+| alone def lead t1 | 459 | .028 | +.0134 | +.0169 | 0.79 | +.0083 | +.0050 | 15.0% / 0.00% |
+| alone defender follow | 15,064 | .020 | +.0154 | +.0184 | 0.84 | +.0056 | +.0374 | 5.4% / 0.12% |
+| alone picker follow | 2,247 | .090 | +.0328 | +.0793 | 0.41 | +.1225 | +.0343 | 7.3% / 0.13% |
+| alone picker lead | 3,767 | .031 | +.0145 | +.0217 | 0.67 | +.0427 | −.0045 | 3.2% / 0.11% |
+| **all** | 137,765 | .028 | **+.0133 (z +64)** | +.0201 | 0.66 | **+.0094 (z +44)** | +.0286 | 6.1% / 0.18% |
+
+By θ_k's top-card probability:
+
+| θ_k top | rows | extra KL | model-only gain | marginal | changed / vs > 2 SE |
+|---|---|---|---|---|---|
+| < 0.5 | 23,878 | .040 | +.0190 | +.0115 | 15.1% / 0.15% |
+| 0.5–0.8 | 57,707 | .035 | +.0156 | +.0122 | 7.3% / 0.19% |
+| 0.8–0.95 | 24,742 | .028 | +.0144 | +.0121 | 1.9% / 0.27% |
+| ≥ 0.95 | 31,438 | .007 | +.0038 (z +12) | +.0008 (z +2.3) | 0.3% / 0.13% |
+
+### 8.3 The tail: rows the model moves most
+
+By quantile of extra movement KL(t ‖ t_s):
+
+| bin | rows | extra KL | model-only gain | claim | marginal | changed / vs > 2 SE |
+|---|---|---|---|---|---|---|
+| < q50 | 68,882 | .001 | +.0069 | +.0055 | +.0014 | 0.9% / 0.01% |
+| q50–q80 | 41,330 | .012 | +.0135 | +.0155 | +.0092 | 6.5% / 0.09% |
+| q80–q90 | 13,776 | .045 | +.0219 | +.0331 | +.0218 | 11.1% / 0.20% |
+| q90–q95 | 6,888 | .089 | +.0311 | +.0552 | +.0333 | 15.5% / 0.49% |
+| q95–q99 | 5,511 | .194 | +.0390 | +.0998 | +.0524 | 27.5% / 1.16% |
+| ≥ q99 | 1,378 | .746 | +.0444 (z +5.6) | +.2591 | +.0030 (z +0.2) | 69.3% / 6.24% |
+
+The top 1% splits by group into positive defender and partner rows
+(marginal +0.03 to +0.09) and slightly negative picker rows (std picker
+follow −0.032 on 435 rows, alone picker lead −0.055 on 69). It nets to
++4 points over the corpus, against +1,302 for the model term on all
+rows. The top 0.5% reads −0.067 marginal on 689 rows: about −46 points.
+
+### 8.4 Readings
+
+- **The model's push helps in every group.** The clean model-only gain
+  is positive in all 50 classes, at z ≥ 3 in 43 of them; the
+  rest are small or late-trick picker cells. Nowhere does the model, on
+  aggregate, move θ_k toward cards the search labels rate lower.
+- **It over-claims by about a third,** and more at picker and partner
+  rows (gain/claim 0.41–0.63) than at defender rows (0.70–0.86). This is
+  the §7.3 finding in a cleaner form: §7.3 conditioned on the model's
+  argmax (winner's curse); this read values the move the target
+  actually makes. At the convention rows (std t0/t1 defender leads) the
+  model is close to calibrated (0.86 / 0.81) and its marginal is the
+  largest in the table.
+- **Confident θ_k (≥ 0.95, 23% of rows): the model barely moves them,
+  and does no harm.** Extra KL is 0.007; it changes the top card at 0.3%
+  of rows and the marginal is ~0 (+0.0008). θ_k's top card loses less
+  mass under the full target than under the search term alone (0.008
+  vs 0.012): on confident rows the model is the conservative term.
+- **Against the node's clear evidence:** the model reverses a > 2 SE
+  label at 0.18% of rows (~250), concentrated in the extreme tail (6.2%
+  of the top 1%).
+- **The tail is where it stops paying.** Value per row rises with
+  extra movement up to q99. Beyond it, the model-only push is still
+  positive (+0.044) but claims 6× that, and adding it to an already
+  large search tilt over-concentrates into the clip: marginal ~0 at the
+  top 1% and negative at the top 0.5%, mostly at picker rows.
+- **Size of any harm:** at most the top 0.5% tail, about −46 points over
+  the corpus, about −0.001 per seat-hand on targets, before distillation
+  dilutes it. That is well inside the paired h2h SE (0.0029), so no
+  arm could detect it in EV. It is ~4% of the model term's +1,302.
+
+### 8.5 How reliable is this?
+
+- **Model-only gain: reliable** as a search-Q read. It is unbiased under
+  out-of-fold prediction and needs no noise model.
+- **Marginal / target / search-only values: noise-model dependent.** The
+  Stein correction is 0.03–0.06 at defender and partner rows, against a
+  raw search-only label gain of ~0.04. At picker rows it is 0.09–0.35,
+  against raw gains of 0.09–0.14. That is why the search-only and target
+  values go negative at some picker classes (alone t0 picker follow
+  target −0.070, search-only −0.35). Read literally, tilting toward the
+  node's own search label would hurt there, which is implausible. The
+  likelier story is that the class-pooled working noise overstates
+  those rows' true noise: the first pass with raw noise moved the tail
+  read by 0.04 points per decision. Treat the picker-row marginal
+  values, and so the tail's sign there, as unresolved within
+  noise-model uncertainty. Defender and partner reads are robust in
+  sign.
+- **The judge is the search itself.** If PUCT echoes θ_k's prior (§7.7
+  check 2), the labels favour θ_k's card. The model's departures then
+  look worse than they are, so the negative tail is an upper bound in
+  that direction. Structural search error is invisible to any of these
+  reads.
+- **Real EV: not measurable.** The candidate harm is ~1/3 of the paired
+  h2h SE before distillation dilutes it. The offline search-judged read
+  is the only practical instrument.
+
+### 8.6 Decision and diagnostics
+
+Recipe unchanged (operator, 2026-10-13): the model does what it was
+designed to do, and the harm is at most barely measurable. §7's
+standing item (a) is now built:
+
+- **Stage 2** computes `model_push_diagnostics` (`search_advantage.py`)
+  and writes it to `target_report.json` as `model_diagnostics`:
+  - overall push stats; by θ_k top-card bin; by extra-movement quantile;
+  - per class: the push stats, the §7.4 top-card residual (mean with z)
+    and the §7.3 override support;
+  - the Stein corrections, so the noise-model dependence is visible;
+  - `a_model_out_of_fold`: false means model-only is biased up.
+  The log prints the summary and per-class lines in game points. It is
+  diagnostic only; nothing downstream reads it.
+- **Post hoc:** `python -m sheepshead.analysis.target_diagnostics
+  --iter-dir <pi/iterN>` recomputes it for an iteration whose Stage 2
+  predates the change (iteration 1 above). It needs cross-fit OOF
+  predictions.
+- **Iteration 2's Stage 2** runs it automatically. To watch:
+  - whether the q99 tail and the picker gain/claim ratios persist;
+  - whether the convention classes' marginal shrinks as the convention
+    completes;
+  - the top-card residual gate. In iteration 1, 35 of 50 classes have
+    |z| ≥ 3, all positive, the §7.4 lean (largest at alone
+    picker rows: +0.16 to +0.57 points).
+
+Scripts (scratchpad, this session): `temp_harm_w.py <iter-dir> <out.pt>`
+(row-level split with the working noise) and `temp_harm_tail.py
+<out.pt>` (tail by group); `temp_stein_check.py` (the size of the
+correction by role). The committed CLI reproduces §8.2–§8.3.
