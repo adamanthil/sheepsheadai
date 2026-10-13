@@ -31,6 +31,9 @@ export type ConnectionState =
  * cannot help, so the client must not hammer the server. */
 const TERMINAL_WS_CODES = new Set([4401, 4403, 4404, 4410, 4429]);
 
+/** Close code for a table the server no longer has (closed or expired). */
+const TABLE_GONE_WS_CODE = 4404;
+
 export interface UseTableSocketReturn {
   connected: boolean;
   connectionState: ConnectionState;
@@ -112,6 +115,13 @@ export function useTableSocket(
       socket.onclose = (e) => {
         if (wsRef.current === socket) wsRef.current = null;
         if (disposed) return;
+        if (e.code === TABLE_GONE_WS_CODE) {
+          // The table closed while we were away: forget it so the lobby
+          // doesn't offer to resume it, and leave its dead page.
+          window.localStorage.removeItem(STORAGE_KEYS.clientId(tableId));
+          window.location.replace("/");
+          return;
+        }
         if (TERMINAL_WS_CODES.has(e.code)) {
           setConnectionState("failed");
           return;
