@@ -15,14 +15,17 @@ import type {
 import PageShell from "../components/PageShell";
 import styles from "./leaderboard.module.css";
 
-const COLUMNS: { key: LeaderboardSort; label: string; short: string }[] = [
+/** Hands is shown but can't be ranked by: the server doesn't offer it. */
+type ColumnKey = LeaderboardSort | "hands";
+const COLUMNS: { key: ColumnKey; label: string; short: string }[] = [
   { key: "hands", label: "Hands", short: "Hands" },
   { key: "total", label: "Total Score", short: "Total" },
   { key: "sph", label: "Score / hand", short: "Score/h" },
   { key: "win_pct", label: "Win rate", short: "Win" },
   { key: "pick_pct", label: "Pick rate", short: "Pick" },
 ];
-const SORTS = COLUMNS.map((c) => c.key);
+const isSort = (key: ColumnKey): key is LeaderboardSort => key !== "hands";
+const SORTS = COLUMNS.map((c) => c.key).filter(isSort);
 
 /** Each board counts only its own kind of hand; `hands` names that kind
  * in the captions. */
@@ -64,7 +67,7 @@ const boardInfo = (key: LeaderboardBoard) => BOARDS.find((b) => b.key === key)!;
 const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
 const signed = (x: number) => (x > 0 ? `+${x}` : String(x));
 
-function cell(row: LeaderboardRow, key: LeaderboardSort): string {
+function cell(row: LeaderboardRow, key: ColumnKey): string {
   switch (key) {
     case "hands":
       return String(row.hands);
@@ -184,27 +187,39 @@ export default function LeaderboardPage() {
               <th scope="col" className={styles.player}>
                 Player
               </th>
-              {COLUMNS.map((c) => (
-                <th
-                  key={c.key}
-                  scope="col"
-                  className={styles.num}
-                  aria-sort={sort === c.key ? "descending" : undefined}
-                >
-                  <button
-                    type="button"
-                    className={`${styles.sortButton} ${sort === c.key ? styles.sortActive : ""}`}
-                    onClick={() => choose(c.key)}
-                    title={`Rank by ${c.label.toLowerCase()}`}
-                  >
+              {COLUMNS.map((c) => {
+                const { key } = c;
+                const label = (
+                  <>
                     <span className={styles.longLabel}>{c.label}</span>
                     <span className={styles.shortLabel}>{c.short}</span>
                     <span className={styles.arrow} aria-hidden="true">
-                      {sort === c.key ? "▼" : ""}
+                      {sort === key ? "▼" : ""}
                     </span>
-                  </button>
-                </th>
-              ))}
+                  </>
+                );
+                return (
+                  <th
+                    key={key}
+                    scope="col"
+                    className={styles.num}
+                    aria-sort={sort === key ? "descending" : undefined}
+                  >
+                    {isSort(key) ? (
+                      <button
+                        type="button"
+                        className={`${styles.sortButton} ${sort === key ? styles.sortActive : ""}`}
+                        onClick={() => choose(key)}
+                        title={`Rank by ${c.label.toLowerCase()}`}
+                      >
+                        {label}
+                      </button>
+                    ) : (
+                      <span className={styles.columnLabel}>{label}</span>
+                    )}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>

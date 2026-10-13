@@ -1220,7 +1220,7 @@ export interface components {
              * Sort
              * @enum {string}
              */
-            sort: "total" | "sph" | "win_pct" | "pick_pct" | "hands";
+            sort: "total" | "sph" | "win_pct" | "pick_pct";
             you: components["schemas"]["LeaderboardRow"] | null;
         };
         /** LeaderboardRow */
@@ -1890,7 +1890,7 @@ export interface operations {
         parameters: {
             query?: {
                 board?: "overall" | "called_ace" | "jd" | "vs_ai";
-                sort?: "total" | "sph" | "win_pct" | "pick_pct" | "hands";
+                sort?: "total" | "sph" | "win_pct" | "pick_pct";
             };
             header?: never;
             path?: never;

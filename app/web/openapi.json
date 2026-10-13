@@ -1864,8 +1864,7 @@
               "total",
               "sph",
               "win_pct",
-              "pick_pct",
-              "hands"
+              "pick_pct"
             ],
             "title": "Sort",
             "type": "string"
@@ -2991,8 +2990,7 @@
                 "total",
                 "sph",
                 "win_pct",
-                "pick_pct",
-                "hands"
+                "pick_pct"
               ],
               "title": "Sort",
               "type": "string"

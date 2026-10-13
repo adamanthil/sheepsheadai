@@ -122,6 +122,12 @@
   align-items: baseline;
   gap: 4px;
 }
+/* A column header that can't be sorted by, laid out like one that can. */
+.columnLabel {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
 .sortButton:hover {
   color: var(--accent);
 }

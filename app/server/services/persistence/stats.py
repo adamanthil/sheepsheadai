@@ -22,8 +22,9 @@ from uuid import UUID
 
 import asyncpg
 
-SortKey = Literal["total", "sph", "win_pct", "pick_pct", "hands"]
-SORT_KEYS: tuple[SortKey, ...] = ("total", "sph", "win_pct", "pick_pct", "hands")
+# Hands played is shown on the board but deliberately not rankable.
+SortKey = Literal["total", "sph", "win_pct", "pick_pct"]
+SORT_KEYS: tuple[SortKey, ...] = ("total", "sph", "win_pct", "pick_pct")
 
 # Which hands a board counts: all of them, one partner mode, or only
 # hands played against the AI alone.
