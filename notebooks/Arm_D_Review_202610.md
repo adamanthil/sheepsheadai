@@ -1048,3 +1048,78 @@ mass).
 
 Scripts: as §8, with `temp_harm_tail.py <out.pt> <iter-dir>` now
 taking the iteration directory.
+
+### 8.8 Reproducing §8
+
+Every §8 table is reproducible from committed code (`ab222c8`,
+`6a09552`, and the tail breakdown added after §8.7). The scratchpad
+scripts named above were the first pass and are not needed.
+
+**Source.** `model_push_diagnostics` (`search_advantage.py`) computes
+everything. Stage 2 writes it to `<iter-dir>/target_report.json` under
+`model_diagnostics` and prints a summary in `policy_iteration.log`
+(`[model]` lines). Iteration 2 onward have it already.
+
+**Recompute** (needed for iteration 1, whose Stage 2 predates it, or to
+regenerate any iteration):
+
+```
+uv run python -m sheepshead.analysis.target_diagnostics \
+    --iter-dir runs/202609_recall_rc/pi/iter1 --json /tmp/iter1_diag.json
+```
+
+It reads the iteration's `row_table.pt`, `oof_predictions.pt` (so it
+needs a cross-fit iteration), `target_report.json` and the targeted
+shards. It recovers the working noise as v_post / γ from the shards.
+Do not use the table's `noise_var`, which is RAW (§8.1). ~25 s per
+iteration. On iterations 1 and 2 it matches the tables above to the
+printed digit.
+
+**Where each table comes from** in the JSON (all values in advantage
+units; × 12 = game points per decision):
+
+| table | JSON key |
+|---|---|
+| §8.2 / §8.7 overall | `push` |
+| §8.2 / §8.7 by group | `per_class[c].push`, rows-weighted over the group's classes |
+| θ_k top-card bins | `push_by_prior_top` |
+| top-card mass lost (θ_k ≥ 0.95) | `push_by_prior_top["[0.95,1.0]"].prior_top_lost` |
+| §8.3 / §8.7 extra-movement bins | `push_by_extra_kl` (q99.5 is not a bin; see below) |
+| top 1% by group | `push_top_extra_by_class`, rows-weighted over the group's classes |
+| §8.5 correction sizes | `stein` in any push entry (raw label gain = value + stein) |
+| §7.4 top-card residual | `per_class[c].top_card_residual`; gate list `top_card_residual_classes_abs_z_ge_3` |
+| §7.3 override support | `override_support`, `override_support_prior_confident`, `per_class[c].override_support` |
+
+Rolling classes up into §8's groups (e.g. "std picker follow" = all
+`std|t*-picker-follow`; "def lead t0" kept by trick):
+
+```
+import json, collections
+d = json.load(open("/tmp/iter1_diag.json"))
+src = d["per_class"]  # or d["push_top_extra_by_class"] for the tail
+agg = collections.defaultdict(lambda: collections.defaultdict(float))
+for c, v in src.items():
+    p = v.get("push", v)
+    mode, rest = c.split("|", 1)
+    t, role, kind = rest.split("-")
+    g = f"{mode} {role} {kind}" + (f" {t}" if (role, kind) == ("defender", "lead") else "")
+    a = agg[g]; n = p.get("n", 0); a["n"] += n
+    for f in ("model_gain", "marginal", "full"):
+        a[f] += n * (p[f]["mean"] if n else 0)
+    a["claim"] += n * p.get("model_claim", 0)
+for g, a in sorted(agg.items()):
+    print(g, int(a["n"]), *(f"{12 * a[f] / a['n']:+.4f}" for f in ("model_gain", "claim", "marginal")))
+```
+
+**Not in the JSON:**
+
+- **The q99.5 cut** (§8.3 "−0.067 on 689 rows", §8.7 "−0.037 /
+  −0.081"). To reproduce it, call `model_push_diagnostics` on a table
+  restricted to the rows above the q99 cut, or change
+  `EXTRA_KL_QUANTILES`.
+- **The "41 / 82 rows where the model alone costs θ_k's top card
+  > 0.2"** count. It needs the row-level split: rebuild t and t_s as the
+  function does.
+- **§8.1's raw-noise first pass.** Pass `table.noise_var_raw` as
+  `noise_var` to reproduce it. It is kept only as the record of the
+  mistake.
