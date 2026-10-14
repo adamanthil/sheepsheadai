@@ -919,3 +919,132 @@ Scripts (scratchpad, this session): `temp_harm_w.py <iter-dir> <out.pt>`
 (row-level split with the working noise) and `temp_harm_tail.py
 <out.pt>` (tail by group); `temp_stein_check.py` (the size of the
 correction by role). The committed CLI reproduces §8.2–§8.3.
+
+### 8.7 Iteration 2 (2026-10-13): the same read, one step later
+
+Iteration 2's Stage 2 ran on `ab222c8`, so `pi/iter2/target_report.json`
+carries `model_diagnostics` (134,226 rows, out-of-fold, η 0.0097, cross-
+fit 5). These are the targets built from θ₁'s corpus, so they describe
+the update iteration 2 distilled, not the distilled policy's behaviour.
+Iteration 2's cert passed: h2h vs θ₁ +0.0118 ± 0.0027 (duplicate, 16,000
+deals).
+
+**Overall** (game points per decision):
+
+| | iter 1 | iter 2 |
+|---|---|---|
+| KL(target ‖ prior), mean | 0.136 | 0.105 |
+| model's extra movement KL(t ‖ t_s) | 0.028 | 0.021 |
+| model-only gain | +0.0133 (z +64) | +0.0080 (z +52) |
+| model claim / gain-to-claim | +0.0201 / 0.66 | +0.0136 / 0.59 |
+| marginal (Stein, working noise) | +0.0094 (z +44) | +0.0074 (z +34) |
+| marginal summed over the corpus | +1,302 pts | +993 pts |
+| top card changed / vs > 2 SE label | 6.1% / 0.18% | 5.0% / 0.18% |
+| top-card residual \|z\| ≥ 3 | 35 of 50 classes | 26 of 50 |
+| override support (model's argmax) | +0.0054 (z +2.5) | −0.0224 (z −9.4) |
+| … where θ_k ≥ 0.8 | −0.080 (z −10.8) | −0.122 (z −14.8) |
+
+With η fixed, the step shrinks by itself as θ improves: less total
+movement, a smaller model-only gain, a smaller marginal. Both stay
+clearly positive.
+
+**By group** (gain = model-only, marg = marginal, resid = top-card
+residual):
+
+| group | iter 1 KL / extra / gain / g÷c / marg / resid | iter 2 KL / extra / gain / g÷c / marg / resid |
+|---|---|---|
+| std def lead t0 | .109 / .042 / +.0220 / .86 / +.0152 / +.0001 | .067 / .028 / +.0112 / .74 / +.0089 / +.0040 |
+| std def lead t1 | .099 / .036 / +.0161 / .81 / +.0104 / −.0033 | .071 / .026 / +.0085 / .67 / +.0062 / +.0106 |
+| std def lead t2–t4 | .145 / .015 / +.0088 / .70 / +.0027 / +.0033 | .116 / .010 / +.0049 / .68 / +.0012 / +.0105 |
+| std defender follow | .115 / .024 / +.0117 / .71 / +.0047 / +.0120 | .086 / .019 / +.0061 / .57 / +.0024 / +.0064 |
+| std partner follow | .127 / .016 / +.0078 / .59 / +.0034 / +.0147 | .103 / .011 / +.0055 / .63 / +.0021 / +.0069 |
+| std partner lead | .098 / .021 / +.0071 / .52 / +.0045 / +.0152 | .076 / .016 / +.0059 / .56 / +.0036 / +.0004 |
+| std picker follow | .220 / .050 / +.0187 / .56 / +.0139 / +.0903 | .192 / .036 / +.0139 / .56 / +.0107 / +.0832 |
+| std picker lead | .159 / .042 / +.0175 / .63 / +.0118 / +.0591 | .126 / .030 / +.0129 / .68 / +.0097 / +.0644 |
+| alone def lead t0 | .081 / .022 / +.0075 / .70 / +.0060 / −.0008 | .085 / .017 / +.0056 / .65 / +.0052 / +.0036 |
+| alone def lead t1 | .136 / .028 / +.0134 / .79 / +.0083 / +.0236 | .113 / .013 / +.0068 / .79 / +.0058 / +.0536 |
+| alone def lead t2–t4 | .174 / .010 / +.0085 / .74 / +.0024 / +.0020 | .131 / .005 / +.0035 / .72 / +.0009 / +.0116 |
+| alone defender follow | .134 / .020 / +.0154 / .84 / +.0056 / +.0109 | .082 / .014 / +.0077 / .73 / +.0030 / +.0034 |
+| alone picker follow | .241 / .090 / +.0328 / .41 / +.1225 / +.4289 | .190 / .094 / +.0240 / .32 / +.1830 / +.5243 |
+| alone picker lead | .121 / .031 / +.0145 / .67 / +.0427 / +.1752 | .104 / .029 / +.0099 / .55 / +.0478 / +.1545 |
+
+**By θ_k's top-card probability:**
+
+| θ_k top | iter 1 rows / extra / gain / marg / changed | iter 2 rows / extra / gain / marg / changed |
+|---|---|---|
+| < 0.5 | 23,878 / .040 / +.0190 / +.0115 / 15.1% | 19,150 / .032 / +.0098 / +.0072 / 14.2% |
+| 0.5–0.8 | 57,707 / .035 / +.0156 / +.0122 / 7.3% | 52,965 / .028 / +.0094 / +.0106 / 6.8% |
+| 0.8–0.95 | 24,742 / .028 / +.0144 / +.0121 / 1.9% | 26,786 / .022 / +.0106 / +.0100 / 1.2% |
+| ≥ 0.95 | 31,438 / .007 / +.0038 / +.0008 / 0.3% | 35,325 / .005 / +.0029 / +.0007 / 0.3% |
+
+On θ_k ≥ 0.95 rows, the top-card mass lost is 0.0016 under the target
+vs 0.0063 under the search-only tilt: the model is again the
+conservative term there. Only 41 rows lose > 0.2 of the top card
+because of the model; their model-only value is +0.013 (z +0.5).
+
+**By the model's extra movement:**
+
+| bin | iter 1 extra / gain / claim / marg | iter 2 extra / gain / claim / marg |
+|---|---|---|
+| < q50 | .001 / +.0069 / +.0055 / +.0014 | .000 / +.0053 / +.0039 / +.0010 |
+| q50–q80 | .012 / +.0135 / +.0155 / +.0092 | .009 / +.0087 / +.0104 / +.0079 |
+| q80–q90 | .045 / +.0219 / +.0331 / +.0218 | .034 / +.0126 / +.0219 / +.0168 |
+| q90–q95 | .089 / +.0311 / +.0552 / +.0333 | .069 / +.0168 / +.0363 / +.0276 |
+| q95–q99 | .194 / +.0390 / +.0998 / +.0524 | .151 / +.0192 / +.0670 / +.0379 |
+| ≥ q99 | .746 / +.0444 (z +5.6) / +.2591 / +.0030 | .548 / **−.0135 (z −2.0)** / +.1869 / −.0068 |
+| ≥ q99.5 | — / — / — / −.067 | — / −.037 / — / −.081 |
+
+**Iteration 2's top 1% by group** (1,343 rows):
+
+| group | rows (share of group) | marginal | model-only | claim |
+|---|---|---|---|---|
+| std picker follow | 416 (2.8%) | −.073 | −.025 | +.208 |
+| std defender follow | 396 (0.7%) | −.030 | −.002 | +.155 |
+| std picker lead | 195 (1.7%) | −.030 | +.007 | +.170 |
+| alone picker follow | 158 (9.8%) | +.291 | −.055 | +.277 |
+| alone picker lead | 56 (1.8%) | −.093 | −.017 | +.102 |
+| alone defender follow | 47 (0.4%) | −.058 | −.012 | +.154 |
+| std partner follow | 45 (0.3%) | +.035 | +.051 | +.202 |
+| std defender lead | 20 (0.1%) | −.034 | −.019 | +.141 |
+| std partner lead | 10 (0.2%) | +.012 | +.020 | +.159 |
+
+The tail sums to −9 points against +993 for the model term on all rows:
+−0.00025 per seat-hand on the targets (36,000 seat-hands), before
+distillation dilutes it. The +0.29 marginal at alone picker follows is
+the noise correction at picker rows (§8.5), not a reliable read; the
+model-only −0.055 is.
+
+**Readings:**
+
+- **The model still helps everywhere it matters.** The model-only gain
+  is positive in every group, and the marginal is positive in every
+  group and every θ_k bin. Both shrink as θ improves, as a fixed-η step
+  should.
+- **Convention rows: the convention is being finished, not lost.** At
+  std t0 defender leads, total movement fell 0.109 → 0.067 and the
+  model's marginal +0.0152 → +0.0089. t1 is the same.
+- **Over-claiming grew slightly** at defender follows (gain/claim 0.71
+  → 0.57) and alone picker follows (0.41 → 0.32), and the q99 claim
+  stayed large (+0.19) while the real signal shrank.
+- **New in iteration 2: the clean model-only gain turns negative in the
+  extreme tail** (top 1%: −0.0135, z −2.0; top 0.5%: −0.037). In
+  iteration 1 it was positive there (+0.044). As θ improves, the true
+  signal shrinks while the model's largest claims stay large, so in
+  the tail the selection effect has started to outweigh the signal. It
+  sits mostly at picker follows and alone picker rows.
+- **The override-support read also went negative** (−0.022, z −9.4).
+  It conditions on the model's own argmax and carries the winner's
+  curse (§7.6). The clean tail read above is the better evidence.
+- **The §7.4 top-card lean eased in most classes** (26 of 50 at |z| ≥ 3,
+  from 35) but not at alone picker rows (+0.15 to +0.52).
+
+**Standing:** no recipe change at this size. The trigger to act is
+iteration 3's tail: if the top-1% model-only gain falls further and the
+negative region spreads into q95–q99, design a cap on the model's
+extra movement. One natural form scales the model term down where it
+pushes far past the search term. It must pass the §7.6 trump-lead
+regression test (the t0 defender-lead target at or below 2.4% trump
+mass).
+
+Scripts: as §8, with `temp_harm_tail.py <out.pt> <iter-dir>` now
+taking the iteration directory.
