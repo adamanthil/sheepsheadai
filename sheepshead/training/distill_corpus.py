@@ -588,6 +588,58 @@ def _file_sha256(path: str) -> str:
     return h.hexdigest()[:16]
 
 
+# Config keys that do not shape the rows, so a resume may change them.
+# ``start_game`` is the retired index-boundary resume flag, still present in
+# manifests written before ``--resume``.
+RESUME_FREE_KEYS = frozenset({"workers", "torch_threads", "resume", "start_game"})
+
+
+def flushed_games(out_dir: str, prior: dict) -> set[int]:
+    """The game indices the prior invocation's flushed shards hold: what a
+    resume must not replay. Shard entries list their games; manifests from
+    before that are read from the shards' own ``games`` metadata."""
+    from sheepshead.training.corpus_rows import load_shard
+
+    done: set[int] = set()
+    for entry in prior["shards"]:
+        if "games" in entry:
+            done.update(entry["games"])
+        else:
+            shard = load_shard(os.path.join(out_dir, entry["path"]))
+            done.update(int(g["game"]) for g in shard["games"])
+    return done
+
+
+def check_resumable(prior: dict, manifest: dict) -> None:
+    """Refuse to extend the prior corpus with rows a different recipe or
+    checkpoint would label: the two halves would mix silently."""
+    if prior.get("row_schema", 1) != manifest["row_schema"]:
+        raise SystemExit(
+            f"cannot resume a row-schema {prior.get('row_schema', 1)} corpus "
+            f"with schema {manifest['row_schema']} rows (labels would mix)"
+        )
+    if prior.get("ckpt_sha256_16") != manifest["ckpt_sha256_16"]:
+        raise SystemExit(
+            f"cannot resume: the corpus was generated from checkpoint "
+            f"{prior.get('ckpt')} (sha {prior.get('ckpt_sha256_16')}), not "
+            f"{manifest['ckpt']} (sha {manifest['ckpt_sha256_16']})"
+        )
+    old, new = prior.get("config", {}), manifest["config"]
+    differ = sorted(
+        k
+        for k in (old.keys() | new.keys()) - RESUME_FREE_KEYS
+        if old.get(k, "<absent>") != new.get(k, "<absent>")
+    )
+    if differ:
+        raise SystemExit(
+            "cannot resume: the generation config differs from the corpus's: "
+            + ", ".join(
+                f"{k} {old.get(k, '<absent>')!r} -> {new.get(k, '<absent>')!r}"
+                for k in differ
+            )
+        )
+
+
 def main() -> int:
     from sheepshead.training.config import CommitteeConfig
 
@@ -632,13 +684,14 @@ def main() -> int:
     )
     ap.add_argument("--node-telemetry", default=None)
     ap.add_argument(
-        "--start-game",
-        type=int,
-        default=0,
-        help="resume an interrupted run: play game indices [start, games) "
-        "into the same out-dir, continuing its manifest and shard "
-        "numbering (game-index seeding makes each index's deal and "
-        "committee-act draw independent of when it is played)",
+        "--resume",
+        action="store_true",
+        help="continue an interrupted run in the same out-dir: play exactly "
+        "the game indices its flushed shards lack, continuing its manifest "
+        "and shard numbering (game-index seeding makes each index's deal "
+        "and committee-act draw independent of when it is played). Refuses "
+        "a corpus from another checkpoint or generation config; without a "
+        "manifest it starts fresh",
     )
     ap.add_argument(
         "--routed-encoder",
@@ -669,19 +722,6 @@ def main() -> int:
         "routed_encoder": args.routed_encoder,
     }
 
-    # Deterministic task schedule: modes alternate by game index.
-    # Deterministic task schedule: modes alternate by game index; the
-    # committee-act draw is seeded by game index so a resumed run makes the
-    # same draw for the same game.
-    tasks = [
-        (
-            g,
-            PARTNER_BY_CALLED_ACE if g % 2 == 0 else PARTNER_BY_JD,
-            random.Random((args.seed << 21) ^ g).random() < args.committee_act_frac,
-        )
-        for g in range(args.start_game, args.games)
-    ]
-
     import torch
 
     manifest = {
@@ -705,40 +745,70 @@ def main() -> int:
     )
     shard_idx = 0
     kept = 0
-    if args.start_game > 0:
-        # Resume: continue the prior invocation's manifest, class totals and
-        # shard numbering. Only whole flushed shards survive a kill, so
-        # start-game should be the prior manifest's kept_games boundary;
-        # games played past the last flush are simply regenerated (their
-        # per-index seeding reproduces nothing from the lost buffer — they
-        # are fresh, independent replays of the same indices).
-        prior_path = os.path.join(args.out_dir, "manifest.json")
+    done_games: set[int] = set()
+    prior_path = os.path.join(args.out_dir, "manifest.json")
+    if args.resume and os.path.exists(prior_path):
+        # Resume: continue the prior invocation's manifest, totals and shard
+        # numbering. Only whole flushed shards survive a kill; games past
+        # the last flush are replayed. A shard written after the manifest's
+        # last update is overwritten in place (same index).
         with open(prior_path) as f:
             prior = json.load(f)
-        if prior.get("row_schema", 1) != ROW_SCHEMA_VERSION:
-            raise SystemExit(
-                f"cannot resume a row-schema {prior.get('row_schema', 1)} corpus "
-                f"with schema {ROW_SCHEMA_VERSION} rows (labels would mix)"
-            )
-        for key in ("games", "kept_games", "episodes"):
+        check_resumable(prior, manifest)
+        done_games = flushed_games(args.out_dir, prior)
+        for key in (
+            "games",
+            "kept_games",
+            "episodes",
+            "committee_act_games",
+            "committee_acted_nodes",
+        ):
             manifest[key] = prior.get(key, 0)
         manifest["shards"] = prior["shards"]
-        manifest["resumed_at_game"] = args.start_game
+        manifest["resumes"] = prior.get("resumes", []) + [
+            {
+                "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "games_done": len(done_games),
+                "git_rev": manifest["git_rev"],
+            }
+        ]
         for cls, c in prior.get("classes", {}).items():
             class_totals[cls].update(c)
         shard_idx = len(prior["shards"])
         kept = prior["kept_games"]
+        if prior.get("git_rev") != manifest["git_rev"]:
+            print(
+                f"[resume] WARNING: corpus begun at git {prior.get('git_rev')}, "
+                f"resuming at {manifest['git_rev']}",
+                flush=True,
+            )
 
-    if (
-        args.node_telemetry
-        and args.start_game > 0
-        and os.path.exists(args.node_telemetry)
-    ):
-        # Drop telemetry rows at or past the resume point (they belong to
-        # games whose episodes died in the unflushed buffer), then append.
+    # Deterministic task schedule: modes alternate by game index; the
+    # committee-act draw is seeded by game index so a resumed run makes the
+    # same draw for the same game.
+    tasks = [
+        (
+            g,
+            PARTNER_BY_CALLED_ACE if g % 2 == 0 else PARTNER_BY_JD,
+            random.Random((args.seed << 21) ^ g).random() < args.committee_act_frac,
+        )
+        for g in range(args.games)
+        if g not in done_games
+    ]
+    if done_games:
+        print(
+            f"[resume] {len(done_games)} games in {shard_idx} flushed shards; "
+            f"playing the {len(tasks)} missing",
+            flush=True,
+        )
+
+    if args.node_telemetry and done_games and os.path.exists(args.node_telemetry):
+        # Keep only the telemetry of flushed games (the rest belong to games
+        # whose episodes died in the unflushed buffer, and are replayed),
+        # then append.
         with open(args.node_telemetry) as f:
             keep_lines = [
-                line for line in f if json.loads(line).get("game", 0) < args.start_game
+                line for line in f if json.loads(line).get("game") in done_games
             ]
         with open(args.node_telemetry, "w") as f:
             f.writelines(keep_lines)
@@ -767,14 +837,18 @@ def main() -> int:
         torch.save({"episodes": shard_episodes, "games": shard_meta}, path + ".tmp")
         os.replace(path + ".tmp", path)
         manifest["shards"].append(
-            {"path": os.path.basename(path), "episodes": len(shard_episodes)}
+            {
+                "path": os.path.basename(path),
+                "episodes": len(shard_episodes),
+                "games": sorted(g["game"] for g in shard_meta),
+            }
         )
         shard_idx += 1
         shard_episodes = []
         shard_meta = []
         if telemetry_f is not None:
-            # Telemetry durability is shard-granular: resume drops rows past
-            # --start-game, so flushing between shards buys nothing and costs
+            # Telemetry durability is shard-granular: resume drops the rows
+            # of unflushed games, so flushing between shards buys nothing and costs
             # one fs event per game (fseventsd fan-out to every watcher).
             telemetry_f.flush()
 
