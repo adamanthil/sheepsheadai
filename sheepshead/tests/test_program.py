@@ -5,6 +5,8 @@ pre-registration artifact, and the smoke preset covers every phase."""
 import csv
 import json
 import os
+import signal
+import time
 
 import pytest
 
@@ -354,3 +356,42 @@ def test_recipe_ablation_knobs_pass_through_to_the_stages(tmp_path, monkeypatch)
     flags = p._pi_stage_flags()
     assert flags[flags.index("--cross-fit") + 1] == "5"
     assert flags[flags.index("--distill-holdout-frac") + 1] == "0.02"
+
+
+def test_a_second_orchestrator_is_refused_while_the_first_runs(tmp_path, monkeypatch):
+    p = _program(tmp_path, monkeypatch)
+    p._acquire_lock()
+    with pytest.raises(SystemExit, match="still running"):
+        Program(ProgramConfig(run_name="t")).run()
+    p._release_lock()
+    p2 = Program(ProgramConfig(run_name="t"))
+    p2._acquire_lock()  # free again once the holder is gone
+    p2._release_lock()
+
+
+def test_an_orphaned_stage_keeps_the_lock(tmp_path, monkeypatch):
+    """A stage that outlives its orchestrator (here: a background process
+    the stage left behind, standing in for a child of a killed
+    orchestrator) keeps the run locked until it exits."""
+    p = _program(tmp_path, monkeypatch)
+    p._acquire_lock()
+    pid_file = tmp_path / "orphan.pid"
+    p._run("stage", ["sh", "-c", f"sleep 30 & echo $! > {pid_file}"], "stage.log")
+    p._release_lock()
+    orphan = int(pid_file.read_text())
+    try:
+        with pytest.raises(SystemExit, match="still running"):
+            Program(ProgramConfig(run_name="t"))._acquire_lock()
+    finally:
+        os.kill(orphan, signal.SIGTERM)
+    deadline = time.time() + 10
+    while True:
+        p2 = Program(ProgramConfig(run_name="t"))
+        try:
+            p2._acquire_lock()
+            break
+        except SystemExit:
+            if time.time() > deadline:
+                raise
+            time.sleep(0.05)
+    p2._release_lock()

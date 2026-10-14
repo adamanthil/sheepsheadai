@@ -21,7 +21,10 @@ pre-registration artifact.
 
 Everything is keyed to on-disk artifacts plus an atomic state.json under
 runs/<run-name>/program/, so re-invoking with the same config converges to
-where it left off. Exit codes: 0 finished, 2 needs operator review.
+where it left off. A flock on program/orchestrator.lock, inherited by each
+stage subprocess, refuses a relaunch while the previous orchestrator or a
+stage it launched is still running. Exit codes: 0 finished, 2 needs
+operator review.
 
 Usage:
   uv run python -m sheepshead.training.run_training_program --run-name rc_202609
@@ -33,6 +36,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import fcntl
 import glob
 import json
 import os
@@ -117,6 +121,7 @@ class Program:
         self.program_dir = os.path.join(self.run_dir, "program")
         os.makedirs(self.program_dir, exist_ok=True)
         self.state = self._load_state()
+        self._lock_fd: int | None = None
 
     # ------------------------------------------------------------------ #
     # State / logging / subprocesses
@@ -251,6 +256,44 @@ class Program:
         self.log(f"★ {rendered}" if decision else rendered)
         self._save_state()
 
+    def _lock_path(self) -> str:
+        return os.path.join(self.program_dir, "orchestrator.lock")
+
+    def _acquire_lock(self) -> None:
+        """One writer per run directory. The flock is held by the
+        orchestrator and inherited by each stage child (``_run``), so it
+        stays held while either lives, a stage orphaned by a killed
+        orchestrator included, and the kernel drops it when both are gone
+        (no stale pidfile, no pid reuse)."""
+        fd = os.open(self._lock_path(), os.O_RDWR | os.O_CREAT, 0o644)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            holder = os.read(fd, 4096).decode(errors="replace").strip()
+            os.close(fd)
+            raise SystemExit(
+                f"{self._lock_path()} is held: another orchestrator for "
+                f"{self.cfg.run_name}, or a stage it launched, is still running "
+                f"(stop it, or wait for it to exit, before relaunching)\n{holder}"
+            ) from None
+        self._lock_fd = fd
+        self._note_lock_holder()
+
+    def _note_lock_holder(self, stage: str | None = None) -> None:
+        """Record who holds the lock, for the refusal message."""
+        if self._lock_fd is None:
+            return
+        text = f"orchestrator pid {os.getpid()} since {_now()}\n"
+        if stage:
+            text += f"stage {stage} since {_now()}\n"
+        os.ftruncate(self._lock_fd, 0)
+        os.pwrite(self._lock_fd, text.encode(), 0)
+
+    def _release_lock(self) -> None:
+        if self._lock_fd is not None:
+            os.close(self._lock_fd)
+            self._lock_fd = None
+
     def _run(self, label: str, cmd: list[str], log_name: str) -> None:
         log_path = os.path.join(self.program_dir, log_name)
         self._event(
@@ -259,12 +302,16 @@ class Program:
         )
         t0 = time.time()
         with open(log_path, "a") as logf:
-            proc = subprocess.run(
+            proc = subprocess.Popen(
                 cmd,
                 stdout=logf,
                 stderr=subprocess.STDOUT,
                 env=dict(os.environ, PYTHONPATH="."),
+                pass_fds=() if self._lock_fd is None else (self._lock_fd,),
             )
+            self._note_lock_holder(f"{label!r} pid {proc.pid}")
+            proc.wait()
+        self._note_lock_holder()
         hours = (time.time() - t0) / 3600.0
         times = self.state.setdefault("phase_times", {}).setdefault(
             self.state["phase"], {}
@@ -1393,6 +1440,13 @@ class Program:
     # Main loop
     # ------------------------------------------------------------------ #
     def run(self) -> int:
+        self._acquire_lock()
+        try:
+            return self._run_program()
+        finally:
+            self._release_lock()
+
+    def _run_program(self) -> int:
         cfg = self.cfg
         if self.state["status"] == "finished":
             self.log("program already finished; see program/report.md")
