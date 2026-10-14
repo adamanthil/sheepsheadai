@@ -980,8 +980,11 @@ class Program:
         if not os.path.exists(os.path.join(corpus_dir, "manifest.json")) or (
             self._corpus_incomplete(corpus_dir, pi.games)
         ):
+            # --resume continues a partial corpus (an interrupted run) at the
+            # games its flushed shards lack, and starts fresh without one.
             cmd = self._py(
                 "sheepshead.training.distill_corpus",
+                "--resume",
                 "--ckpt",
                 theta_k,
                 "--out-dir",

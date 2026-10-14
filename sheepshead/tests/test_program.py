@@ -395,3 +395,22 @@ def test_an_orphaned_stage_keeps_the_lock(tmp_path, monkeypatch):
                 raise
             time.sleep(0.05)
     p2._release_lock()
+
+
+def test_a_partial_corpus_is_resumed_not_restarted(tmp_path, monkeypatch):
+    p = _program(tmp_path, monkeypatch)
+    corpus_dir = os.path.join(p.iter_dir(1), "corpus")
+    os.makedirs(corpus_dir)
+    with open(os.path.join(corpus_dir, "manifest.json"), "w") as f:
+        json.dump({"kept_games": p.cfg.policy_iteration.games - 1}, f)
+    cmds = []
+
+    def fake_run(label, cmd, log_name):
+        cmds.append(cmd)
+        raise rtp.StopAfter(label)
+
+    p._run = fake_run
+    with pytest.raises(rtp.StopAfter, match="iter 1 corpus"):
+        p.run_iteration(1, "theta.pt")
+    assert "sheepshead.training.distill_corpus" in cmds[0]
+    assert "--resume" in cmds[0]
