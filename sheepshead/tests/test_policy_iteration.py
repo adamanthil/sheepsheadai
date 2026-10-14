@@ -909,6 +909,8 @@ def test_model_push_diagnostics_value_the_target_split_honestly():
     )
     p = diag["push"]
     assert p["n"] == R and p["stein"]["full"] > 0.0
+    top = diag["push_by_extra_kl"][">=q99"]["n"]
+    assert sum(d["n"] for d in diag["push_top_extra_by_class"].values()) == top
     gain = p["model_gain"]
     assert abs(gain["mean"] - p["model_claim"]) < 4 * gain["mean"] / gain["z"]
 

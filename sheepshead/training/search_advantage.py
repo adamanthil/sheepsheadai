@@ -1315,11 +1315,14 @@ def model_push_diagnostics(
                        target.
           stein        the corrections subtracted from full and search:
                        how far those two reads lean on the noise model.
+          prior_top_lost  probability theta_k's top card loses under the
+                       target and under t_s alone.
           reversed     the target's top card is not t_s's;
                        ``reversed_vs_evidence`` additionally with the
                        label favouring t_s's card by > 2 SE.
-        Reported overall, per class, by theta_k's top-card probability and
-        by the model's extra movement KL(target || t_s).
+        Reported overall, per class, by theta_k's top-card probability, by
+        the model's extra movement KL(target || t_s), and per class within
+        the top extra-movement bin (``push_top_extra_by_class``).
 
     ``scale`` is the (R, 1) tilt temperature (``tilt_scale``) and
     ``noise_var`` the WORKING row label noise the blend used. Only rows
@@ -1380,6 +1383,8 @@ def model_push_diagnostics(
     p_top_prob = prior.gather(1, p_top[:, None])[:, 0]
     m_top = torch.where(legal, m, neg).argmax(dim=1)
     resid_top = (y - m).gather(1, p_top[:, None])[:, 0]
+    lost_full = p_top_prob - t_full.gather(1, p_top[:, None])[:, 0]
+    lost_s = p_top_prob - t_s.gather(1, p_top[:, None])[:, 0]
     over = m_top != p_top
     claimed = m.gather(1, m_top[:, None])[:, 0] - m.gather(1, p_top[:, None])[:, 0]
     shown = y.gather(1, m_top[:, None])[:, 0] - y.gather(1, p_top[:, None])[:, 0]
@@ -1403,6 +1408,10 @@ def model_push_diagnostics(
             },
             "reversed": float(rev[sel].float().mean()),
             "reversed_vs_evidence": float(rev_strong[sel].float().mean()),
+            "prior_top_lost": {
+                "target": float(lost_full[sel].mean()),
+                "search": float(lost_s[sel].mean()),
+            },
         }
 
     def support(sel: torch.Tensor) -> dict:
@@ -1454,6 +1463,19 @@ def model_push_diagnostics(
             entry = push((kl_extra >= lo) & (kl_extra < hi))
             entry["kl_extra_from"] = lo if math.isfinite(lo) else 0.0
             by_extra[lab] = entry
+    # The top bin by class: where the model's largest moves sit (§8.3).
+    tail_by_class = {}
+    if len(idx):
+        tail = kl_extra >= float(
+            kl_extra.quantile(
+                torch.tensor(EXTRA_KL_QUANTILES[-1], dtype=kl_extra.dtype)
+            )
+        )
+        for cls, js in sorted(classes.items()):
+            sel = torch.zeros_like(rev)
+            sel[torch.tensor(js)] = True
+            if bool((sel & tail).any()):
+                tail_by_class[cls] = push(sel & tail)
     gated = [
         c
         for c, d in per_class.items()
@@ -1468,6 +1490,7 @@ def model_push_diagnostics(
         "push": push(every),
         "push_by_prior_top": by_prior,
         "push_by_extra_kl": by_extra,
+        "push_top_extra_by_class": tail_by_class,
         "override_support": support(every),
         "override_support_prior_confident": support(confident),
         "top_card_residual_classes_abs_z_ge_3": sorted(gated),
