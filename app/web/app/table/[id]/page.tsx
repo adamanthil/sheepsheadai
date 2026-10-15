@@ -198,7 +198,7 @@ export default function TablePage() {
   );
   useEffect(() => {
     if (autoPlayId === undefined) return;
-    const timer = setTimeout(() => void playCard(autoPlayId), 1000);
+    const timer = setTimeout(() => void playCard(autoPlayId), 400);
     return () => clearTimeout(timer);
   }, [autoPlayId, playCard]);
 
