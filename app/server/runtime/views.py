@@ -225,6 +225,13 @@ def record_hand_result(table: Table) -> None:
             "sum": 0,
         }
         pub = table.to_public_dict()
+        game = table.game
+        # Who picked, so the scores card can mark the hands they were set.
+        entry["picker"] = (
+            None
+            if game.is_leaster or not game.picker
+            else pub["seatOccupants"][game.picker]
+        )
         for i in range(1, 6):
             score = int(table.game.players[i - 1].get_score()) * multiplier
             entry["bySeat"][i] = {

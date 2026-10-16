@@ -111,3 +111,34 @@ def test_record_hand_result_scales_scores_by_the_stake():
         raw = int(game.players[seat - 1].get_score())
         assert entry["bySeat"][seat]["score"] == raw * 4
         assert table.running_scores[f"human-{seat}"] == raw * 4
+
+
+def _play_out(game: Game) -> None:
+    while not game.is_done():
+        for player in game.players:
+            valid = sorted(player.get_valid_action_ids())
+            if valid:
+                assert player.act(valid[0])
+
+
+def test_record_hand_result_names_the_picker():
+    table = _passed_out_table("doublers")
+    game = Game()
+    table.game = game
+    assert game.players[0].act(ACTION_IDS["PICK"])
+    _play_out(game)
+
+    record_hand_result(table)
+
+    assert table.results_history[-1]["picker"] == "human-1"
+
+
+def test_record_hand_result_has_no_picker_on_a_leaster():
+    table = _passed_out_table("leasters")
+    game = table.game
+    assert game is not None and game.is_leaster
+    _play_out(game)
+
+    record_hand_result(table)
+
+    assert table.results_history[-1]["picker"] is None
