@@ -30,6 +30,7 @@ export default function ScoresOverlay({
     multiplier: h.multiplier || 1,
     bySeat: h.bySeat || {},
     sum: h.sum || 0,
+    picker: h.picker ?? null,
   }));
 
   const initialOrder: string[] = (table?.initialSeatOrder || []).map((x) =>
@@ -63,6 +64,10 @@ export default function ScoresOverlay({
     }
     return 0;
   };
+
+  // The picking team lost: the picker's score is negative.
+  const isSet = (row: (typeof rows)[number]) =>
+    row.picker !== null && scoreFor(row, row.picker) < 0;
 
   const totalById: Record<string, number> = {};
   columns.forEach((c) => {
@@ -126,7 +131,7 @@ export default function ScoresOverlay({
               </thead>
               <tbody>
                 {rows.map((r, idx) => (
-                  <tr key={idx}>
+                  <tr key={idx} className={isSet(r) ? styles.set : undefined}>
                     <td className={styles.tdHand}>
                       {r.hand}
                       {r.multiplier > 1 && (

@@ -111,6 +111,11 @@
   font-variant-numeric: tabular-nums;
   color: var(--ink-soft);
 }
+/* A hand the picking team lost reads in the red suit colour, all but its
+   number, matching a losing hand in the account history. */
+.set .tdRight {
+  color: var(--card-red);
+}
 .tdTotalLabel {
   font-family: var(--font-ui);
   font-weight: 600;

@@ -25,6 +25,8 @@ export type HandResult = {
   multiplier?: number;
   bySeat?: Record<string, { id: string; score: number }>;
   sum?: number;
+  /** The picker's occupant id; null on a leaster. */
+  picker?: string | null;
 };
 
 /** A single chat log entry, as sent over the table WebSocket's
