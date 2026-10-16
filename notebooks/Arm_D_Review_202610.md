@@ -1522,10 +1522,12 @@ improving its correlation (0.41 → 0.48). Not carried into the ablation.
   - **Primary 1:** incidence on the 4,000-seed scan, significantly
     below 30.9% (two-proportion test); report the clear-blunder rate
     and the schmear cell alongside.
-  - **Primary 2:** EV equivalence by TOST on a paired h2h vs
-    `distill_epoch10`, margin set by the operator (for scale: one
-    cert-sized h2h has SE ≈ 0.0027, so ±0.005 is just achievable if
-    the true difference is near zero).
+  - **Primary 2:** EV equivalence by TOST on the paired duplicate h2h
+    vs `distill_epoch10` (8,000 deals/mode). **Margin ±0.0075 score
+    per hand** (operator, 2026-10-16, set before the h2h was read).
+    Pass if the 90% CI of the edge lies inside (−0.0075, +0.0075),
+    i.e. both one-sided tests reject at α = 0.05. With the expected SE
+    ≈ 0.0027, that holds for any point estimate within about ±0.003.
   - **Secondary:** the §8 read; the t0 trump-lead and called-suit-lead
     probes.
   - **Expectation:** a modest incidence drop, not a collapse (§9.5
