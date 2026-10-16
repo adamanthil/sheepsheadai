@@ -1519,9 +1519,27 @@ improving its correlation (0.41 → 0.48). Not carried into the ablation.
   weighting is not included (§9.7). The iteration-3 bidding phase is
   paused for it (SIGSTOP, 16:48, bidding episode ~55,700; PIDs in
   `runs/202609_recall_rc/paused_pids.txt`). Bands:
-  - **Primary 1:** incidence on the 4,000-seed scan, significantly
-    below 30.9% (two-proportion test); report the clear-blunder rate
-    and the schmear cell alongside.
+  - **Primary 1 (amended 2026-10-16, before any ablation result was
+    read): paired frozen-state read.** Each of the 359 §9.2 decision
+    nodes is replayed on its identical deterministic trajectory (the
+    iteration-3 candidate's /analyze playout). Each candidate rebuilds
+    its own recurrent memory over the same prefix and reports its
+    policy at the node. Statistic: the mean per-node difference in
+    over-trump probability (sum over over-trumping cards), ablation
+    minus `distill_epoch10`. Pass if it is negative with a one-sided
+    95% bootstrap CI (resampled by seed) excluding zero. Reported
+    alongside: argmax over-trump rate per candidate on the same nodes
+    (McNemar), and the clear-blunder (has a fail, not AD/10D) and
+    schmear subsets.
+    *Why amended:* the original criterion, the fresh-deal scan rate
+    significantly below 30.9% (two-proportion test), needs a drop of
+    ~5.6 points at n ≈ 360 per arm (new rate ≲ 25.3%). §9.5/§9.7 predict
+    a target shift of only ~0.02 in the cell, so a realistic one-step
+    drop is a few points, and that test would fail for lack of power,
+    not of effect. Pairing on identical states removes the deal
+    variance.
+  - **Secondary: fresh-deal incidence** on the 4,000-seed scan vs
+    30.9% ± 2.4 (two-proportion), reported with its CI; not a gate.
   - **Primary 2:** EV equivalence by TOST on the paired duplicate h2h
     vs `distill_epoch10` (8,000 deals/mode). **Margin ±0.0075 score
     per hand** (operator, 2026-10-16, set before the h2h was read).
