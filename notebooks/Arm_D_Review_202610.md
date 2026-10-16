@@ -1123,3 +1123,437 @@ for g, a in sorted(agg.items()):
 - **§8.1's raw-noise first pass.** Pass `table.noise_var_raw` as
   `noise_var` to reproduce it. It is kept only as the record of the
   mistake.
+
+## 9. Fifth review (2026-10-16) — a cell where the model's push is wrong: the called-suit over-trump
+
+Status: **IN PROGRESS (2026-10-16): one-sided head variance shipped as
+an option (`6557172`, `f7a1004`); its iteration-3 ablation is running
+(§9.8).** The operator played
+iteration 3's candidate (`pi/iter3/distill_epoch10.pt`) and saw a
+defender over-trump a fellow defender who had already trumped the
+called suit. §8 measured the model's push in aggregate and found it
+helps almost everywhere. This section is the counterexample: a cell
+where the model term is wrong-signed and wins the blend. It also tests
+general fixes for that, with no game-specific branching in the recipe
+(operator constraint).
+
+Units: Q is score / RETURN_SCALE (12); every "score" figure is game
+score per decision (Q × 12). Scripts: `runs/202609_recall_rc/overtrump_probe/`
+(§9.8).
+
+### 9.1 The spot and the rule that makes it a blunder
+
+Called-ace mode. When the called suit is led, the picker must follow
+suit (it holds a called-suit card, or the under card on an under-call),
+and the secret partner must play the called ace (`game.py` ~1255–1280).
+So once a defender trumps a called-suit lead, **only another defender
+can beat it**. Seat order relative to the picker gives no reason to
+"protect" the trick. A following defender who is void in the suit
+should throw points (schmear) or a low card, not spend a trump to take
+the trick from a teammate.
+
+**Decision definition** (used for every rate below): the called suit
+was led; a defender is currently winning it with a trump; the defender
+to act is void in the called suit; it holds at least one trump that
+beats the winner AND at least one other legal play (a fail, or a lower
+trump).
+
+### 9.2 Incidence
+
+**Iteration 3 candidate** (`scan_overtrump.py`: deterministic /analyze
+playouts, called-ace mode, seeds 0–3999 = 3,022 standard called-ace
+hands): 359 decisions in 344 tricks (330 tricks with one qualifying
+defender, 13 with two, 1 with three), about 12 per 100 hands.
+
+| | n | over-trumped |
+|---|---|---|
+| all decisions | 359 | **30.9% ± 2.4** (mean p(over) 0.30) |
+| tricks with ≥ 1 over-trump | 344 | 31.4% |
+| has a fail to play instead | 336 | 28.9% |
+| … and the over-trump is not AD/10D (§9.3: those break even) | 336 | **22.6%** (clear blunders) |
+| holding a 10/A fail (schmear) | 176 | 29.0% |
+| 10D winning, holding a fail | 52 | 34.6% ± 6.6 |
+| only trumps in hand (over- vs under-trump) | 23 | 60.9% |
+
+By trick: t0 102 decisions (23% over-trumped), t1 65 (37%), t2 82
+(33%), t3 62 (35%), t4 48 (31%). About 3.7 over-trumps per 100 standard
+called-ace hands, about 2.5 of them clear blunders.
+
+By what is winning: diamond 38%, jack 22%, queen 15%. By players still
+to act after the decider: 0 → 22%, 1 → 33%, 2 → 44%, although nobody
+behind can take the trick (§9.4).
+
+**Corpus policies** (θ₀, θ₁, θ₂ act-time priors in the iteration 1–3
+targeted corpora, `extract.py`, 961 decisions): argmax over-trump 42% /
+37% / 37%. These are corpus nodes (committee-acted games), not fresh
+deterministic deals, so they are only roughly comparable with the 30.9%.
+
+Example seeds (/analyze, Called-Ace, Deterministic, iteration 3
+checkpoint loaded): 1 step 9, 441 step 15, 639 step 28, 759 step 14,
+1613 step 28 (10D winning, over-trumped with a jack holding 10♥). Full
+list: `scan_iter3.jsonl`.
+
+### 9.3 Value
+
+**Search verdict** on the corpus decisions: policy-preferred
+over-trump minus policy-preferred other play, from the corpus committee
+labels. **Every follow node in this corpus is searched at 256
+iterations × 3 replicates** (`--iters 256 --iters-schedule
+t0-lead:1024,t1-lead:512`). §9.5 re-searches the iteration-3 nodes at
+512.
+
+| situation (corpus, θ₀–θ₂) | n | over − alt | search's top card is an over-trump |
+|---|---|---|---|
+| all decisions | 940 | −0.52 ± 0.02 | 16% |
+| where the policy over-trumps | 364 | −0.13 ± 0.03 | 27% |
+| … holding a schmear, not AD/10D, picker already played | 74 | **−0.50 ± 0.06** (30 nodes z < −2, none z > 2) | 7% |
+| … no schmear, not AD/10D, picker already played | 62 | −0.20 ± 0.05 | 21% |
+| … over-trump card is AD or 10D | 79 | +0.06 ± 0.06 (break-even: the trump carries 10–11 points itself) | 42% |
+| … picker still to play | 135 | −0.02 ± 0.04 | 32% |
+| 10D winning, Q/J over-trump, holds a fail (operator's case) | 116 | −0.53 ± 0.06 | 10% |
+
+The "picker still to play" cell is within noise of zero. My first
+reading called it a legitimate exception ("protect against the picker
+over-trumping"). That is wrong under §9.1's rule: nothing is
+protected. The measured near-tie there has no protection mechanism
+behind it, and every cell is negative or within noise of zero.
+
+**Win probability.** Absolute search Q is optimistic against realized
+outcomes. On 25,685 called-ace defender follows (iteration-3 corpus, Q
+of the action taken vs final score), the bias is +1.04 score at t0,
++0.97 t1, +0.79 t2, +0.61 t3, +0.33 t4. Scoring is double on the bump:
+a defender win pays +2/+4/+6 and a loss costs −1/−2/−3, so Q = 0 is
+about a ⅓ win chance, not ½. Calibrating Q → P(defenders win) by
+binning (`absolute.py`): Q 0 → 0.19, +1 → 0.36, +1.5 → 0.50, +2 → 0.82.
+
+| where the policy over-trumps | n | P(win) alternative → over-trump | Δ | sign flips win → loss |
+|---|---|---|---|---|
+| all | 364 | 0.54 → 0.51 | −3 pts | 2% |
+| holding a schmear (not AD/10D) | 142 | 0.56 → 0.49 | −8 pts | 3% |
+| operator's case (10D winning, Q/J over, has fail) | 53 | 0.56 → 0.48 | −7 pts | 6% |
+
+Defenders are usually ahead when this happens (88% of nodes have a
+positive alternative Q), so the over-trump mostly trims the margin
+(the schmear points, the +4 at 90 points). In the operator's case it
+costs the hand about 7 times in 100. Realized outcomes (confounded,
+sanity only): defenders won 47% of hands where the corpus over-trump
+was played vs 62% where it was not; Q-implied 0.51 vs 0.63.
+
+### 9.4 Why distillation does not remove it
+
+**Where search is confident, it works.** At the 444 corpus decisions
+where search says over-trumping is worse at z < −2, the model agrees
+86% of the time. θ_k already rarely over-trumps there (0.18), and the
+target cuts that to 0.08.
+
+**Where the policy over-trumps, the model is wrong-signed.** Model
++0.15 vs search −0.13 (schmear cell: model +0.09 vs search −0.50), and
+γ ≈ 0.4 gives the model most of the blend. Target over-trump mass
+barely moves: prior 0.37 → target 0.31 averaged over iterations 1–3.
+
+**The class variance hides the cell's error.** Fay-Herriot terms on
+iteration 3 (working noise, i.e. after `apply_noise_model`; `variance.py`):
+
+| set | n | E[r²] | E[noise] | σ_u² (E[r²] − noise) | class σ_u² | γ used | γ with the cell's σ_u² |
+|---|---|---|---|---|---|---|---|
+| std t0–t4 defender follow | ~11k each | 2.6–2.8e-4 | 2.1e-5 – 2.0e-4 | 7.8e-5 – 2.5e-4 | 5.1e-5 – 2.1e-4 | 0.21–0.91 | — |
+| over-trump cell | 303 | 7.8e-4 | 1.7e-4 | **6.1e-4** | 1.07e-4 | **0.41** | **0.79** |
+
+The model's error in the cell is about 5.7× its class's. The class
+estimate dilutes it across ~11,000 easy follows.
+
+*Correction.* My first pass of this table read `noise_var` straight
+from `row_table.pt`, which is the RAW corpus noise. That is §8.1's
+mistake again; §8.8 records it. It gave γ 0.28 → 0.64. The values above
+apply the noise model first and match the stored `pi_gamma` (0.41).
+
+**Bleed from a look-alike.** The same decision on a non-called fail
+lead (picker can trump if void, partner known):
+
+| lead | picker behind me | policy covers | search: cover − alt | model |
+|---|---|---|---|---|
+| other fail suit | yes | 75% | −0.05 ± 0.06 (tie) | −0.04 |
+| other fail suit | no | 49% | −0.26 | −0.10 |
+| **called suit** | **yes** | **62%** | **−0.14 ± 0.04** | **+0.01** |
+| called suit | no | 39% | −0.62 | −0.34 |
+
+(diamond winning, Q/J over-trump; corpus θ₀–θ₂.) Covering in the
+look-alike is a legitimate tie. The policy carries the same "picker
+behind me" response into the called-suit lead, where it no longer
+applies. The model reads the called-suit cell at the look-alike's
+value. Bleed explains the picker-behind cell but not the
+picker-already-played cell (39% cover at −0.62). The broader source
+there is plausibly "a teammate's low trump is usually not safe" (unknown
+partner, JD mode); that hypothesis is not measured.
+
+**Not a representation gap.** Linear probes on the frozen θ₂ state
+features the model reads (`probe_features.py`; 38,343 called-ace
+follows, held out by game):
+
+| label | rows | base rate | held-out AUC |
+|---|---|---|---|
+| called suit was led | defender follows | 0.17 | 0.95 |
+| trick secured (called suit led, defender winning with a trump) | defender follows | 0.03 | 0.99 |
+| secured, given the called suit was led | defender follows | 0.18 | 1.00 |
+
+An aux head that classifies the led suit would add information the
+trunk already encodes linearly. This matches CE_Teacher's earlier
+probe (called-suit membership AUC 0.94), where the lever was the
+bilinear state × card term, not more information.
+
+### 9.5 More search budget is not the lever
+
+The 359 iteration-3 decisions were regenerated as corpus rows by the
+real `play_corpus_game`, with three patches: the deal is the /analyze
+seed's, every seat's action is forced to the logged one, and search
+fires only at the targets. Each was searched at 256 and at 512
+iterations (3 replicates, same det_rng; θ₃ = `distill_epoch10` acting
+and searching; `budget_corpus.py`). They were then targeted with
+iteration 3's own pieces (θ₂ encoding, iteration 3's AdvantageModel,
+class σ_u², noise pools, η; `budget_targets.py`). At 256, 9 nodes got no
+usable committee summary (no target at all); at 512, 1 did. 350 are
+compared.
+
+| | 256 | 512 |
+|---|---|---|
+| search verdict, over-trump − alternative | −0.50 ± 0.04 | −0.52 ± 0.04 (corr 0.91) |
+| replicate variance of centered Q | — | ×0.85 |
+| row noise (working) | 1.64e-4 | 1.51e-4 (these nodes only) / 1.37e-4 (whole class) |
+
+| target scenario | γ | over-trump mass, θ₃ prior → target |
+|---|---|---|
+| 256, as configured | 0.44 | 0.303 → 0.269 |
+| 512 at these nodes only | 0.46 | 0.303 → 0.273 |
+| 512 for the whole class | 0.48 | 0.303 → 0.272 |
+| 256 + the cell's own σ_u² | 0.80 | 0.303 → 0.247 |
+| 512 + the cell's own σ_u² | 0.83 | 0.303 → 0.248 |
+| search only (γ = 1) | 1.00 | 0.303 → 0.236 |
+
+- 256 is not biased here: 512 gives the same verdict.
+- Doubling iterations cuts replicate variance by only 15%. Most of the
+  spread between replicates does not shrink with iterations; presumably
+  it is the sampled hidden-card worlds. γ moves 0.44 → 0.48 and the
+  target does not move.
+- The model-error variance is the lever: the cell's own σ_u² recovers
+  most of the gap to the search-only target.
+- **One iteration has a ceiling regardless.** Even search-only moves
+  over-trump mass only 0.30 → 0.24. Search still ranks an over-trump
+  first on ~23% of these nodes, η bounds the step, and distillation
+  realizes only part of a target's shift on rare rows (CE_Teacher's
+  "projection" finding). A fix lowers incidence over iterations, not
+  in one.
+
+### 9.6 Can the model learn it? Oversampling (diagnostic, not a recipe)
+
+Iteration 3's cross-fit reproduced exactly (θ₂ features, centered
+noise, 5 game folds, seed 0, 22 fixed epochs, adapter + heteroscedastic
++ bilinear), with the cell's training rows repeated k times
+(`oversample_fit.py`). k = 1 reproduces the stage's out-of-fold wMSE
+(4.3615e-04). Model (out-of-fold) vs 256-iteration search, over-trump −
+alternative:
+
+| | k = 1 | k = 5 | k = 20 | search |
+|---|---|---|---|---|
+| cell (303) | −0.32 | −0.43 | −0.50 | −0.55 |
+| … where the policy over-trumps (109) | +0.13 | +0.05 | −0.03 | −0.17 |
+| … holding a schmear (158) | −0.41 | −0.50 | −0.59 | −0.67 |
+| control: other suit, picker behind (34) | −0.17 | −0.18 | −0.23 | −0.22 |
+| control: other suit, picker played (62) | −0.29 | −0.39 | −0.36 | −0.42 |
+| global out-of-fold wMSE | 4.3615e-04 | 4.3630e-04 | 4.3643e-04 | |
+
+The model can learn it given more of its rows, at no measurable global
+cost, and the legitimate look-alike is not over-corrected. What it
+learns is mostly a cell-wide offset: correlation with search in the
+policy-over-trump subset stays 0.21 → 0.26, partly because 256-iteration
+labels are weakest exactly there. Note: the corpus already searches
+every node (`p_base 1.0`; 133,368/133,368 rows have Q), so "search
+these nodes more often" is not available. More rows come only from
+more games or from weighting in the fit.
+
+### 9.7 General fixes: blend variance and fit weighting
+
+The heteroscedastic NLL head already finds the cell (out-of-fold, cell
+median vs class median): t0 16×, t1 17×, t2 7×, t3 6×, t4 6×. Under the
+NLL that inflated variance *down-weights* the cell's squared error, so
+the fit learns "uncertain here" instead of fixing the mean.
+
+Tested on iteration 3's full table (133,368 rows; baseline reproduces
+the stored `pi_gamma` exactly; `head_variance_test.py`,
+`variance_regression_test.py`). Every variant is one-sided:
+σ_u²(row) = max(estimate, class value). The estimate may only raise the
+model's stated error, never make the model more confident than its
+class. That was arm 4's failure mode (§CE_Teacher, per-node head under
+the posterior-SE temperature).
+
+| variant | cell σ_u² (measured 6.1e-4) | cell γ | cell over-trump target mass (prior 0.355) | table γ | rows γ +0.2 | top card changed | §8 target value (all) |
+|---|---|---|---|---|---|---|---|
+| class (production) | 1.07e-4 | 0.41 | 0.290 | 0.550 | — | — | +0.0149 (z 32) |
+| one-sided head | 2.9e-4 | 0.56 | 0.274 | 0.587 | 6.9% | 0.56% | +0.0151 (z 32) |
+| one-sided regression, raw | 9.5e-4 | 0.67 | 0.269 | 0.614 | 12.6% | 0.90% | +0.0134 (z 28) |
+| one-sided regression, isotonic | 7.2e-4 | 0.67 | 0.269 | 0.617 | 12.8% | 0.99% | +0.0140 (z 29) |
+
+The regression is gradient-boosted trees on the frozen θ₂ state
+features plus two generic row statistics (legal-set size, prior max),
+with no class and no game-specific input. Its target is y = mean
+squared out-of-fold residual − working noise. It is cross-fitted over
+the same 5 game folds with a 400-row minimum leaf (the shrinkage). Raw,
+it over-predicts deciles 8–9 by 1.4–1.6×. Cross-fitted isotonic
+recalibration brings every decile within ~10–20% of measured.
+
+Groups that move in the §8 target value (game points per decision):
+
+| group | n | class | head | regression | isotonic |
+|---|---|---|---|---|---|
+| std picker follow | 15,010 | +0.0340 | +0.0332 | +0.0250 | +0.0293 |
+| std picker lead | 11,572 | +0.0198 | +0.0199 | +0.0150 | +0.0173 |
+| alone picker lead | 2,854 | −0.0122 | −0.0108 | −0.0179 | −0.0152 |
+| std defender follow | 55,254 | +0.0156 | +0.0163 | +0.0161 | +0.0159 |
+| std defender lead t0 | 3,338 | −0.0178 | −0.0187 | −0.0180 | −0.0192 |
+
+Readings:
+
+- **The regression finds the cell with no hint**, and calibrated it
+  matches the measured error. It pushes γ highest there.
+- **Its table cost sits where §8.5 says this read is unresolved.** The
+  regressions lose 0.0009–0.0015 table-wide, almost all at picker rows.
+  §8.5 found the class-pooled working noise likely *overstates* picker
+  noise. That inflates the Stein correction, which penalizes
+  search-heavier targets in exactly those rows. So the picker "cost"
+  is not established as real harm. It is not established as artifact
+  either.
+- **The head is neutral table-wide and gets ~75% of the regression's
+  cell movement** (0.290 → 0.274 vs → 0.269). γ saturates in σ_u², so
+  most of the gain comes early.
+- The §8 read values targets by the labels that more search weight
+  moves toward, so here it can show harm, not prove improvement.
+
+**Proposed end state** (operator discussion, 2026-10-16). Classes
+currently do several jobs: model-error σ_u² for γ and its shrinkage,
+the search-noise pool, Fay-Herriot fit weights, and reporting. Split
+them:
+
+- **Strata = design factors only:** regime (std/alone/leaster) ×
+  search-budget tier (× bidding head). These are exact, free causes of
+  variance. Search noise must never pool across budgets. They also
+  serve as the floor and shrinkage parent for everything learned. Trick
+  × role mattered partly as a budget proxy; with budget explicit it
+  becomes an ordinary feature.
+- **Learned, cross-fitted variance models within strata** for σ_u²
+  (and potentially search noise). Fit on out-of-fold r² minus noise,
+  with a minimum-leaf or ridge shrinkage toward the stratum, recalibrated
+  (isotonic), and used one-sided against the stratum floor. A separate
+  second-stage model is preferred to the joint NLL head, which is
+  trained to excuse its own mean errors. The floor guards against blind
+  spots a self-assessed error model cannot see.
+- **Residual-driven fit weighting.** Upweight rows whose learned excess
+  error is high, applied to the mean term so the variance head cannot
+  absorb it. This is what fixes the model rather than routing around
+  it. It is §9.6's oversampling generalized, and close to group DRO /
+  JTT. Pooled per region, never per row (row residuals are mostly
+  search noise). **The reference must be the error expected for that
+  kind of row** (class-like), not the coarse stratum. The Fay-Herriot
+  fit weights exist to stop high-variance picker cells (σ_u² ~2e-3)
+  from dominating the low-variance lead cells (~1e-4) where conventions
+  live (`fit_advantage_model`, `extra_var`). Weighting by absolute
+  excess error would undo that. The diffuse relative form below did
+  not work either; a targeted form (thresholded) is untested.
+- **Existing classes stay as reporting labels only,** so per-group
+  trends and pre-registered gates stay comparable across iterations.
+
+Open item before the regression variants are usable: a per-group
+noise-calibration check from paired replicates (corpus telemetry
+`top_pair` / `pair_diffs`). It settles whether the picker cost is real
+and whether the noise model also needs a learned, budget-stratified
+form.
+
+**Convention targets under the variants** (iteration 3, t0/t1 defender
+leads): called-suit target mass 0.991 (t0) / 0.985–0.986 (t1) and
+defender trump-lead mass 0.0173–0.0174 (t0) / 0.0533–0.0540 (t1) under
+class, head and isotonic alike. γ at t0 leads is 0.375 / 0.402 / 0.433.
+The installed conventions' targets do not move. Picker groups: γ rises
+by 0.03–0.06, and mean target KL vs production is 0.002–0.013.
+Watch item: where a convention is *not yet* installed and the model is
+amplifying it against noisy search (§7.5), raising γ weakens that
+push.
+
+**Relative residual weighting, tested and rejected in this form**
+(`oversample_crossfit reweight`). The weight per training row is
+w = clip(σ̂²_row / σ²_class, 1, cap), with σ̂² from the isotonic
+variance regression. It is leakage-free: for each outer fold, the
+regression and its calibration are refit on the training folds only.
+Weights act by stochastic duplication, with epochs scaled to the
+baseline's optimizer steps.
+
+| | baseline | cap 4 | cap 10 | oversample k = 20 (§9.6) | search |
+|---|---|---|---|---|---|
+| global out-of-fold wMSE | 4.3615e-04 | 4.3570e-04 | 4.4552e-04 (+2.1%) | 4.3643e-04 | |
+| over-trump cell | −0.32 | −0.42 | −0.39 | −0.50 | −0.55 |
+| … where the policy over-trumps | +0.13 | +0.09 | +0.05 | −0.03 | −0.17 |
+| t0 defender trump lead | −0.48 | −0.39 | −0.38 | | −0.45 |
+| t0 called-suit lead | +0.31 | +0.29 | +0.32 | | +0.39 |
+| control: other suit, picker behind | −0.17 | −0.24 | −0.19 | −0.23 | −0.22 |
+
+About 47% of rows get w > 1 (the upper half of each class's error
+distribution), so the weighting is diffuse. The cell gets about half the
+targeted oversampling's correction, and its hard subset stays
+wrong-signed. Cap 10 worsens most follow classes by 5–12%. Cap 4 is
+neutral globally but reshuffles classes: t0 defender lead −11% wMSE,
+follows +1–4%. It also moves the t0 trump-lead *mean* off search, while
+improving its correlation (0.41 → 0.48). Not carried into the ablation.
+
+### 9.8 Status and next steps
+
+- **Shipped (operator, 2026-10-16):** `policy_iteration
+  --model-variance {class, head, one-sided-head}` (`6557172`; default
+  `class` = the recipe through arm V; non-class modes require the
+  cross-fit's out-of-fold head) and the orchestrator knob
+  `policy_iteration.model_variance` (`f7a1004`, unset by default).
+- **Ablation arm, launched 2026-10-16 16:56**
+  (`runs/202609_recall_rc/iter3_arm_onesided.sh`, output
+  `pi/iter3_ablations/onesided_head/`). It re-targets iteration 3 with
+  `--model-variance one-sided-head` on iteration 3's own fit artifacts
+  (copied, not refit), then re-distills from θ₂ with the orchestrator's
+  stage flags and the same seed, so the targets are the only difference.
+  Then the cert vs θ₂, a paired duplicate h2h vs `distill_epoch10`
+  (8,000 deals/mode), and the 4,000-seed incidence scan. Residual
+  weighting is not included (§9.7). The iteration-3 bidding phase is
+  paused for it (SIGSTOP, 16:48, bidding episode ~55,700; PIDs in
+  `runs/202609_recall_rc/paused_pids.txt`). Bands:
+  - **Primary 1:** incidence on the 4,000-seed scan, significantly
+    below 30.9% (two-proportion test); report the clear-blunder rate
+    and the schmear cell alongside.
+  - **Primary 2:** EV equivalence by TOST on a paired h2h vs
+    `distill_epoch10`, margin set by the operator (for scale: one
+    cert-sized h2h has SE ≈ 0.0027, so ±0.005 is just achievable if
+    the true difference is near zero).
+  - **Secondary:** the §8 read; the t0 trump-lead and called-suit-lead
+    probes.
+  - **Expectation:** a modest incidence drop, not a collapse (§9.5
+    ceiling).
+- The iteration-3 bidding phase writes no checkpoints. If the ablation
+  needs exclusive CPU, pause the orchestrator tree (SIGSTOP / SIGCONT on
+  resolved PIDs) rather than kill it, and only on operator command.
+
+**Reproducing §9.** Every table comes from a committed module, run as
+`uv run python -m sheepshead.analysis.<module> …` from the repo root.
+P = `runs/202609_recall_rc/overtrump_probe` (where the cached
+artifacts live; the session's first-pass scripts are kept there too,
+but nothing needs them).
+
+| table | commands |
+|---|---|
+| §9.2 incidence | `scan_called_suit_overtrumps --model runs/202609_recall_rc/pi/iter3/distill_epoch10.pt --num-seeds 4000 --out P/scan_iter3.jsonl`; then `scan_called_suit_overtrumps --summary P/scan_iter3.jsonl` |
+| §9.2 corpus rates, §9.3 value | `called_suit_overtrump extract --out P/rows.pkl`; then `called_suit_overtrump value --rows P/rows.pkl` |
+| §9.3 win probability | `q_outcome_calibration extract --out P/calib.pkl`; then `q_outcome_calibration report --calib P/calib.pkl --rows P/rows.pkl` |
+| §9.4 target movement | `called_suit_overtrump targets --rows P/rows.pkl` |
+| §9.4 Fay-Herriot terms | `blend_variance_probe fh-terms --rows P/rows.pkl` |
+| §9.4 look-alike | `called_suit_overtrump extract --all-fail --out P/rows_all_fail.pkl`; then `called_suit_overtrump bleed --rows P/rows_all_fail.pkl` |
+| §9.4 probes | `feature_probes --iter-dir runs/202609_recall_rc/pi/iter3` |
+| §9.5 | `budget_rows generate --scan P/scan_iter3.jsonl --ckpt runs/202609_recall_rc/pi/iter3/distill_epoch10.pt --budgets 256 512 --out-dir P`; then `budget_rows targets --scan P/scan_iter3.jsonl --rows-dir P --budgets 256 512` |
+| §9.6 | `oversample_crossfit oversample --k 1 5 20 --rows P/rows.pkl --controls P/rows_all_fail.pkl --cache-dir P` |
+| §9.7 variants | `blend_variance_probe variants --rows P/rows.pkl --regression-cache P/variance_regression_oof.pt --json P/variance_regression_diag.json` |
+| §9.7 conventions | `blend_variance_probe conventions --regression-cache P/variance_regression_oof.pt` |
+| §9.7 relative weighting | `oversample_crossfit reweight --caps 4 10 --rows P/rows.pkl --controls P/rows_all_fail.pkl --cache-dir P` |
+
+The fits and regressions reuse cached results in P when present; delete
+them to recompute.
