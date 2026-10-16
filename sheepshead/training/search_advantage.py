@@ -1564,6 +1564,37 @@ def format_model_diagnostics(diag: dict, points: float) -> list[str]:
     return lines
 
 
+# Which model-error variance sigma_u^2 the blend uses per row:
+#   class           the row's class value (the recipe through arm V)
+#   head            the heteroscedastic head's per-row value (arm 4, two-
+#                   sided: it can make the model MORE confident than its
+#                   class, which over-sharpened targets under the
+#                   posterior-SE temperature)
+#   one-sided-head  max(head, class): the head may only RAISE the model's
+#                   stated error, handing weight to search where the model
+#                   knows it is unreliable, never below the class value
+#                   (Arm_D_Review §9.7)
+MODEL_VARIANCES = ("class", "head", "one-sided-head")
+
+
+def row_model_variance(
+    mode: str, su2_class: torch.Tensor, su2_head: torch.Tensor | None
+) -> torch.Tensor:
+    """Per-row sigma_u^2 for the blend under ``mode`` (MODEL_VARIANCES).
+    ``su2_class`` is the class value per row; ``su2_head`` the head's per-row
+    value (None for a homoscedastic model, an error unless mode is class)."""
+    if mode not in MODEL_VARIANCES:
+        raise ValueError(
+            f"model variance must be one of {MODEL_VARIANCES}, got {mode!r}"
+        )
+    if mode == "class":
+        return su2_class
+    if su2_head is None:
+        raise ValueError(f"model variance {mode!r} needs a heteroscedastic head")
+    head = su2_head.to(su2_class.dtype)
+    return head if mode == "head" else torch.maximum(head, su2_class)
+
+
 def targets_for_table(
     model: AdvantageModel,
     table: RowTable,
@@ -1572,15 +1603,15 @@ def targets_for_table(
     kappa: float,
     tilt_max: float,
     batch_rows: int = 2048,
-    node_variance: bool = False,
+    model_variance: str = "class",
     oof: "tuple[torch.Tensor, torch.Tensor | None] | None" = None,
     eta: float | None = None,
 ) -> dict:
     """Stage 1b + 2 over every targetable row. Returns dense tensors
-    (targets, z, gamma, v_post, a_hat, a_model) aligned with ``table``.
-    ``sigma_u2``: one value, or a per-row tensor aligned with ``table``;
-    ``node_variance`` uses the heteroscedastic head's per-row sigma_u^2
-    instead (ignored for a homoscedastic model); ``oof`` supplies
+    (targets, z, gamma, v_post, a_hat, a_model, sigma_u2) aligned with
+    ``table``. ``sigma_u2``: the class value, one number or a per-row
+    tensor aligned with ``table``; ``model_variance`` (MODEL_VARIANCES)
+    says how the head's per-row variance enters; ``oof`` supplies
     out-of-fold a_model / per-row sigma_u^2 in place of the model's;
     ``eta`` is the global value-unit tilt temperature (build_tilt_target)."""
     su2_rows = (
@@ -1589,7 +1620,7 @@ def targets_for_table(
         else torch.full((len(table),), float(sigma_u2))
     )
     model.eval()
-    out_t, out_z, out_g, out_v, out_a, out_m = [], [], [], [], [], []
+    out_t, out_z, out_g, out_v, out_a, out_m, out_s = [], [], [], [], [], [], []
     with torch.no_grad():
         for b in _batches(
             torch.arange(len(table)), batch_rows, False, random.Random(0)
@@ -1600,9 +1631,7 @@ def targets_for_table(
                 su2_head = oof[1][b] if oof[1] is not None else None
             else:
                 a_model, su2_head = predict_rows(model, table, b)
-            su2_b = (
-                su2_head if (su2_head is not None and node_variance) else su2_rows[b]
-            )
+            su2_b = row_model_variance(model_variance, su2_rows[b], su2_head)
             a_hat, v_post, gamma = blend_advantages(
                 table.advantage[b],
                 a_model,
@@ -1625,6 +1654,7 @@ def targets_for_table(
             out_v.append(v_post)
             out_a.append(a_hat)
             out_m.append(a_model)
+            out_s.append(su2_b)
     return {
         "target": torch.cat(out_t),
         "z": torch.cat(out_z),
@@ -1632,4 +1662,5 @@ def targets_for_table(
         "v_post": torch.cat(out_v),
         "a_hat": torch.cat(out_a),
         "a_model": torch.cat(out_m),
+        "sigma_u2": torch.cat(out_s),
     }

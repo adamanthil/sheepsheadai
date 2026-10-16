@@ -69,6 +69,7 @@ from sheepshead.training.reward_shaping import RETURN_SCALE
 from sheepshead.training.search_advantage import (
     CAPACITIES,
     CE_WEIGHTS,
+    MODEL_VARIANCES,
     NOISE_MODELS,
     NOISE_POOLS,
     TILT_SCALES,
@@ -450,15 +451,34 @@ def stage_target(args) -> dict:
         )
     elif args.weights != "precision":
         log(f"[target] CE weights {args.weights}")
+    if args.model_variance != "class" and (oof is None or oof[1] is None):
+        # An in-sample head has seen the residuals it would be judged by.
+        raise SystemExit(
+            f"--model-variance {args.model_variance} needs the cross-fit's "
+            f"out-of-fold head variances ({OOF_FILE} with sigma_u2_head)"
+        )
     built = targets_for_table(
         model,
         table,
         sigma_u2=su2,
         kappa=args.kappa,
         tilt_max=args.tilt_max,
+        model_variance=args.model_variance,
         oof=oof,
         eta=eta,
     )
+    q_rows = table.has_q
+    head_raised = (
+        float((built["sigma_u2"][q_rows] > su2[q_rows]).float().mean())
+        if bool(q_rows.any())
+        else 0.0
+    )
+    if args.model_variance != "class":
+        log(
+            f"[target] model variance {args.model_variance}: the out-of-fold head "
+            f"sets sigma_u2 on {100 * head_raised:.1f}% of rows with Q; gamma p50 "
+            f"{float(built['gamma'][q_rows].median()):.3f}"
+        )
 
     # Arm_D_Review_202610 §8: is the model's part of each target supported
     # by the search labels? Diagnostic only; nothing below reads it.
@@ -529,6 +549,8 @@ def stage_target(args) -> dict:
         "z_max_p50": float(z_abs.median()),
         "z_max_p90": float(z_abs.quantile(0.9)),
         "frac_z_clipped": float((z_abs >= args.tilt_max - 1e-6).float().mean()),
+        "model_variance": args.model_variance,
+        "model_variance_head_rows": head_raised,
         "sigma_u2_by_class": su2_by_class,
         "sigma_u2_by_class_all_rows": su2_all_rows,
         "sigma_u2_by_class_holdout": su2_holdout,
@@ -1338,6 +1360,16 @@ def build_parser() -> argparse.ArgumentParser:
         "KL(target||prior) p50 on the recall run's iteration-1 corpus",
     )
     tgt.add_argument("--tilt-max", type=float, default=8.0, help="|z| clip (nats)")
+    tgt.add_argument(
+        "--model-variance",
+        default="class",
+        choices=MODEL_VARIANCES,
+        help="model-error variance sigma_u^2 in the blend: class (default; the "
+        "recipe through arm V) = the row's class value; one-sided-head = "
+        "max(out-of-fold head, class), so the head can only hand weight to "
+        "search where the model knows it is unreliable (Arm_D_Review §9.7); "
+        "head = the head alone (arm 4). Non-class modes need a cross-fit.",
+    )
     tgt.add_argument(
         "--weights",
         default="uniform",

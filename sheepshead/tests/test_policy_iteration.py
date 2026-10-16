@@ -33,6 +33,7 @@ from sheepshead.training.search_advantage import (
     fit_advantage_model_iterated,
     floor_class_variances,
     model_push_diagnostics,
+    row_model_variance,
     sigma_u2_rows,
     split_rows_by_game,
     tilt_scale,
@@ -1119,6 +1120,32 @@ def test_cross_fit_and_distill_holdout_through_the_stages(tmp_path):
     assert "no floor" in log and "[cross-fit] 2 folds" in log
     assert "holdout 50.0%" in log
     assert "10 train / 10 holdout episodes" in log
+    assert report["model_variance"] == "class"
+    assert report["model_variance_head_rows"] == 0.0
+    gamma_class = _stored_gammas(out_dir)
+    # The one-sided head variance re-targets the same fit: gamma can only
+    # rise, and the report says how many rows the head raised.
+    target_args = [
+        "target",
+        "--corpus-dir",
+        str(corpus_dir),
+        "--ckpt",
+        str(ckpt),
+        "--out-dir",
+        str(out_dir),
+        "--model-variance",
+        "one-sided-head",
+    ]
+    assert tpi.main(target_args) == 0
+    report = json.loads((out_dir / "target_report.json").read_text())
+    assert report["model_variance"] == "one-sided-head"
+    assert 0.0 <= report["model_variance_head_rows"] <= 1.0
+    gamma_one_sided = _stored_gammas(out_dir)
+    assert torch.all(gamma_one_sided >= gamma_class - 1e-6)
+    assert (
+        "[target] model variance one-sided-head"
+        in (out_dir / "policy_iteration.log").read_text()
+    )
     # Re-running the fit without cross-fitting removes the stale predictions.
     rc = tpi.main(
         [
@@ -1140,6 +1167,35 @@ def test_cross_fit_and_distill_holdout_through_the_stages(tmp_path):
         ]
     )
     assert rc == 0 and not (out_dir / tpi.OOF_FILE).exists()
+    # ... and without them a head-variance target refuses to run: an
+    # in-sample head has seen the residuals it would be judged by.
+    with pytest.raises(SystemExit, match="out-of-fold head variances"):
+        tpi.main(target_args)
+
+
+def _stored_gammas(out_dir) -> torch.Tensor:
+    """pi_gamma of every targeted row, in shard / episode / event order."""
+    out = []
+    for path in sorted((out_dir / tpi.TARGETED_SUBDIR).glob("corpus_*.pt")):
+        shard = torch.load(path, weights_only=False)
+        for episode in shard["episodes"]:
+            out.extend(float(ev["pi_gamma"]) for ev in episode if "pi_gamma" in ev)
+    return torch.tensor(out)
+
+
+def test_row_model_variance_modes():
+    """class passes the class value through; head replaces it (both ways);
+    one-sided-head only ever raises it; head modes need a head."""
+    su2_class = torch.tensor([1e-4, 1e-4, 5e-4])
+    su2_head = torch.tensor([3e-4, 2e-5, 5e-4])
+    assert torch.equal(row_model_variance("class", su2_class, None), su2_class)
+    assert torch.equal(row_model_variance("head", su2_class, su2_head), su2_head)
+    one_sided = row_model_variance("one-sided-head", su2_class, su2_head)
+    assert torch.equal(one_sided, torch.tensor([3e-4, 1e-4, 5e-4]))
+    with pytest.raises(ValueError, match="heteroscedastic head"):
+        row_model_variance("one-sided-head", su2_class, None)
+    with pytest.raises(ValueError, match="must be one of"):
+        row_model_variance("two-sided", su2_class, su2_head)
 
 
 def test_load_shard_relabels_legacy_rows(tmp_path):
