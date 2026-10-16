@@ -947,6 +947,7 @@ class Program:
             ("--probe-games", pi.probe_games),
             ("--cross-fit", pi.cross_fit),
             ("--distill-holdout-frac", pi.distill_holdout_frac),
+            ("--model-variance", pi.model_variance),
         ):
             if val is not None:
                 flags += [name, str(val)]

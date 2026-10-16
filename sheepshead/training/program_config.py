@@ -145,6 +145,9 @@ class PolicyIterationConfig:
     # bought nothing).
     cross_fit: int | None = 5
     distill_holdout_frac: float | None = None
+    # Blend model-error variance (policy_iteration --model-variance; None =
+    # the module default, class). one-sided-head needs cross_fit.
+    model_variance: str | None = None
 
 
 @dataclass
