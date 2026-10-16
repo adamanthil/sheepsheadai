@@ -1050,3 +1050,128 @@ actual structure of the problem.
 Caveats: power bounds ecology contribution at ≲0.08/hand, not zero;
 uniform roster sampling (not PFSP weights); true-deal instrument
 (no belief marginalization); R=24; actor = 7M.
+
+## Addendum (2026-10-16) — residual convention exceptions in run 202609_recall_rc
+
+Status: **RECORDED (2026-10-16).** Three findings from the search-teacher
+program's run `202609_recall_rc` (Training_Program_Redesign_202609),
+read from the policy-iteration corpora (`pi/iter{1,2,3}/targeted/`)
+and from fresh /analyze playouts. Corpus search budgets: t0 leads 1024
+iterations, t1 leads 512, everything else 256 (× 3 replicates). Q is
+score / 12; all "score" figures are game score per decision.
+
+### A1. JD-mode t0 defender trump lead with a singleton trump
+
+Question: is the t0 defender trump lead (C1) still leaking after
+iterations 1–2? Greedy cert probes (~480 nodes per seed) show no
+movement: iteration-1 candidate 1.8% (35/1962), θ₁ 2.2% (44/1994),
+iteration-2 candidate 1.65% (32/1934), all within noise. Iteration 1
+fixed called-ace mode and multi-trump JD hands. The residual is almost
+entirely **JD mode, defender holding exactly one trump**.
+
+Re-search at 4096 iterations × 6 replicates of 391 iteration-2 corpus
+nodes (θ₁; `sheepshead.analysis.research_corpus_nodes` `jd-nodes` →
+`search` → `jd-report`, outputs in `runs/202609_recall_rc/t0_trump_confirm/`;
+~411 min, 0 errors). Trump lead
+minus the policy's preferred fail, score:
+
+| hand | n | 4096 | 4096 top card is trump |
+|---|---|---|---|
+| 2 fail aces, no void | 50 | +0.031 ± 0.015 | 52% (vs its own best fail −0.016) → **tie-band exception, confirmed** |
+| 1 fail ace, no void | 118 | −0.051 ± 0.012 | 25% |
+| fail void, 2 aces | 14 | −0.231 | 0% → **mistake, confirmed** |
+| fail void, 1 ace | 62 | −0.227 | 0% → **mistake, confirmed** |
+| 0 aces (no void / void) | 104 / 42 | −0.156 / −0.362 | — |
+
+- Moving from 1024 to 4096 iterations shifted the overall verdict by
+  +0.03, so there is no hidden 30M-style budget cost.
+- Tentative seat effect: picker last to play (picker_rel 5, n = 15)
+  −0.096, never trump at 4096.
+- **Pattern:** the number of fail aces drives the policy's *temptation*
+  to lead trump. A fail void decides whether the lead is *bad*: the
+  lone trump is the hand's ruff.
+- **Why it survives iteration:** the AdvantageModel (out-of-fold) is
+  blind to the void × trump-lead interaction, so void mistakes are not
+  corrected by the blend.
+- **The iteration-2 candidate still makes it.** /analyze scan, JD,
+  deterministic, seeds 0–3999 (`scan_jd_singleton_trump_leads`,
+  `t0_trump_confirm/analyze_seeds_jd_singleton.jsonl`; `--summary` prints
+  the cells): void + 2 aces led trump 11/15;
+  no void + 2 aces 19/45; void + 1 ace 3/53.
+- The tie-band exception (2 aces, no void) is EV-free either way, about
+  0.0005 score per hand overall. A convention tie-break there is
+  optional.
+
+### A2. Called-suit lead (C2): where it is not optimal at this level
+
+All 4,805 called-ace defender-lead nodes with a legal called-suit lead
+and the suit still unled (iterations 1–2 corpora;
+`sheepshead.analysis.called_suit_lead_cells` `extract` → `report`, outputs
+in `runs/202609_recall_rc/cs_lead_confirm/`).
+Contrast = policy-preferred called-suit card minus policy-preferred
+other lead (avoids the winner's curse of comparing search's best on
+each side).
+
+**Tricks 0–2: no exceptions.** The lead is positive in every cell
+sliced: t0–1 +0.29 to +0.58, t2 +0.10 to +0.88. Cells checked: picker
+seat, trump count, called-suit length and points, called rank, 3+ side
+suit, side aces, voids, under-call. Per node, 8 of 4,241 early nodes
+have z < −2, against ~97 expected under the null. Value rises with the
+called-suit holding: 0 pts +0.19, 1–9 +0.33, 10+ +0.44; length 1/2/3
++0.18/+0.43/+0.83. The weakest early cell is a **tie, not a loss**: a
+single 0-point called card, ≤ 1 trump, a 3+ side suit (search's best
+alternative level, −0.03 to 0.00).
+
+**This supersedes E6's early exception zones at this policy level.**
+E6 (2.8M) flagged trump-void, picker +3/+4 and 3+ side suit as
+exception zones. Here trump-void at t0–1 is +0.32 and 3+ side suit
++0.20. That is consistent with E8: the convention's value depends on
+continuation play, which has improved.
+
+**The exception: trick ≥ 3, leader holds no trump and a single
+called-suit card.**
+
+| cell | n | called − alternative | search's top card is called | policy leads it |
+|---|---|---|---|---|
+| trick ≥ 3, no trump, 1 called card | 272 | −0.21 ± 0.02 | 22% | 75% |
+| trick 4 (2 cards left), no trump | 101 | **−0.42 ± 0.04** | 8% | 67% |
+| trick ≥ 3, no trump, 2 called cards | 87 | +0.01 (tie) | 66% | 95% |
+| trick ≥ 3, with trump, 1 called card | 136 | +0.05 (tie) | 43% | 69% |
+| trick ≥ 3, 1 trump, 2 called cards | 32 | +1.04 | 100% | 91% |
+
+- It holds for every called rank (low, K, 10), every picker seat, and
+  with or without an under-call.
+- **Likely mechanism: the stranded ace.** The secret partner may not
+  discard the called ace before the last trick (`game.py:1278`). If the
+  suit is never led, the partner can be forced to throw the ace onto
+  another suit's trick, where it loses. Leading the suit late hands the
+  partner a free trick and the lead for the last trick. Early, that is
+  the price of finding the partner; late, only the price remains. A
+  trump-holding leader can regain the lead, so that cell is a tie.
+- **4096 partial confirmation** (stopped at 43 of 227 nodes to keep the
+  iteration-3 corpus unslowed; `called_suit_lead_cells nodes` →
+  `research_corpus_nodes search` (resumes from
+  `cs_lead_confirm/search_4096.jsonl`) → `called_suit_lead_cells confirm`). Late void singleton, n = 22: corpus label (256
+  iterations at these trick ≥ 3 leads) −0.38 → 4096 **−0.34 ± 0.08**,
+  4096's top card is called 18%. With 2 cards left, n = 10: −0.53 →
+  −0.50. The early tie cell (t0–1 leads, 1024/512 corpus labels),
+  n = 21: +0.17 → +0.11 ± 0.03.
+- **Training moves it, slowly.** Unlike A1, the model has the right
+  sign here (−0.12 vs search −0.21; −0.18 vs −0.42 with 2 cards left).
+  In this cell the prior's called-suit mass fell 0.58 → 0.49 from
+  iteration 1 to 2 (target ~0.33). Rarity limits it: ~136 such nodes
+  per corpus.
+- The cert's `called_suit_lead_rate` (93.5%) pools all tricks. Do not
+  read it as "higher is always better": late-cell adherence should
+  fall.
+
+### A3. Defender over-trumps a fellow defender on the called suit
+
+A play-pattern blunder, not a convention exception, analysed in full
+in **Arm_D_Review_202610 §9**. In brief: on a called-suit lead the
+picker must follow and the partner must play the ace, so a defender's
+trump there can only be beaten by another defender. Iteration 3's
+candidate still over-trumps in 30.9% of qualifying decisions (22.6%
+clear blunders). Search rates it −0.50 score when the decider holds a
+schmear. It persists because the AdvantageModel is wrong-signed in
+that cell and its class-level error variance hides it.
