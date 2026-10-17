@@ -356,10 +356,10 @@ def test_recipe_ablation_knobs_pass_through_to_the_stages(tmp_path, monkeypatch)
     flags = p._pi_stage_flags()
     assert flags[flags.index("--cross-fit") + 1] == "5"
     assert flags[flags.index("--distill-holdout-frac") + 1] == "0.02"
-    assert "--model-variance" not in flags  # unset = the module default
-    p.cfg.policy_iteration.model_variance = "one-sided-head"
-    flags = p._pi_stage_flags()
+    # The recipe's variance rule (§9.8 adoption); None = the module default.
     assert flags[flags.index("--model-variance") + 1] == "one-sided-head"
+    p.cfg.policy_iteration.model_variance = None
+    assert "--model-variance" not in p._pi_stage_flags()
 
 
 def test_a_second_orchestrator_is_refused_while_the_first_runs(tmp_path, monkeypatch):

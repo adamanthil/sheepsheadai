@@ -146,8 +146,19 @@ class PolicyIterationConfig:
     cross_fit: int | None = 5
     distill_holdout_frac: float | None = None
     # Blend model-error variance (policy_iteration --model-variance; None =
-    # the module default, class). one-sided-head needs cross_fit.
-    model_variance: str | None = None
+    # the module default, class). one-sided-head since 2026-10-16
+    # (Arm_D_Review §9.7-9.8): each row's sigma_u2 is the larger of its
+    # class's pooled value and the cross-fit's out-of-fold head estimate.
+    # The class value is an average over heterogeneous nodes, so it
+    # understates model error wherever the advantage model is
+    # predictably worse than its class (the called-suit over-trump cell:
+    # 5.7x), and there the blend over-trusts the prior. Taking the max
+    # raises gamma only on evidence of larger error and never lowers it
+    # below the class value, which leaves the rest of the recipe as it was
+    # (§8 read neutral). Ablation on iteration 3: over-trump probability
+    # down 0.0063 on the paired frozen read, h2h vs the class arm
+    # equivalent within +-0.0075. Needs cross_fit.
+    model_variance: str | None = "one-sided-head"
 
 
 @dataclass
