@@ -1126,10 +1126,11 @@ for g, a in sorted(agg.items()):
 
 ## 9. Fifth review (2026-10-16) — a cell where the model's push is wrong: the called-suit over-trump
 
-Status: **IN PROGRESS (2026-10-16): one-sided head variance shipped as
-an option (`6557172`, `f7a1004`); its iteration-3 ablation is running
+Status: **ADOPTED (2026-10-16): one-sided head variance is the program
+default (`8e59391`) and the arm replaced iteration 3's candidate
 (§9.8).** The operator played
-iteration 3's candidate (`pi/iter3/distill_epoch10.pt`) and saw a
+iteration 3's class-variance candidate (then `pi/iter3/distill_epoch10.pt`,
+archived to `pi/iter3_ablations/class_baseline/distill_epoch10.pt`) and saw a
 defender over-trump a fellow defender who had already trumped the
 called suit. §8 measured the model's push in aggregate and found it
 helps almost everywhere. This section is the counterexample: a cell
@@ -1603,6 +1604,25 @@ it being the more principled variance rule at equivalent EV (both
 primaries pass, convention probes no worse), not on fixing this leak.
 Adoption is the operator's call.
 
+**Adopted (operator, 2026-10-16 20:28).** The orchestrator default is
+now `model_variance: one-sided-head` (`8e59391`; the `policy_iteration`
+module default stays `class`, so earlier runs reproduce). The arm
+replaced iteration 3's candidate in place
+(`runs/202609_recall_rc/iter3_swap_onesided.sh`, log beside it): the
+paused orchestrator tree was stopped, which discarded the class
+candidate's partial bidding phase (~55,700 of 200,000 episodes, no
+checkpoint); iteration 3's class-variance target, distill epochs, cert
+and the partial bidding run were archived to
+`pi/iter3_ablations/class_baseline/`; the arm's were copied into
+`pi/iter3/` with the two recorded candidate paths (`distill_best.json`,
+`cert.json`) rewritten. The arm's cert was run against the same θ₂ with
+the same flags, so it stands as iteration 3's cert (h2h vs θ₂ +0.0059 ±
+0.0025). The fit artifacts are shared by both arms and stayed. The
+relaunched orchestrator skipped iteration 3's corpus, distill and cert
+and started a fresh bidding phase from the arm's candidate; iteration 4
+runs on the new default. Paths in §9 that name the class candidate now
+point to the archive.
+
 **Reproducing §9.** Every table comes from a committed module, run as
 `uv run python -m sheepshead.analysis.<module> …` from the repo root.
 P = `runs/202609_recall_rc/overtrump_probe` (where the cached
@@ -1611,19 +1631,19 @@ but nothing needs them).
 
 | table | commands |
 |---|---|
-| §9.2 incidence | `scan_called_suit_overtrumps --model runs/202609_recall_rc/pi/iter3/distill_epoch10.pt --num-seeds 4000 --out P/scan_iter3.jsonl`; then `scan_called_suit_overtrumps --summary P/scan_iter3.jsonl` |
+| §9.2 incidence | `scan_called_suit_overtrumps --model runs/202609_recall_rc/pi/iter3_ablations/class_baseline/distill_epoch10.pt --num-seeds 4000 --out P/scan_iter3.jsonl`; then `scan_called_suit_overtrumps --summary P/scan_iter3.jsonl` |
 | §9.2 corpus rates, §9.3 value | `called_suit_overtrump extract --out P/rows.pkl`; then `called_suit_overtrump value --rows P/rows.pkl` |
 | §9.3 win probability | `q_outcome_calibration extract --out P/calib.pkl`; then `q_outcome_calibration report --calib P/calib.pkl --rows P/rows.pkl` |
 | §9.4 target movement | `called_suit_overtrump targets --rows P/rows.pkl` |
 | §9.4 Fay-Herriot terms | `blend_variance_probe fh-terms --rows P/rows.pkl` |
 | §9.4 look-alike | `called_suit_overtrump extract --all-fail --out P/rows_all_fail.pkl`; then `called_suit_overtrump bleed --rows P/rows_all_fail.pkl` |
 | §9.4 probes | `feature_probes --iter-dir runs/202609_recall_rc/pi/iter3` |
-| §9.5 | `budget_rows generate --scan P/scan_iter3.jsonl --ckpt runs/202609_recall_rc/pi/iter3/distill_epoch10.pt --budgets 256 512 --out-dir P`; then `budget_rows targets --scan P/scan_iter3.jsonl --rows-dir P --budgets 256 512` |
+| §9.5 | `budget_rows generate --scan P/scan_iter3.jsonl --ckpt runs/202609_recall_rc/pi/iter3_ablations/class_baseline/distill_epoch10.pt --budgets 256 512 --out-dir P`; then `budget_rows targets --scan P/scan_iter3.jsonl --rows-dir P --budgets 256 512` |
 | §9.6 | `oversample_crossfit oversample --k 1 5 20 --rows P/rows.pkl --controls P/rows_all_fail.pkl --cache-dir P` |
 | §9.7 variants | `blend_variance_probe variants --rows P/rows.pkl --regression-cache P/variance_regression_oof.pt --json P/variance_regression_diag.json` |
 | §9.7 conventions | `blend_variance_probe conventions --regression-cache P/variance_regression_oof.pt` |
 | §9.7 relative weighting | `oversample_crossfit reweight --caps 4 10 --rows P/rows.pkl --controls P/rows_all_fail.pkl --cache-dir P` |
-| §9.8 frozen read | `frozen_node_policy_read read --scan P/scan_iter3.jsonl --driver runs/202609_recall_rc/pi/iter3/distill_epoch10.pt --probe NAME=CKPT … --out A/frozen_read_lineage.json`; then `frozen_node_policy_read overtrump --read A/frozen_read_lineage.json --base NAME --arm NAME` (A = `runs/202609_recall_rc/pi/iter3_ablations/onesided_head`; probes θ₀ `league/checkpoints/checkpoint_8000000.pt`, `pi/iter{1,2,3}/distill_epoch10.pt`, `pi/iter{1,2}/bidding/final.pt`, A/`distill_epoch10.pt`) |
+| §9.8 frozen read | `frozen_node_policy_read read --scan P/scan_iter3.jsonl --driver runs/202609_recall_rc/pi/iter3_ablations/class_baseline/distill_epoch10.pt --probe NAME=CKPT … --out A/frozen_read_lineage.json`; then `frozen_node_policy_read overtrump --read A/frozen_read_lineage.json --base NAME --arm NAME` (A = `runs/202609_recall_rc/pi/iter3_ablations/onesided_head`; probes θ₀ `league/checkpoints/checkpoint_8000000.pt`, `pi/iter{1,2}/distill_epoch10.pt`, `pi/iter{1,2}/bidding/final.pt`, the archived class candidate, A/`distill_epoch10.pt`) |
 
 The fits and regressions reuse cached results in P when present; delete
 them to recompute.
