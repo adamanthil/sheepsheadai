@@ -1554,6 +1554,55 @@ improving its correlation (0.41 → 0.48). Not carried into the ablation.
   needs exclusive CPU, pause the orchestrator tree (SIGSTOP / SIGCONT on
   resolved PIDs) rather than kill it, and only on operator command.
 
+**Ablation result (2026-10-16 20:10): both primaries pass; the effect is
+small.**
+
+| band | read | verdict |
+|---|---|---|
+| Primary 1, paired frozen read (359 nodes, 321 seeds) | p(over) 0.3036 → 0.2973, Δ −0.0063, one-sided 95% upper −0.0034 | PASS |
+| — clear-blunder subset (336) | 0.2241 → 0.2194, Δ −0.0047, upper −0.0018 | PASS |
+| — schmear subset (176) | 0.2703 → 0.2624, Δ −0.0079, upper −0.0033 | PASS |
+| — argmax over-trump, same nodes | 30.9% → 29.5% (8 stopped, 3 started; McNemar one-sided p 0.11) | n.s. |
+| Primary 2, TOST vs `distill_epoch10` (16,000 deals) | edge +0.0022 ± 0.0016 (called +0.0013, JD +0.0030); 90% CI (−0.0004, +0.0048) inside ±0.0075 | PASS (equivalent) |
+| Secondary, fresh-deal incidence (4,000 seeds) | 108/357 = 30.3% ± 2.4 vs 30.9% ± 2.4 | n.s., as powered (§9.8 amendment) |
+| Secondary, cert vs θ₂ | PASS; h2h vs θ₂ +0.0059 ± 0.0025 (iteration 3: +0.0033 ± 0.0025) | — |
+| Secondary, probes (4-seed means, arm vs iteration 3) | t0 trump lead 0.57% vs 0.99%; called-suit lead 94.6% vs 92.6%; partner trump lead 98.7% vs 97.9%; pick 33.4% vs 33.1%; leaster 9.1% vs 9.3% | no convention damage |
+
+The §8 read was not rerun for the arm. The h2h vs iteration 3 shows the
+arm deviating on 5.6% of deals, against 16% for iteration 3 vs θ₂: it
+is a small perturbation of iteration 3, not a different policy.
+
+**Lineage on the same frozen nodes.** The same read across the whole
+policy-iteration phase (probe = each checkpoint, trajectory = iteration
+3's) puts the arm in scale:
+
+| checkpoint | p(over) | clear blunder | schmear | argmax over |
+|---|---|---|---|---|
+| θ₀ (league 8M) | 0.395 | 0.315 | 0.376 | 40.9% |
+| iteration 1 distill = θ₁ | 0.377 | 0.295 | 0.352 | 40.1% |
+| iteration 2 distill = θ₂ | 0.338 | 0.263 | 0.297 | 34.5% |
+| iteration 3 distill | 0.304 | 0.224 | 0.270 | 30.9% |
+| one-sided head arm | 0.297 | 0.219 | 0.262 | 29.5% |
+
+Steps (all decisions, Δp with one-sided 95% upper; argmax stopped/started):
+θ₀ → it1 −0.019 (−0.009; 15/12), it1 → it2 −0.039 (−0.030; 21/1,
+p < 0.001), it2 → it3 −0.034 (−0.025; 20/7, p 0.010), it3 → arm −0.006
+(−0.003; 8/3). θ₀ → it3 totals −0.092 (47/11, p < 0.001). The bidding
+phase leaves play unchanged: θ₁ and θ₂ read identically to their
+distills. Caveat: the states are those iteration 3's play reaches;
+earlier checkpoints are forced onto them, so the read is paired on
+states, not on how often each policy reaches them.
+
+**Reading.** Policy iteration is already removing this leak, about 3–4
+points of probability per iteration since iteration 2, and the
+one-sided head adds about a sixth of one iteration's step on top. That
+matches §9.5/§9.7: the cell's search labels prefer not over-trumping
+only weakly, so raising its γ from 0.41 to 0.56 moves the target, and
+the policy, a little. The arm's case for adoption therefore rests on
+it being the more principled variance rule at equivalent EV (both
+primaries pass, convention probes no worse), not on fixing this leak.
+Adoption is the operator's call.
+
 **Reproducing §9.** Every table comes from a committed module, run as
 `uv run python -m sheepshead.analysis.<module> …` from the repo root.
 P = `runs/202609_recall_rc/overtrump_probe` (where the cached
@@ -1574,6 +1623,7 @@ but nothing needs them).
 | §9.7 variants | `blend_variance_probe variants --rows P/rows.pkl --regression-cache P/variance_regression_oof.pt --json P/variance_regression_diag.json` |
 | §9.7 conventions | `blend_variance_probe conventions --regression-cache P/variance_regression_oof.pt` |
 | §9.7 relative weighting | `oversample_crossfit reweight --caps 4 10 --rows P/rows.pkl --controls P/rows_all_fail.pkl --cache-dir P` |
+| §9.8 frozen read | `frozen_node_policy_read read --scan P/scan_iter3.jsonl --driver runs/202609_recall_rc/pi/iter3/distill_epoch10.pt --probe NAME=CKPT … --out A/frozen_read_lineage.json`; then `frozen_node_policy_read overtrump --read A/frozen_read_lineage.json --base NAME --arm NAME` (A = `runs/202609_recall_rc/pi/iter3_ablations/onesided_head`; probes θ₀ `league/checkpoints/checkpoint_8000000.pt`, `pi/iter{1,2,3}/distill_epoch10.pt`, `pi/iter{1,2}/bidding/final.pt`, A/`distill_epoch10.pt`) |
 
 The fits and regressions reuse cached results in P when present; delete
 them to recompute.
