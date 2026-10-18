@@ -443,7 +443,9 @@ export default function TablePage() {
           }
         />
       )}
-      {!departure && view.is_done && view.final && (
+      {/* Held back while the final trick is shown and collected, so the
+          banner doesn't cover the last cards played. */}
+      {!departure && view.is_done && view.final && !trickOnShow && (
         <GameOverBanner
           final={view.final}
           table={table}
