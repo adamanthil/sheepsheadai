@@ -38,6 +38,15 @@
   padding-top: 18px;
   padding-bottom: 12px;
 }
+/* Zero-width strut one card tall, so the fan keeps its height once the last
+   card is played. Without it the hand collapses during the final trick and
+   everything below it jumps up under the player's finger. */
+.fan::before {
+  content: "";
+  flex: none;
+  width: 0;
+  height: calc(var(--pc-w, 64px) * 1.45);
+}
 /* On mobile the fan sizes its own cards: the widest card that fits a full
    6-card hand at 32% overlap (1 + 5 * 0.68 = 4.4 card-widths), minus 8px so
    the playable highlight ring clears the edges. Sized for the 6-card hand so
@@ -46,7 +55,8 @@
 .mobWrap .fan {
   container-type: inline-size;
 }
-.mobWrap .cardSlot {
+.mobWrap .cardSlot,
+.mobWrap .fan::before {
   --pc-w: clamp(60px, (100cqw - 8px) / 4.4, 74px);
 }
 /* Fan spacing: a slot is one card-step wide (68% of a card, so each card
