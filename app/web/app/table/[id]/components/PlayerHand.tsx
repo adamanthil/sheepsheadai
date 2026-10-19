@@ -17,6 +17,9 @@ interface PlayerHandProps {
   // Your own role from private info; shown as a persistent badge so a player
   // taking over mid-hand can tell at a glance which side they're on.
   yourRole?: YourRole;
+  // You dealt this hand; noted in the overline since your seat has no avatar
+  // to carry the dealer button.
+  isDealer?: boolean;
   isMobile: boolean;
   uiScale?: number;
 }
@@ -45,6 +48,7 @@ export default function PlayerHand({
   onCardClick,
   stagedCards,
   yourRole,
+  isDealer,
   isMobile,
   uiScale = 1,
 }: PlayerHandProps) {
@@ -80,6 +84,7 @@ export default function PlayerHand({
         <div style={{ minWidth: 0 }}>
           <div className={ds.overline} style={{ fontSize: isMobile ? 9 : 11 }}>
             Your hand · {shownHand.length} cards
+            {isDealer && " · Dealer"}
           </div>
           <div
             className={styles.metaText}

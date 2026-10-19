@@ -19,6 +19,8 @@ export interface SeatView {
   you: boolean;
   /** The player asked to leave once this hand ends. */
   leaving: boolean;
+  /** Dealt this hand (see DEALER_SEAT). */
+  dealer: boolean;
 }
 
 export interface CallOption {

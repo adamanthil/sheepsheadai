@@ -27,6 +27,7 @@ import {
   computeActionIdByString,
   computeKind,
   buildSeats,
+  DEALER_SEAT,
   computeDisplayCards,
   computeWinnerSeat,
   computeHandNumber,
@@ -341,6 +342,7 @@ export default function TablePage() {
         onCardClick={handleCardClick}
         stagedCards={stagedCards}
         yourRole={yourRole}
+        isDealer={yourSeat === DEALER_SEAT}
         isMobile={isMobile}
         uiScale={uiScale}
       />

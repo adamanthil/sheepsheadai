@@ -95,6 +95,7 @@ export function RingChip({
         name={seat.name}
         isAI={seat.isAI}
         account={seat.account}
+        dealer={seat.dealer}
         tone={tone(seat.role)}
         size={compact ? 26 : 32}
       />

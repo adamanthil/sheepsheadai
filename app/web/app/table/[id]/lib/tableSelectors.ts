@@ -113,6 +113,11 @@ export function computeKind(
   return "setup";
 }
 
+// Seat 1 always picks first and leads the first trick, so the dealer — the
+// player to its right — is always seat 5. The deal still passes left: each
+// redeal rotates every occupant down a seat, seat 1's into seat 5.
+export const DEALER_SEAT = 5;
+
 export function buildSeats(
   lastState: TableStateMsg,
   table: TableView,
@@ -130,6 +135,7 @@ export function buildSeats(
     role: getSeatRole(lastState, absSeat, started),
     you: absSeat === yourSeat,
     leaving: !!table.seatLeavingAfterHand[String(absSeat)],
+    dealer: absSeat === DEALER_SEAT,
   }));
 }
 
