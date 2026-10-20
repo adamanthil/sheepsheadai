@@ -1899,3 +1899,75 @@ Outputs: `t0_20k/scan_theta4_20k.jsonl`, `scan_t0.jsonl`,
 `budget_corpus_256.pt`, `referee_t0.json`, `summary_t0.txt`, `run.log`.
 The joined table above was read from `referee_t0.json` with
 `overtrump_referee.search_q_by_node` on `budget_corpus_256.pt`.
+
+### 9.12 Where this sits, and what was deferred (2026-10-20)
+
+A record of the discussion after §9.11, for whoever picks the leak up
+next. Nothing below was built; the operator deferred all of it.
+
+**Candidate fixes, from most to least local.**
+
+1. *One-cell label correction.* Subtract the measured search-minus-
+   referee gap (+0.20 ± 0.09 score, §9.11) from the over-trump cards'
+   labels at trick-0 defender follows, before the fit and the blend;
+   add its SE² to the label noise. Rows are tagged from the stored state
+   by the §9.2 node definition. Expected target effect: the residual
+   nodes' gap goes from −0.11 to −0.31 score (≈ −1.0 → −2.7 nats at
+   η 0.0097), enough to flip a 0.9 prior's top card; distillation
+   realizes part per iteration. Runnable on iteration 4's existing
+   corpus as an arm (~4 h) with the §9.8 protocol. Rejected as too
+   idiosyncratic: one cell, one hand-written action feature.
+2. *Class-level benchmarking against the referee (generic form).* Per
+   node class, estimate the search label's bias at θ_k's top card
+   relative to its best alternative on a random node sample by hindsight
+   continuation, shrink across classes toward zero, apply before fit and
+   blend. No hand-written rule; the §7.4 residual diagnostics already
+   have this structure, and the trick-0 cell is exactly "θ_k confident,
+   search mildly agrees, hindsight disagrees". Cost per iteration a few
+   hours of playouts; most entries expected ≈ 0, which is itself an
+   audit. The version worth pre-registering for a fixed-recipe
+   validation run.
+3. *Replace the search estimator.* Belief-based search (public-belief-
+   state methods in the DeepStack/ReBeL line) or recursive imperfect-
+   information search (Furtak & Buro 2013) avoid strategy fusion by
+   construction. The operator's philosophical preference, deferred as a
+   large change; trade-offs (compute per node, belief-model
+   requirements, how the committee's replicate/noise machinery carries
+   over) not yet studied.
+
+**Literature placement.** The bias is the textbook one: strategy fusion
+and non-locality in determinized search (Frank & Basin 1998; Long,
+Sturtevant, Buro & Furtak 2010 on when PIMC works regardless); ISMCTS
+(Cowling, Powley & Whitehouse 2012) reduces but does not remove it.
+Bridge and Skat programs have shipped heuristic patches for fusion-
+induced mistakes (the precedent for option 1, and why it is inelegant).
+The referee is Tesauro & Galperin's (1996) rollout policy improvement
+used as a check rather than as the label. Correcting a biased
+low-variance estimator with an unbiased high-variance one is standard:
+doubly-robust off-policy evaluation (Jiang & Li 2016; Thomas & Brunskill
+2016), outcome-mixed value targets in AlphaZero-family training, and
+*benchmarking* in small-area estimation (Pfeffermann 2013), which is the
+step the Fay-Herriot literature prescribes after the shrinkage this
+recipe already does. Option 2 is therefore the framework's own next
+step; option 1 is the patch; option 3 is the structural fix.
+
+**Deployment temperature and the leak.** The operator intends a
+stochastic deployment with a tuned temperature. Re-tempering θ₄'s
+policy at the 463 trick-0 nodes (§9.11; p ∝ p_greedy^(1/τ), referee
+values from the same read):
+
+| τ | expected trick-0 over-trump rate | expected hindsight value vs greedy (score) |
+|---|---|---|
+| 0 (greedy) | 32.6% | 0 |
+| 0.5 | 32.2% | +0.000 ± 0.008 |
+| 1.0 | 31.5% | −0.003 ± 0.011 |
+| 1.5 | 30.9% | −0.013 ± 0.013 |
+| 2.0 | 30.4% | −0.027 ± 0.014 |
+
+The policy is sharp at these nodes (mass near 0.9 or near 0.05), so
+temperature barely moves the incidence (−1 point at τ = 1, −2 at τ = 2)
+and does not change its value; across all tricks on the §9.10 nodes the
+rate is 28.4% greedy vs 28.9% at τ = 1. Stochastic deployment neither
+fixes nor worsens the leak. (Decision-level read on greedy-reached
+states; a sampled policy also reaches different states, second order
+here.)
