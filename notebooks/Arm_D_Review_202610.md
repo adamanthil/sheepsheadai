@@ -1900,6 +1900,27 @@ Outputs: `t0_20k/scan_theta4_20k.jsonl`, `scan_t0.jsonl`,
 The joined table above was read from `referee_t0.json` with
 `overtrump_referee.search_q_by_node` on `budget_corpus_256.pt`.
 
+**Addendum (2026-10-20): the AD/10D split.** The headline rate counts
+every higher trump, point trumps included; the clear-blunder subset
+excludes AD/10D (§9.3: their points land on the defence's trick either
+way). θ₄'s 151 residual trick-0 over-trumps by the card played, referee
+value of the played card against the policy's best alternative:
+
+| θ₄'s trick-0 over-trumps | n | referee (stoch) |
+|---|---|---|
+| with a jack, queen or KD | 74 | −0.454 ± 0.111 |
+| with AD or 10D | 77 | −0.149 ± 0.113 |
+| … AD/10D when a 10/A fail could be schmeared instead | 39 | −0.349 ± 0.167 |
+| … AD/10D when the alternative was a low card | 38 | +0.056 ± 0.147 |
+
+Covering a teammate's trump with the AD when the alternative is a low
+fail is break-even; doing it instead of schmearing a ten or ace costs
+≈ 0.35; spending a jack or queen on a trick the defence already owns
+costs ≈ 0.45. About half the trick-0 incidence is the genuinely bad
+half. The teammate's winning card was the KD, 10D or AD in 105 of the
+151 cases, so the typical residual case covers a king or point trump,
+not a 7D.
+
 ### 9.12 Where this sits, and what was deferred (2026-10-20)
 
 A record of the discussion after §9.11, for whoever picks the leak up
