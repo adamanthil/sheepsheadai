@@ -1816,3 +1816,86 @@ then `summary --read R/referee_theta4.json`; the replication uses
 `summary_theta4_ownnodes.txt`. The 512 comparison and the confidence
 bands were read from the JSON with `search_q_by_node` on
 `P/budget_corpus_512.pt`.
+
+### 9.11 Trick 0 at scale (2026-10-20): 20,000 fresh seeds
+
+`runs/202609_recall_rc/overtrump_probe/t0_20k/run.sh`: θ₄ scanned on
+seeds 4000–23999 (disjoint from every earlier scan), the 463 trick-0
+decisions labelled by the 256-iteration committee (`budget_rows
+generate`, θ₄ acting and searching, iteration 4's corpus config) and
+refereed (θ₄ driver and continuation, 8 CRN samples).
+
+**Correction to the incidence levels.** The 0–3999 seed block that every
+§9.2/§9.8/§9.9 scan used is unrepresentative. The scan is deterministic
+(seeds 0–599 re-scan identically), so this is the deal sample, not the
+tool:
+
+| θ₄, seed block | all decisions | trick 0 |
+|---|---|---|
+| 0–3999 (§9.9) | 29.7% (106/357) | 17.9% (19/106) |
+| 4000–7999 | 30.2% | 30.3% |
+| 8000–11999 | 33.2% | 31.1% |
+| 12000–15999 | 37.9% | 33.7% |
+| 16000–19999 | 37.7% | 33.3% |
+| 20000–23999 | 36.0% | 34.4% |
+| 4000–23999 pooled | 35.2% ± 1.2 (592/1684) | 32.6% ± 2.2 (151/463) |
+
+The paired lineage reads (§9.8, §9.9) compare checkpoints on identical
+nodes and are unaffected; the absolute rates quoted there understate the
+population rate, which for θ₄ is ≈ 35% of decisions and ≈ 33% at trick 0
+(≈ 1 trick-0 over-trump per 100 called games).
+
+**Referee at trick 0, 463 nodes (420 with search labels).**
+
+| over-trump − policy's alternative (score) | n | referee (stoch) | referee (det) | search 256 | search − referee |
+|---|---|---|---|---|---|
+| all trick-0 nodes | 463 | −0.722 ± 0.053 | −0.680 ± 0.082 | −0.654 ± 0.029 | +0.114 ± 0.053 |
+| θ₄ declines | 312 | −0.927 ± 0.066 | −0.907 ± 0.099 | −0.886 ± 0.028 | +0.078 ± 0.066 |
+| θ₄ over-trumps | 151 | −0.299 ± 0.080 [90% −0.43, −0.17] | −0.212 ± 0.140 | −0.113 ± 0.039 | +0.198 ± 0.086 |
+| … clear (not AD/10D) | 74 | −0.454 ± 0.111 | −0.473 ± 0.203 | −0.234 ± 0.058 | +0.228 ± 0.124 |
+| … holding a schmear | 99 | −0.312 ± 0.104 | −0.343 ± 0.186 | −0.111 ± 0.050 | +0.203 ± 0.108 |
+| … 0 / 1 / 2 players after | 72 / 50 / 29 | −0.36 / −0.46 / +0.14 | | −0.13 / −0.13 / −0.01 | |
+| policy over-trump mass ≥ 0.9 | 102 | −0.212 ± 0.092 | | +0.015 ± 0.045 | +0.244 ± 0.097 |
+| search endorses the over-trump | 51 | +0.037 ± 0.113 | | | |
+
+Readings.
+
+- **θ₄'s residual trick-0 over-trumps are blunders, at ≈ 0.30 per
+  hand** (90% CI −0.43 to −0.17), smaller than the −0.65/−0.73 the two
+  small samples suggested but no longer in doubt. Where another player
+  still follows (2 after) they are neutral; last or second-to-last to
+  act they cost 0.36–0.46. Over the 15,524 called games that is ≈ 0.003
+  score per called game: small in EV, visible at the table.
+- **The search label under-penalizes exactly there.** On the 126 joined
+  residual nodes the label is −0.113 ± 0.039 against the referee's
+  −0.299: a gap of +0.20 ± 0.09 (2.3 SE); where the policy puts ≥ 0.9 on
+  the over-trump the label is +0.015 (indifferent) against −0.21 (gap
+  +0.24 ± 0.10, 2.5 SE). On the 51 trick-0 nodes where the search ranks
+  the over-trump first the referee reads +0.04 ± 0.11: unlike the
+  all-trick endorsements of §9.10 (+0.74), the trick-0 endorsements are
+  not real exceptions. Across all 420 trick-0 nodes the two agree to
+  +0.11 ± 0.05, so the bias is concentrated where the policy already
+  over-trumps.
+- **The student also under-realizes the label.** θ₄ over-trumps on 80 of
+  the 126 joined residual nodes where the label rejects it (mildly). A
+  −0.11 label is a ≈ 1-nat tilt against a prior near 0.9; one
+  η-bounded step moves such a row little, and §9.5's one-iteration
+  ceiling applies.
+
+**Mechanism: still open.** This set has no 512 rows; §9.10's finding
+that the budget leaves the label unchanged at these nodes stands, so the
+≈ 0.2 under-penalty is budget-invariant and structural (determinized
+strategy fusion, oracle leaves, or θ_k-conditioned beliefs). The
+discriminating variants (uniform root prior; no oracle leaves) remain
+unbuilt.
+
+**Standing.** Unchanged from §9.10: no recipe change mid-phase. The
+measured quantities a fix would use are now in hand: a trick-0
+defender-follow class bias of ≈ +0.2 score (search minus truth) at the
+over-trump, concentrated where θ_k is confident, and a residual blunder
+cost of ≈ 0.3 per occurrence at ≈ 1 per 100 called games.
+
+Outputs: `t0_20k/scan_theta4_20k.jsonl`, `scan_t0.jsonl`,
+`budget_corpus_256.pt`, `referee_t0.json`, `summary_t0.txt`, `run.log`.
+The joined table above was read from `referee_t0.json` with
+`overtrump_referee.search_q_by_node` on `budget_corpus_256.pt`.
