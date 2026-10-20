@@ -1716,3 +1716,103 @@ theta4=runs/202609_recall_rc/pi/iter4/bidding/final.pt --out
 …/frozen_read_theta4.json`, then `overtrump --read … --base theta3 --arm
 theta4`). Outputs: `scan_theta4_summary.txt`,
 `frozen_overtrump_theta4.txt`, `probe.log`.
+
+### 9.10 Hindsight referee (2026-10-20): the labels are right on average, weak where the policy still over-trumps
+
+An estimator outside the search family (§9.8 "next steps"; CE_Teacher
+§22.6 "oracle referee"), `sheepshead/analysis/overtrump_referee.py`.
+Each §9.2 node is replayed on its frozen trajectory, the state and every
+seat's recurrent memory are snapshotted, each legal card is played, and
+θ₄ plays all five seats to the end of the actual deal. The node seat's
+realized hand score is the card's value (score units, the h2h scale):
+one deterministic playout per card, and the mean of 8 stochastic
+playouts with common random numbers across a node's cards. Nobody in the
+continuation sees hidden cards, so the read has no determinization
+(strategy-fusion) or oracle-leaf term; its noise is the hidden-card draw
+(per-node SD ≈ 1.3 vs 0.83 for the search label, whose replicate noise
+is ≈ 0.17), so it means something only in aggregates: ±0.15 at 50 nodes,
+±0.25 at 15. It values a card under θ₄'s own follow-up play, where the
+search values it under per-world optimal follow-up.
+
+Two node sets: the 359 iteration-3 nodes on the class candidate's
+trajectory (joins the §9.5 search labels at 256/512 iterations; 272
+joined) and θ₄'s own 357 scan nodes (§9.9) as a replication.
+
+**The cell as a whole: referee and search agree; the search is, if
+anything, slightly too hard on the over-trump.**
+
+| over-trump − policy's alternative (score) | n | search 256 | search 512 | referee (stoch) |
+|---|---|---|---|---|
+| all joined nodes | 256 | −0.642 ± 0.052 | −0.672 ± 0.053 | −0.523 ± 0.082 |
+| trick 0 | 89 | −0.785 ± 0.063 | −0.800 ± 0.060 | −0.822 ± 0.117 |
+| where search endorses the over-trump | 44 | +0.741 | — | +0.739 ± 0.208 |
+| where search rejects it | 228 | −0.882 | — | −0.727 ± 0.075 |
+| search − referee, joined | 272 | | | −0.130 ± 0.069 |
+
+The 44 search endorsements are real exceptions (+0.74 at 3.5 SE in
+hindsight). Per-node agreement is only ~50% (one deal is one draw), the
+means are not in doubt. There is no cell-wide label artifact to correct.
+
+**θ₄'s remaining over-trumps are net neutral; the trick-0 ones are the
+blunders.** Replicated on both node sets:
+
+| referee over − alt, stochastic | iteration-3 nodes | θ₄'s own nodes |
+|---|---|---|
+| nodes where θ₄ over-trumps | +0.148 ± 0.120 (102) | −0.032 ± 0.122 (106) |
+| nodes where θ₄ declines | −0.621 ± 0.072 (257) | −0.720 ± 0.073 (251) |
+| θ₄'s over-trumps at trick 0 | −0.728 ± 0.237 (17) | −0.651 ± 0.221 (19) |
+| θ₄'s over-trumps at tricks 2–4 | +0.44 to +0.57 (63) | +0.314 ± 0.154 (64) |
+
+The policy has sorted the cell: it over-trumps where hindsight says it
+pays (late, two players still to act) and declines where it costs
+(trick 0, last to act −0.7). Its mass-weighted expected value from
+over-trumping is +0.04 per decision. The residual blunder set is the
+trick-0 over-trumps: ~17% of trick-0 decisions, ~5% of all, ≈ 0.6 per
+100 called games, costing ≈ 0.7 each (pooled over both sets ≈ −0.69 ±
+0.16). Mostly a defender holding a 10/A fail (11/17) over-trumping a
+partner-defender's small trump with a jack, queen or AD instead of
+schmearing; 7/17 last to act.
+
+**At those nodes the label is the limiting factor.** On the 14 joined
+residual trick-0 over-trumps the search label is −0.133 ± 0.128 at 256
+and −0.038 ± 0.125 at 512 (endorsing the over-trump on 2/16), the
+referee −0.580 ± 0.241: a gap of ≈ 0.45 ± 0.27 (1.7–2.2 SE, suggestive).
+By the policy's over-trump mass: under 0.1 the two agree (search −1.00,
+referee −0.81); in 0.5–0.9 the search says −0.21 and the referee −0.48
+(trick 0: −0.28 vs −0.98, n 8).
+
+**Mechanism: OPEN, and not prior domination.** The first reading (a
+prior-dominated 256-iteration search under-exploring the alternative
+where θ_k is confident) is refuted by the budget rows: 512 iterations
+leave the label unchanged or weaker at exactly these nodes (corr 0.92
+with 256 across all joined nodes). What remains is budget-invariant and
+structural: determinized strategy fusion (per world the search knows
+where the schmear can later be cashed), oracle-leaf optimism, or the
+belief sampler conditioned on θ_k's style. The correlation of label
+weakness with the policy's confidence then runs the other way: four
+iterations of these labels taught the policy to be confident exactly
+where the label calls the over-trump cheap. Discriminating tests, not
+run: the committee with a uniform root prior at these nodes (isolates
+any residual prior effect); a committee without oracle leaves (isolates
+the leaf term).
+
+**Standing.** No recipe change. The next measurement is more residual
+trick-0 nodes, not more playouts: a 20,000-seed scan gives ≈ 85 of them
+and brings the subset to ≈ ±0.13. If the gap holds, the principled lever
+is a referee-calibrated class-level label bias (estimated on a node
+sample per class, applied before the blend like the class-pooled noise
+model), confined to the fixed-recipe validation run; a non-recipe
+alternative is a less confident root prior for the committee at trick-0
+follows, which attacks the mechanism if it is prior-related at all.
+
+Reproduction: `runs/202609_recall_rc/overtrump_probe/referee/run_referee.sh`
+(`overtrump_referee run --scan P/scan_iter3.jsonl --driver
+runs/202609_recall_rc/pi/iter3_ablations/class_baseline/distill_epoch10.pt
+--continuation runs/202609_recall_rc/pi/iter4/bidding/final.pt
+--budget-rows P/budget_corpus_256.pt --samples 8 --out R/referee_theta4.json`
+then `summary --read R/referee_theta4.json`; the replication uses
+`P/iter4/scan_theta4.jsonl` with θ₄ as driver). Outputs
+`referee_theta4.json`, `summary_theta4.txt`, `referee_theta4_ownnodes.json`,
+`summary_theta4_ownnodes.txt`. The 512 comparison and the confidence
+bands were read from the JSON with `search_q_by_node` on
+`P/budget_corpus_512.pt`.
