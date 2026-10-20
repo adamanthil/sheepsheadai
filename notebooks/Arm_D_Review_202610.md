@@ -1992,3 +1992,50 @@ rate is 28.4% greedy vs 28.9% at τ = 1. Stochastic deployment neither
 fixes nor worsens the leak. (Decision-level read on greedy-reached
 states; a sampled policy also reaches different states, second order
 here.)
+
+### 9.13 Test arm: one-cell label correction (pre-registered 2026-10-20, before any read)
+
+Operator's framing: a test of the impact of §9.12 option 1, **not a
+candidate recipe** (too idiosyncratic to adopt). Built with
+`sheepshead/analysis/overtrump_label_bias.py` on iteration 4's own
+corpus and row table (θ₃ encoding), so the only difference from the
+iteration-4 class candidate d4 = `pi/iter4/distill_epoch10.pt` is the
+label shift.
+
+**Arm.** At rows that are §9.2 decisions at trick 0 (tagged from the
+stored observation: called-ace game, called suit led, a teammate
+defender winning with a trump, actor void in the called suit holding a
+higher trump and another legal play), every over-trump card's label is
+shifted by −0.198 score = −0.0165 advantage units (the §9.11 search −
+referee gap on θ₄'s residual nodes; applied uniformly, AD/10D included).
+86 rows tagged, all `std|t0-defender-follow`, 163 labels shifted (QS 28,
+JC 22, JS 20, QD 17, JD 16, QH 15, JH 13, QC 12, AD 8, KD 6, 10D 3, 9D 2,
+8D 1). Label variance unchanged (the correction's SE² would add ≈ 25% to
+those rows' noise; omitted). Then `policy_iteration all` with iteration
+4's flags (trunk 6, lr 3e-5, λ_ret 10, head 4, cross-fit 5, one-sided
+head) into `pi/iter4_ablations/t0_label_bias/`, and the iteration-4 cert
+vs θ₃.
+
+**Pre-registered reads** (`t0_label_bias_run.sh`, log `arm.log`):
+
+- *Primary 1:* paired frozen-state read on the 463 trick-0 nodes of the
+  20k scan (driver θ₄), probes d4 and arm: mean per-node Δ p(over-trump)
+  arm − d4 negative with the one-sided 95% bootstrap upper (by seed)
+  below zero. Expected size small: 86 corrected rows in 132,692, one
+  η-bounded step, and §9.5's one-iteration ceiling; a few points of
+  probability would already be a clear read.
+- *Primary 2:* TOST equivalence of the paired duplicate h2h arm vs d4,
+  8,000 deals/mode, margin ±0.0075 (90% CI inside).
+- *Secondary:* all-trick frozen read on the 359 iteration-3 nodes (the
+  leak at tricks 1–4 should not move); the cert vs θ₃ passes with
+  convention probes within ~1 pp of d4's; the expected hindsight value
+  of each policy at the 463 nodes from the §9.11 referee's per-card
+  values (arm − d4 ≥ 0 if the shift is buying real value).
+
+**Interpretation rule.** Both primaries pass → the label is the binding
+constraint in this cell and a class-level benchmarking step (§9.12
+option 2) is worth designing for the validation run. Primary 1 fails →
+the student does not realize a −0.2 label shift in one step at this
+prior; the ceiling is distillation, not the label. Primary 2 fails → the
+shift costs EV elsewhere (the model generalizing it), which would argue
+against any label-side fix.
