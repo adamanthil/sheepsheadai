@@ -6,11 +6,9 @@ import styles from "./Strapline.module.css";
 export default function Strapline() {
   return (
     <span className={styles.strapline}>
-      <span className={styles.club}>♣</span> Queens high
-      <span className={styles.dot}> · </span>
-      <span className={styles.diamond}>♦</span> Diamonds are trump
-      <span className={styles.dot}> · </span>
-      Take 61
+      <span className={styles.club}>♣</span> Queens, Jacks, and Diamonds are
+      trump
+      <span className={styles.diamond}>♦</span> Take 61 points
     </span>
   );
 }

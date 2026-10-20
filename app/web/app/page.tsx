@@ -288,8 +288,8 @@ export default function HomePage() {
           </div>
 
           <p className={styles.lede}>
-            A five‑handed, trick‑taking game from Wisconsin — played here with
-            friends and a deep‑learning AI.
+            A five‑handed, trick‑taking game from Wisconsin — played with
+            friends, strangers, and a deep‑learning AI.
           </p>
 
           <Link
