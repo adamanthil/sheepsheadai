@@ -1647,3 +1647,72 @@ but nothing needs them).
 
 The fits and regressions reuse cached results in P when present; delete
 them to recompute.
+
+### 9.9 Iteration 4 (2026-10-19): the leak on θ₄
+
+Iteration 4 is the first full iteration under the one-sided head default
+(corpus from θ₃, target and distill under the rule, bidding phase on the
+candidate). Both §9.8 instruments were rerun on θ₄ =
+`pi/iter4/bidding/final.pt` the evening it landed, during the bidding
+cert and panels (`runs/202609_recall_rc/overtrump_probe/iter4/`).
+
+**Fresh-deal incidence (§9.2 scan, 4,000 seeds from seed 0).**
+
+| checkpoint | standard called games | decisions | over-trumped | p(over) | clear blunder | schmear |
+|---|---|---|---|---|---|---|
+| iteration 3 class candidate | 3,022 | 359 | 111 = 30.9% ± 2.4 | 0.30 | 22.6% | 29.0% ± 3.4 |
+| one-sided head arm (= θ₃ play) | 3,030 | — | 108/357 = 30.3% ± 2.4 | — | — | — |
+| θ₄ | 3,123 | 357 | 106 = 29.7% ± 2.4 | 0.30 | 20.3% | 22.7% ± 3.2 |
+
+Not significant, as powered (§9.8 amendment): the scan can only see a
+drop of ~5.6 points. The by-trick and by-position shape is unchanged
+(trick 0 17.9%, trick 4 40.9%; 0 players after 20.1%, 2 after 46.1%);
+the schmear subset fell from 29.0% to 22.7% (± 3.3 each).
+
+**Paired frozen-state read (§9.8 primary, the same 359 nodes on the
+iteration-3 class candidate's trajectory).**
+
+| checkpoint | p(over) | clear blunder | schmear | argmax over |
+|---|---|---|---|---|
+| θ₀ (league 8M) | 0.395 | 0.315 | 0.376 | 40.9% |
+| θ₁ | 0.377 | 0.295 | 0.352 | 40.1% |
+| θ₂ | 0.338 | 0.263 | 0.297 | 34.5% |
+| iteration 3 class candidate | 0.304 | 0.224 | 0.270 | 30.9% |
+| θ₃ (one-sided head arm) | 0.297 | 0.219 | 0.262 | 29.5% |
+| iteration 4 distill (d4) | 0.289 | 0.214 | 0.247 | 28.4% |
+| θ₄ | 0.289 | 0.214 | 0.247 | 28.4% |
+
+θ₃ → θ₄: Δp −0.0086 (one-sided 95% upper −0.0027) → PASS on all
+decisions; clear-blunder subset −0.0058 (upper +0.0001, not
+significant); schmear subset −0.0152 (upper −0.0072) → PASS. Argmax
+over-trumps 29.5% → 28.4% (10 stopped, 6 started; McNemar one-sided
+p 0.23). d4 → θ₄ is identical on every node (Δ 0, 0 stopped, 0 started):
+the bidding phase leaves play unchanged, as for θ₁ and θ₂.
+
+**Reading.** The leak keeps falling but the step is a quarter of the
+iteration-2 and iteration-3 steps (−0.039, −0.034) and only slightly
+larger than the one-sided head's own effect at iteration 3 (−0.006).
+That is the same deceleration the cert gains show (+0.0198 → +0.0100 →
++0.0056 → +0.0046) and the fixed-η dose (KL p50 0.0427 → 0.0180): the
+search labels prefer not over-trumping only weakly in this cell (§9.5),
+so as the policy approaches what the labels support, each iteration
+buys less. θ₀ → θ₄ totals −0.106 on p(over) and 40.9% → 28.4% on the
+argmax rate. Against the §9.8 conclusion nothing changes: policy
+iteration is removing the leak; the variance rule is a small, principled
+assist; the remaining ~28% is where the labels themselves are close to
+indifferent. A further step needs a better label (oracle referee or a
+larger search budget at these nodes, §9.5), not more weight on the
+model.
+
+Reproduction: `runs/202609_recall_rc/overtrump_probe/iter4/probe_theta4.sh`
+(the two commands are `scan_called_suit_overtrumps --model
+runs/202609_recall_rc/pi/iter4/bidding/final.pt --num-seeds 4000 --out
+…/scan_theta4.jsonl` then `--summary`, and `frozen_node_policy_read read
+--scan runs/202609_recall_rc/overtrump_probe/scan_iter3.jsonl --driver
+runs/202609_recall_rc/pi/iter3_ablations/class_baseline/distill_epoch10.pt
+--probe theta3=runs/202609_recall_rc/pi/iter3/bidding/final.pt --probe
+d4=runs/202609_recall_rc/pi/iter4/distill_epoch10.pt --probe
+theta4=runs/202609_recall_rc/pi/iter4/bidding/final.pt --out
+…/frozen_read_theta4.json`, then `overtrump --read … --base theta3 --arm
+theta4`). Outputs: `scan_theta4_summary.txt`,
+`frozen_overtrump_theta4.txt`, `probe.log`.
