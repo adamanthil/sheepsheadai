@@ -2080,3 +2080,70 @@ Artifacts: `pi/iter4_ablations/t0_label_bias/` (`label_bias.json`,
 `frozen_alltricks_overtrump.txt`, `h2h_vs_d4.json`); script
 `pi/iter4_ablations/t0_label_bias_run.sh`. The corpus was paused
 (SIGSTOP on the orchestrator tree) 09:45–12:55 for the arm's compute.
+
+### 9.14 Mechanism, corrected (2026-10-20): no strategy-fusion path in this engine
+
+The operator challenged the §9.10/§9.12 "strategy fusion" candidate
+("per world the search knows where the schmear can later be cashed"),
+and the challenge is right. In this engine (`sheepshead/ismcts.py`,
+SO-ISMCTS):
+
+- Tree nodes are statistics-only and keyed by the OBSERVER'S OWN ACTION
+  SEQUENCE. The observer's in-tree strategy is therefore one strategy
+  shared across every determinized world (coarser than its information
+  set, if anything: it does not even key on what others played between
+  its actions, beyond the legal set via availability-PUCT). Nothing in
+  the tree can choose a different continuation per world, which is what
+  strategy fusion requires.
+- Non-observer seats act in-tree and in rollouts by sampling their own
+  controller from their own observation in the world; they never see the
+  determinization's hidden cards.
+- The oracle critic at the leaf sees the full world, but a critic trained
+  to predict realized returns under information-limited play is an
+  estimate of E[return | full state], whose belief average is
+  E[return | information set]: a clairvoyant *solver* at the leaf would be
+  optimistic, a calibrated *return predictor* is not.
+
+So the per-world-continuation story has nothing to run on and is
+withdrawn. The budget-invariant under-penalty at the residual trick-0
+nodes (§9.10–§9.11) still needs a structural account; the channels that
+DO exist in this engine, each testable with the `budget_rows` machinery
+and a config change:
+
+1. *Oracle-leaf calibration.* With `d_rollout = 1` the leaf value is
+   almost entirely the privileged critic's bootstrap one observer ply
+   past the tree. Over-trump states are rare and the critic was fitted on
+   past policies' returns; a critic lean of ≈ 0.2 score at "defender who
+   just over-trumped a teammate" vs "defender who schmeared" would
+   reproduce the gap exactly. Test: the same nodes with
+   `leaf_evaluator="limited"`, and with terminal rollouts (`d_rollout`
+   past the hand's end, no bootstrap at all). If the gap closes under
+   terminal rollouts, this is it.
+2. *In-tree follow-up credit the student never realizes.* The root label
+   values a line under the search's IMPROVED observer decisions for up to
+   `max_depth = 6` of its own plies, but only the root decision is
+   distilled; the student's follow-up stays θ_k-like. A line whose payoff
+   depends on the observer's own later play (over-trump, then lead well
+   from the won trick) is credited for follow-up skill the deployed
+   policy does not have; a passive line (schmear) is not. Test: the same
+   nodes at `max_depth = 1` (root-only tree, follow-up by θ_k rollout).
+   If the over-trump's advantage shrinks, the label is right for an
+   improving agent and wrong for the agent we distill.
+3. *Belief pool ignores play inference.* Worlds are weighted by the
+   bidding likelihood only; opponents' play CHOICES (a teammate trumping
+   with the KD rather than a low trump) carry no likelihood, so the
+   posterior over the remaining trump is wrong wherever play is
+   informative. Direction unclear; the test is a play-likelihood
+   reweighting of the pool (the SIR variant Stage B set aside).
+4. *Node coarsening and world-selection bias.* Own-action keys blend
+   heterogeneous follow situations into one node's Q, and PUCT's visit
+   allocation makes a child's visited-world mix differ from the belief
+   posterior (the ISMCTS non-locality analogue). Real, but no reason to
+   expect a sign at this cell.
+
+Channels 1 and 2 are cheap (a config flag each on ≈ 460 nodes, an hour
+or two) and predict the observed sign; they are the next tests if the
+leak is picked up again. §9.12 option 3 ("a fusion-free search") is
+correspondingly re-labelled: what a belief-space search would buy here
+is a better posterior (channel 3) and a non-determinized value, not a
+cure for a fusion this engine does not have.
