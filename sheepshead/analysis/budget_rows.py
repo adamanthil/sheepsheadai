@@ -60,8 +60,41 @@ DEFAULT_ITER = "runs/202609_recall_rc/pi/iter3"
 NOISE_SHRINK_NU = 4.0
 GENERATE_SEED = 20260916  # det_rng base for the regenerated games
 
-# Per worker process: one teacher per budget.
-_TEACHERS: dict[int, ISMCTSTeacher] = {}
+# Per worker process: one teacher per budget or named engine variant, and
+# the variant's rollout-depth override (None = the corpus config's).
+_TEACHERS: dict[int | str, ISMCTSTeacher] = {}
+_D_ROLLOUT: dict[int | str, int | None] = {}
+
+# Engine knobs a ``--variant`` may set (Arm_D_Review §9.14 channel tests).
+VARIANT_KEYS = ("iters", "leaf_evaluator", "max_depth_play", "d_rollout")
+
+
+def parse_variant(spec: str) -> dict:
+    """``label:key=value,key=value`` -> {"label": ..., key: value}. Keys:
+    iters (int), leaf_evaluator (oracle|limited), max_depth_play (int),
+    d_rollout (int; 99 = terminal, no bootstrap)."""
+    label, _, body = spec.partition(":")
+    if not label or not body:
+        raise SystemExit(f"--variant needs label:key=value[,...], got {spec!r}")
+    out: dict = {"label": label}
+    for kv in body.split(","):
+        k, _, v = kv.partition("=")
+        if k not in VARIANT_KEYS:
+            raise SystemExit(f"--variant key {k!r} not in {VARIANT_KEYS}")
+        out[k] = v if k == "leaf_evaluator" else int(v)
+    return out
+
+
+def variant_teacher(agent, v: dict) -> ISMCTSTeacher:
+    heads = ("pick", "partner", "bury", "play")
+    kwargs: dict = {"iters": {h: int(v.get("iters", 256)) for h in heads}}
+    if "leaf_evaluator" in v:
+        kwargs["leaf_evaluator"] = v["leaf_evaluator"]
+    if "max_depth_play" in v:
+        depth = dict(ISMCTSConfig().max_depth)
+        depth["play"] = int(v["max_depth_play"])
+        kwargs["max_depth"] = depth
+    return ISMCTSTeacher(agent, ISMCTSConfig(**kwargs))
 
 
 def trace_actions(seeds: list[int], ckpt: str) -> dict[int, list[tuple[int, int, int]]]:
@@ -92,6 +125,10 @@ def _worker_init(init_args: dict) -> None:
             agent,
             ISMCTSConfig(iters={h: b for h in ("pick", "partner", "bury", "play")}),
         )
+        _D_ROLLOUT[b] = None
+    for v in init_args.get("variants", []):
+        _TEACHERS[v["label"]] = variant_teacher(agent, v)
+        _D_ROLLOUT[v["label"]] = v.get("d_rollout")
 
 
 def _run_game(task: dict) -> dict:
@@ -125,6 +162,7 @@ def _run_game(task: dict) -> dict:
 
     out: dict = {"seed": seed, "by_budget": {}}
     orig_game, orig_sched = dc.Game, dc.schedule_p
+    orig_d_rollout = dc._W["args"]["d_rollout"]
     try:
         dc.Game = deal
         dc.schedule_p = lambda *a, **kw: 1.0 if flag["target"] else 0.0
@@ -132,6 +170,11 @@ def _run_game(task: dict) -> dict:
         for b, teacher in _TEACHERS.items():
             used.clear()
             dc._W["teacher"] = teacher
+            # play_corpus_game reads the rollout depth from the worker args.
+            override = _D_ROLLOUT.get(b)
+            dc._W["args"]["d_rollout"] = (
+                orig_d_rollout if override is None else override
+            )
             res = dc.play_corpus_game((seed, PARTNER_BY_CALLED_ACE, False))
             searched = sum(c["searched"] for c in res["counts"].values())
             if searched != len(target_keys):
@@ -149,6 +192,7 @@ def _run_game(task: dict) -> dict:
             }
     finally:
         dc.Game, dc.schedule_p = orig_game, orig_sched
+        dc._W["args"]["d_rollout"] = orig_d_rollout
         del agent.act
     return out
 
@@ -161,7 +205,12 @@ def generate(
     manifest_iter: str,
     workers: int,
     limit: int,
+    variants: list[dict] | None = None,
 ) -> None:
+    variants = variants or []
+    labels: list[int | str] = [*budgets, *(v["label"] for v in variants)]
+    if not labels:
+        raise SystemExit("generate needs at least one --budgets value or --variant")
     nodes = [json.loads(line) for line in open(scan)]
     targets: dict[int, set[int]] = defaultdict(set)
     for n in nodes:
@@ -182,11 +231,12 @@ def generate(
         "ckpt": ckpt,
         "iters_schedule": "",
         "budgets": budgets,
+        "variants": variants,
         "routed_encoder": None,
         "seed": GENERATE_SEED,
     }
-    shards: dict[int, dict[str, list]] = {
-        b: {"games": [], "episodes": []} for b in budgets
+    shards: dict[int | str, dict[str, list]] = {
+        b: {"games": [], "episodes": []} for b in labels
     }
     with get_context("spawn").Pool(
         workers, initializer=_worker_init, initargs=(init_args,)
@@ -393,7 +443,14 @@ def main(argv: list[str] | None = None) -> int:
         required=True,
         help="acting + searching checkpoint (the scanned policy)",
     )
-    g.add_argument("--budgets", nargs="+", type=int, default=[256, 512])
+    g.add_argument("--budgets", nargs="*", type=int, default=[256, 512])
+    g.add_argument(
+        "--variant",
+        action="append",
+        default=[],
+        help="engine variant label:key=value[,...] (keys: iters, leaf_evaluator, "
+        "max_depth_play, d_rollout); written as budget_corpus_<label>.pt",
+    )
     g.add_argument("--out-dir", required=True)
     g.add_argument(
         "--manifest-iter",
@@ -430,6 +487,7 @@ def main(argv: list[str] | None = None) -> int:
             args.manifest_iter,
             args.workers,
             args.limit,
+            [parse_variant(s) for s in args.variant],
         )
     else:
         targets(

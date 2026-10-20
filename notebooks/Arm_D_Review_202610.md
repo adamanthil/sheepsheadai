@@ -2147,3 +2147,71 @@ leak is picked up again. §9.12 option 3 ("a fusion-free search") is
 correspondingly re-labelled: what a belief-space search would buy here
 is a better posterior (channel 3) and a non-determinized value, not a
 cure for a fusion this engine does not have.
+
+### 9.15 Channel tests (2026-10-20): leaf counters and engine variants at the trick-0 nodes
+
+Tooling: `budget_rows generate --variant label:key=value` (engine variants
+of the committee: `leaf_evaluator`, `d_rollout`, `max_depth_play`, `iters`)
+and two in-process counter probes
+(`overtrump_probe/leaf_probe*.py`), all on the 463 trick-0 nodes of the
+20k scan with θ₄ acting and searching. The corpus was paused for the
+compute (13:00–15:30).
+
+**How simulations end at these nodes (256 iterations, 30 nodes × 3
+replicates).** 46% of simulations reach a terminal world (28% with the
+tree at the observer's last decision, depth 6; 18% at depth 5 plus the
+one rollout ply); 54% bootstrap on the oracle critic after the rollout
+ply, mostly from tree depths 2–4 (one to three observer plies still to
+play). Split by ROOT card the shares are identical: over-trump 46.1%
+terminal, alternatives 45.9%, same depth profile. So about half the root
+value flows through the critic, symmetrically across the cards; a
+selective shallow bootstrap of the disfavored line is not happening.
+
+**Engine variants, over-trump − policy's alternative (score), 358 nodes
+with all labels and the referee:**
+
+| | referee | base 256 (oracle leaf, d_rollout 1, depth 6) | limited critic | terminal rollouts (no bootstrap) | root-only tree (depth 1) |
+|---|---|---|---|---|---|
+| all trick-0 nodes | −0.846 ± 0.063 | −0.713 ± 0.030 | −0.664 ± 0.054 | −0.745 ± 0.031 | −0.617 ± 0.026 |
+| θ₄ over-trumps (98) | −0.392 ± 0.108 | −0.172 ± 0.043 | **+0.683 ± 0.062** | −0.251 ± 0.042 | −0.227 ± 0.034 |
+| θ₄ declines (260) | −1.018 ± 0.074 | −0.918 ± 0.030 | −1.171 ± 0.038 | −0.932 ± 0.032 | −0.764 ± 0.028 |
+| policy mass ≥ 0.9 (61) | −0.385 ± 0.128 | −0.034 ± 0.051 | +0.987 ± 0.058 | −0.115 ± 0.051 | −0.132 ± 0.039 |
+| label − referee at θ₄'s over-trumps | — | +0.220 ± 0.106 | +1.075 ± 0.116 | +0.141 ± 0.104 | +0.164 ± 0.105 |
+
+Cross-node correlation with the referee is 0.35–0.38 for every variant;
+variants correlate 0.70–0.76 with each other.
+
+Readings.
+
+- **The limited critic is a prior echo.** With observation-only leaves
+  the label follows the policy's confidence almost one-for-one (+0.99
+  where the policy puts ≥ 0.9 on the over-trump, −1.24 where it puts
+  < 0.1), over-valuing the residual over-trumps by a full point. The
+  2026-08-10 decision to bootstrap on the privileged critic is strongly
+  vindicated; the oracle leaf is not "the" culprit relative to the
+  alternative.
+- **Removing the bootstrap entirely closes part of the gap, not all.**
+  Terminal rollouts move the residual-node label from −0.17 to −0.25
+  (−0.08 ± 0.06 vs base, 1.3 SE) and the gap to the referee from +0.22
+  to +0.14 ± 0.10. Channel 1 (oracle-leaf calibration) accounts for
+  perhaps a third of the lean, with wide error bars.
+- **Removing in-tree follow-up credit moves it a little, the same way.**
+  The root-only tree reads −0.23 at the residual nodes (−0.06 ± 0.05 vs
+  base) while softening the whole cell (−0.62 vs −0.71): channel 2 is
+  consistent in sign and small.
+- **Neither variant reaches the referee.** After terminal rollouts the
+  residual gap is +0.14 ± 0.10 (1.4 SE), and the referee's own read at
+  these 98 nodes is −0.39 ± 0.11. We are at the resolution limit of the
+  instruments: the remaining difference is within noise of zero, within
+  noise of the baseline gap, and could sit in the referee's frame (θ₄'s
+  follow-up vs the search's improved follow-up), in channel 4, or in
+  sampling.
+
+**Standing.** The structural account is now bounded rather than
+identified: the oracle leaf and in-tree follow-up credit each plausibly
+carry a few hundredths of a score of lean at the residual trick-0
+nodes, with terminal rollouts the single most effective change tested
+(and the most expensive per simulation). Nothing here changes the §9.13
+decision; the measured levers are recorded for a future estimator
+redesign. Artifacts: `t0_20k/budget_corpus_{limited,terminal,depth1}.pt`,
+`leaf_probe_256.json`, `leaf_probe_by_action_256.json`, `variants.log`.
