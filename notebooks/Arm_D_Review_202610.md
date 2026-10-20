@@ -2039,3 +2039,44 @@ the student does not realize a −0.2 label shift in one step at this
 prior; the ceiling is distillation, not the label. Primary 2 fails → the
 shift costs EV elsewhere (the model generalizing it), which would argue
 against any label-side fix.
+
+**Result (2026-10-20 12:51): both primaries pass; the effect is small and
+confined, as pre-registered.** Stage: fit best epoch and target dose
+unchanged from iteration 4 (KL p50 0.0181 vs 0.0180); cert vs θ₃ PASS,
+h2h +0.0047 ± 0.0023, play-only +0.0049 ± 0.0022 (d4: +0.0040 / +0.0046);
+probes t0 trump lead 0.0–1.4%, called-suit lead 93–94%, partner trump
+lead 98–99%, logit spread 5.0–5.2 (no convention damage).
+
+| read | verdict |
+|---|---|
+| Primary 1, paired frozen read, 463 trick-0 nodes | p(over) d4 0.3152 → arm 0.3015, Δ −0.0137, one-sided 95% upper −0.0109 → PASS |
+| Primary 2, TOST h2h arm vs d4 (16,000 deals) | −0.0017 ± 0.0015; 90% CI (−0.0042, +0.0008) inside ±0.0075 → PASS (equivalent) |
+| Secondary, hindsight value at the 463 nodes (referee per-card values × policy) | arm − d4 +0.0079 ± 0.0021 score per decision (z +3.8); 58% of nodes improved |
+| Secondary, all-trick frozen read, 359 iteration-3 nodes | Δ −0.0062 (upper −0.0041); trick 0 −0.0159 ± 0.0037, tricks 1–4 pooled −0.0023 ± 0.0011 |
+| Secondary, cert vs θ₃ and probes | PASS, within 1 pp of d4 |
+
+Where the probability moved, by d4's over-trump mass at the node: < 0.1
+−0.001; 0.1–0.5 −0.059 ± 0.010; 0.5–0.9 −0.066 ± 0.011; ≥ 0.9 −0.007 ±
+0.002 (102 nodes). Split by card: jack/queen/KD −0.0063, AD/10D −0.0074
+(the shift was uniform).
+
+**Reading, per the interpretation rule.** Both primaries pass, so the
+label is a binding constraint in this cell and the shift buys real
+hindsight value at equivalent EV. But one corrected step moves the
+mid-confidence nodes and barely touches the ≥ 0.9 band where most
+residual blunders live: the §9.5 one-iteration ceiling, now seen from
+the label side. A label-side fix would therefore act over iterations,
+not at once, and at ≈ 1.4 points of trick-0 probability per step it
+would take several iterations to matter at the table. The faint
+generalization to tricks 1–4 (−0.002) is in the harmless direction. The
+arm is NOT adopted (operator: a one-cell hand-written correction is not
+a recipe); its value is the measurement: a referee-calibrated label does
+what §9.11 predicted, and the class-level benchmarking form (§9.12
+option 2) is the version that would be worth carrying into a
+fixed-recipe validation run.
+
+Artifacts: `pi/iter4_ablations/t0_label_bias/` (`label_bias.json`,
+`arm.log`, `cert.json`, `frozen_t0_overtrump.txt`,
+`frozen_alltricks_overtrump.txt`, `h2h_vs_d4.json`); script
+`pi/iter4_ablations/t0_label_bias_run.sh`. The corpus was paused
+(SIGSTOP on the orchestrator tree) 09:45–12:55 for the arm's compute.
