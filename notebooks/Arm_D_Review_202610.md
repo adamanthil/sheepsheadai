@@ -2215,3 +2215,64 @@ nodes, with terminal rollouts the single most effective change tested
 decision; the measured levers are recorded for a future estimator
 redesign. Artifacts: `t0_20k/budget_corpus_{limited,terminal,depth1}.pt`,
 `leaf_probe_256.json`, `leaf_probe_by_action_256.json`, `variants.log`.
+
+### 9.16 Standing summary of the over-trump leak (2026-10-20)
+
+What is established, from §9.9–§9.15 together:
+
+- **Incidence (θ₄, fresh seeds).** 35% of over-trump opportunities, 33%
+  at trick 0; at the table, 6% of trumped called-suit tricks (5% with a
+  jack/queen/KD), ≈ 4.3 per 100 called games all-AI, ≈ 3.4 with one
+  human who never over-trumps; ≈ one per 30-hand session, a fifth of them
+  at trick 0.
+- **Value.** By hindsight continuation, θ₄'s over-trumps are net neutral
+  across tricks (+0.15 / −0.03 on two node sets) and cost ≈ 0.30 ± 0.08
+  per hand at trick 0 (0.45 with a jack/queen/KD, 0.15 with AD/10D);
+  ≈ 0.003 score per called game in total.
+- **Label.** The 256-iteration committee under-penalizes the over-trump
+  by ≈ +0.20 ± 0.09 at exactly the residual trick-0 nodes, budget-
+  invariant (512 unchanged). Where it endorses an over-trump at trick 0
+  the referee reads neutral; across all trick-0 nodes label and referee
+  agree to 0.1.
+- **How the committee values these nodes.** 46% of simulations reach a
+  terminal world, 54% bootstrap on the oracle critic with one to three
+  observer plies left, symmetrically across root cards. The limited
+  critic as leaf would echo the prior (+1.08 lean); the oracle leaf
+  carries ≈ a third of the +0.20 lean (terminal rollouts: +0.14 ± 0.10
+  left); in-tree follow-up credit a little; strategy fusion is not a
+  channel in this engine (§9.14). The rest is unresolved at the
+  instruments' resolution.
+- **Student.** A −0.2 label shift at the cell (one-cell arm, §9.13) moves
+  trick-0 over-trump probability by −0.014 per iteration, buying
+  +0.008 score per decision at the nodes at equivalent EV; the ≥ 0.9
+  prior band barely moves in one step.
+
+**Is there a recipe that would reliably resolve these blunders? No.**
+Nothing tested removes them in one iteration, and nothing principled
+removes them at all yet:
+
+1. *Policy iteration as is* keeps lowering the leak ≈ 1 point of
+   probability per iteration at this stage (−0.106 total θ₀ → θ₄), slowing
+   as the label's lean becomes the floor.
+2. *Label-side correction* (one-cell: measured, works, hand-tuned,
+   rejected; class-level referee benchmarking: principled, unbuilt) adds
+   ≈ 1.4 points per iteration and cannot dislodge a 0.9 prior in one step.
+3. *More expensive search at these nodes*: terminal rollouts (no
+   bootstrap) are the single most effective engine change tested and
+   remove ≈ a third of the lean; more iterations alone do nothing. Also
+   acts over iterations.
+4. *A different search estimator* (belief-space, non-determinized) would
+   change the posterior and the value estimate; after §9.14 its expected
+   benefit here is a better posterior and a bootstrap-free value, not a
+   fusion fix, and it is unproven on this cell. The operator's
+   philosophical preference; a large project.
+5. *A deployment guard* (veto over-trumping a teammate's winning trump at
+   trick 0 when a fail discard exists) is the only option that removes
+   the table-visible case immediately; it is a hand-written rule outside
+   the derivability objective.
+
+The honest expectation is that options 1–3 lower the trick-0 incidence
+over several iterations rather than eliminating it, and that the
+residual after the label lean is removed is governed by the one-step
+distillation ceiling (§9.5) and the referee-frame question (does the
+label value the follow-up the deployed policy actually plays).
