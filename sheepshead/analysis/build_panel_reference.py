@@ -9,10 +9,13 @@ paired reads on identical deals. Reference agents are single checkpoints
 generation rows are the orchestrator's three-checkpoint composites;
 policy-iteration rows (the iterate carried forward) and the release are
 single checkpoints too, since distillation leaves nothing to composite.
+The fresh run's bootstrap seed is read both ways: PANEL-A as the composite
+of its last three bootstrap checkpoints, PANEL-B as ``bootstrap/final.pt``.
 
 The table exists so write-ups can cite these numbers without recomputing
-them. Sources are the endpoint ``.npz`` files each read wrote; add a
-``Source`` entry when a new read lands and re-run:
+them. Sources are the endpoint ``.npz`` files each read wrote; the
+protocol column is read off each file's checkpoint list rather than typed
+by hand. Add a ``Source`` entry when a new read lands and re-run:
 
     uv run python -m sheepshead.analysis.build_panel_reference
 
@@ -38,13 +41,18 @@ COMPOSITE = "3-ckpt composite"
 SINGLE = "single ckpt x3"
 
 
+def protocol(ckpts: list[str]) -> str:
+    """Read the protocol off the endpoint itself: one path repeated three
+    times is a single-checkpoint read, three distinct paths a composite."""
+    return SINGLE if len(set(ckpts)) == 1 else COMPOSITE
+
+
 @dataclass(frozen=True)
 class Source:
     agent: str
     lineage: str
     league_episodes: int | None
     panel: str
-    protocol: str
     npz: Path
 
 
@@ -56,7 +64,6 @@ def _fresh_run() -> list[Source]:
             lineage,
             0,
             "PANEL-A",
-            SINGLE,
             RECALL_RC / "panel_seed.npz",
         )
     ]
@@ -67,7 +74,6 @@ def _fresh_run() -> list[Source]:
                 lineage,
                 g * 1_000_000,
                 "PANEL-A",
-                COMPOSITE,
                 RECALL_RC / f"panel_gen{g}.npz",
             )
         )
@@ -77,7 +83,6 @@ def _fresh_run() -> list[Source]:
                 lineage,
                 g * 1_000_000,
                 "PANEL-B",
-                COMPOSITE,
                 RECALL_RC / f"panelB_gen{g}.npz",
             )
         )
@@ -92,7 +97,6 @@ def _fresh_run() -> list[Source]:
                     lineage,
                     8_000_000,
                     panel,
-                    SINGLE,
                     RECALL_RC / f"{prefix}_iter{k}.npz",
                 )
             )
@@ -103,7 +107,6 @@ def _fresh_run() -> list[Source]:
                 lineage,
                 8_000_000,
                 panel,
-                SINGLE,
                 RECALL_RC / f"{prefix}_final.npz",
             )
         )
@@ -118,7 +121,6 @@ def _retention_run() -> list[Source]:
             lineage,
             0,
             "PANEL-A",
-            SINGLE,
             RETENTION / "panel_gen0.npz",
         )
     ]
@@ -129,7 +131,6 @@ def _retention_run() -> list[Source]:
                 lineage,
                 g * 1_000_000,
                 "PANEL-A",
-                COMPOSITE,
                 RETENTION / f"panel_gen{g}.npz",
             )
         )
@@ -184,7 +185,6 @@ def _references() -> list[Source]:
                     lineage,
                     episodes,
                     panel,
-                    SINGLE,
                     REFS / f"{prefix}_{tag}.npz",
                 )
             )
@@ -218,13 +218,13 @@ FIELDS = [
 def build_rows(srcs: list[Source]) -> tuple[list[dict[str, object]], list[Path]]:
     rows: list[dict[str, object]] = []
     missing: list[Path] = []
-    seen: set[tuple[str, str, str]] = set()
+    seen: set[tuple[str, str]] = set()
     for s in srcs:
         if not s.npz.exists():
             missing.append(s.npz)
             continue
         e = load_endpoint(s.npz)
-        key = (s.agent, s.panel, s.protocol)
+        key = (s.agent, s.panel)
         if key in seen:
             continue  # the same read registered under two source paths
         seen.add(key)
@@ -236,7 +236,7 @@ def build_rows(srcs: list[Source]) -> tuple[list[dict[str, object]], list[Path]]
                 if s.league_episodes is None
                 else s.league_episodes,
                 "panel": s.panel,
-                "protocol": s.protocol,
+                "protocol": protocol(e.ckpts),
                 "deals": len(e.per_deal),
                 "seed": e.seed,
                 "deal_hash": e.hash[:12],
