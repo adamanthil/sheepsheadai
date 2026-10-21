@@ -2166,6 +2166,11 @@ play). Split by ROOT card the shares are identical: over-trump 46.1%
 terminal, alternatives 45.9%, same depth profile. So about half the root
 value flows through the critic, symmetrically across the cards; a
 selective shallow bootstrap of the disfavored line is not happening.
+*Correction (§9.17):* symmetric by card CLASS only. Split by the card
+the policy plays vs the other legal cards, the shares differ ≈ 3×
+(62–67% vs 18–27% terminal) at both over-trump and decline nodes; the
+class split pools nodes where the over-trump is preferred with nodes
+where it is not, and the two cancel.
 
 **Engine variants, over-trump − policy's alternative (score), 358 nodes
 with all labels and the referee:**
@@ -2236,7 +2241,10 @@ What is established, from §9.9–§9.15 together:
   agree to 0.1.
 - **How the committee values these nodes.** 46% of simulations reach a
   terminal world, 54% bootstrap on the oracle critic with one to three
-  observer plies left, symmetrically across root cards. The limited
+  observer plies left. Symmetric by card class but NOT by preference
+  (§9.17): the card the policy plays is valued mostly by terminal
+  outcomes under a deep, maxed tree (62–67%), the alternatives mostly by
+  the critic (73–82%), so the label differences two estimators. The limited
   critic as leaf would echo the prior (+1.08 lean); the oracle leaf
   carries ≈ a third of the +0.20 lean (terminal rollouts: +0.14 ± 0.10
   left); in-tree follow-up credit a little; strategy fusion is not a
@@ -2276,3 +2284,73 @@ over several iterations rather than eliminating it, and that the
 residual after the label lean is removed is governed by the one-step
 distillation ceiling (§9.5) and the referee-frame question (does the
 label value the follow-up the deployed policy actually plays).
+
+### 9.17 Leaf census by preference (2026-10-20): the label differences two estimators
+
+The operator noted that at 256 iterations the tree adds a node every
+time a visited node is revisited, so most simulations run deep and many
+end at a terminal even from trick 0. Confirmed, with a finer split than
+§9.15's. `overtrump_probe/leaf_probe_preferred.py` reruns production
+searches (`budget_rows` generator, iteration-4 manifest: `d_rollout 1`,
+256 iterations × 3 replicates, oracle leaf, `max_depth` 6; θ₄ acting
+and searching) on the first 12 trick-0 nodes of the 20k scan in each
+set, and logs each simulation's leaf depth and type, split by whether
+the root card is the one the policy plays.
+
+| node set (12 nodes × 768 sims) | all: terminal | card the policy plays: terminal | other legal cards: terminal |
+|---|---|---|---|
+| θ₄ over-trumps (preferred = the over-trump) | 48.5% | **66.7%** (5,774 sims) | 17.9% (3,442) |
+| θ₄ declines (preferred = a fail or low trump) | 46.6% | **62.2%** (5,168) | 26.7% (4,048) |
+
+The rule is mechanical: a leaf at observer tree depth ≥ 5 is always
+terminal (the one rollout ply finishes the hand), shallower leaves always
+bootstrap on the oracle critic. The preferred card's subtree reaches
+depth 5–6 on two thirds of its simulations; the alternatives' leaves sit
+mostly at depths 2–4. Per-node terminal shares range 33–62%.
+
+**Why §9.15's class split saw no asymmetry.** It classified root cards
+as over-trump vs not and pooled decline and over-trump nodes. The
+asymmetry follows the policy's prior (PUCT concentrates visits, hence
+tree depth, on the preferred card), not the card class, so the two node
+sets cancel.
+
+**What the label is.** At the residual nodes the label is
+Q(over-trump) − Q(alternative) where the first term is mostly realized
+terminal score along a deep tree whose observer decisions are maxed over
+noisy statistics, and the second is mostly an oracle-critic bootstrap
+two to four tricks from the end, with the network's own play in between.
+Any difference between the two estimators (critic lean, max-of-noise
+optimism, follow-up skill the student does not realize) lands in the
+label with a sign set by the policy's preference. This is the concrete
+form of §9.14 channels 1 and 2, and it explains why the lean is
+concentrated where θ_k is confident and why a larger budget does not
+help (512 deepens the preferred subtree further; the label moved
+−0.133 → −0.038, more lenient, §9.10).
+
+**What §9.15's variants already say about it.** Each removes one half
+of the asymmetry: terminal rollouts put both branches on terminal
+scores (−0.08 ± 0.06 vs base at the residual nodes), the root-only tree
+removes the maxed follow-up (−0.06 ± 0.05). Both move the label toward
+the referee, by about a third of the lean each, at 1.2–1.3 SE.
+
+**Caveat against making this the whole story.** At decline nodes the
+preferred card is the alternative, so a pure preference effect predicts
+a label lean AGAINST the over-trump there. §9.15 shows the opposite:
+base −0.918 vs referee −1.018 (lean +0.10 toward the over-trump, ≈ 1.0
+SE). The preference-tracking mix is real and measured; its contribution
+to the sign is not established.
+
+**The one untested rung.** `max_depth 1` + terminal rollouts together
+(`budget_rows generate --variant
+depth1_terminal:iters=256,max_depth_play=1,d_rollout=99`, as in
+`t0_20k/variants_run.sh`) makes the search estimate
+Q^θ₄ on SAMPLED worlds: the referee's quantity, with only the belief
+differing (§9.14 channel 3; the referee plays the true deal). Its gap to
+the referee isolates the belief pool; its gap to base is the whole
+estimator asymmetry. Same 463 nodes, ≈ the cost of the terminal variant.
+Run it first if the leak is picked up again; an inexpensive companion is
+a uniform root prior (spreads tree depth evenly across cards, equalizing
+the estimator mix without changing either estimator).
+
+Outputs: `overtrump_probe/leaf_probe_preferred_over.log`,
+`leaf_probe_preferred_decline.log` (argv: node count, `over`|`decline`).
