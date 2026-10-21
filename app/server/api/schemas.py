@@ -344,8 +344,10 @@ class TablePublic(BaseModel):
     rules: RulesInput
     fillWithAI: bool
     # Stake the hand in progress is being played for: 1 normally, doubling
-    # with each consecutive passed-out deal at a doublers table.
+    # with each consecutive passed-out deal at a doublers table, up to a cap.
     scoreMultiplier: int = 1
+    # Consecutive passed-out deals behind the hand in progress.
+    passOutCount: int = 0
     seats: Dict[int, Optional[str]] | Dict[str, Optional[str]]
     runningBySeat: Dict[int, int] | Dict[str, int]
     seatOccupants: Dict[int, Optional[str]] | Dict[str, Optional[str]]

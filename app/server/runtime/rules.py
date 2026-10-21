@@ -11,6 +11,14 @@ from typing import Any, Mapping, Optional
 ALL_PASS_LEASTERS = "leasters"
 ALL_PASS_DOUBLERS = "doublers"
 
+# Ceiling on the doublings stacked onto one hand's stake, from every source
+# combined: passed-out deals today, and any later doubling rule (cracks,
+# blitzes) as well. Three doublings is an 8x stake. Past the cap the event
+# still happens -- a passed-out deal is still thrown in -- but the stake stays
+# pinned, which keeps game.score_multiplier (a SMALLINT) from overflowing and
+# stops a table from stacking its way to an absurd score on the leaderboard.
+MAX_STACKED_DOUBLINGS = 3
+
 
 def all_pass_mode(rules: Optional[Mapping[str, Any]]) -> str:
     """What a table does when all five players pass.

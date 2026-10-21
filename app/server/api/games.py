@@ -122,7 +122,8 @@ async def start_game(
         table.results_counted = False
         # A fresh hand is played for the base stake; only a passed-out
         # doublers deal raises it, and only until that hand is played out.
-        table.score_multiplier = 1
+        table.doublings = 0
+        table.pass_out_count = 0
         if not table.initial_seat_order:
             table.initial_seat_order = [str(table.seats[i] or "") for i in range(1, 6)]
             pub = table.to_public_dict()
@@ -182,7 +183,8 @@ async def redeal(
         table.game = None
         table.status = "open"
         table.results_counted = False
-        table.score_multiplier = 1
+        table.doublings = 0
+        table.pass_out_count = 0
 
     return table.to_public_dict()
 

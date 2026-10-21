@@ -144,13 +144,20 @@ async def emit_bid_chat_message(
     await broadcast_chat_append(table, msg_dict)
 
 
-async def emit_doubler_redeal_message(table: Table, multiplier: int) -> None:
-    """Post + broadcast the system message for a passed-out doublers deal."""
-    msg_dict = await add_chat_message(
-        table,
-        "system",
-        f"All passed — hand thrown in, redealing at {multiplier}x",
+async def emit_doubler_redeal_message(
+    table: Table, multiplier: int, *, capped: bool = False
+) -> None:
+    """Post + broadcast the system message for a passed-out doublers deal.
+
+    ``capped`` marks a redeal whose stake was already at the maximum and so
+    did not double.
+    """
+    body = (
+        f"All passed — hand thrown in, redealing at {multiplier}x (max)"
+        if capped
+        else f"All passed — hand thrown in, redealing at {multiplier}x"
     )
+    msg_dict = await add_chat_message(table, "system", body)
     await broadcast_chat_append(table, msg_dict)
 
 

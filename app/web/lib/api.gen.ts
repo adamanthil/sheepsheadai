@@ -1054,6 +1054,11 @@ export interface components {
             initialSeatOrder: string[];
             /** Name */
             name: string;
+            /**
+             * Passoutcount
+             * @default 0
+             */
+            passOutCount: number;
             /** Resultshistory */
             resultsHistory: {
                 [key: string]: unknown;
@@ -1358,6 +1363,11 @@ export interface components {
             initialSeatOrder: string[];
             /** Name */
             name: string;
+            /**
+             * Passoutcount
+             * @default 0
+             */
+            passOutCount: number;
             /** Resultshistory */
             resultsHistory: {
                 [key: string]: unknown;

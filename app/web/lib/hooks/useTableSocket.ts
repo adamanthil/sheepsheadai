@@ -9,7 +9,7 @@ export interface TableSocketCallbacks {
   onTrickComplete?: (cards: string[], winner: number) => void;
   onPickerAnnounced?: (pickerName: string) => void;
   onLeaster?: () => void;
-  onDoubler?: (multiplier: number) => void;
+  onDoubler?: (multiplier: number, capped: boolean) => void;
   onAlone?: (pickerName: string) => void;
   onCall?: (pickerName: string, cardDisplay: string, under: boolean) => void;
   onTableClosed?: () => void;
@@ -168,7 +168,7 @@ export function useTableSocket(
             } else if (phase?.kind === "leaster") {
               cbs?.onLeaster?.();
             } else if (phase?.kind === "doubler") {
-              cbs?.onDoubler?.(phase.multiplier);
+              cbs?.onDoubler?.(phase.multiplier, phase.capped);
             } else if (phase?.kind === "alone") {
               cbs?.onAlone?.(phase.pickerName);
             } else if (phase?.kind === "call") {

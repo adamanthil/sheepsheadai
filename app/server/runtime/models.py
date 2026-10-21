@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from fastapi import WebSocket
 
+from server.runtime.rules import MAX_STACKED_DOUBLINGS
 from sheepshead.agent.ppo import PPOAgent
 from sheepshead.game import Game
 
@@ -118,10 +119,13 @@ class Table:
     running_scores: Dict[str, int] = field(
         default_factory=dict
     )  # occupant_id -> cumulative score
-    # Stake the hand in progress is played for. Always 1 at a leasters table;
-    # at a doublers table it doubles with every consecutive passed-out deal
-    # and resets to 1 once a hand is actually played out.
-    score_multiplier: int = 1
+    # Doublings stacked onto the stake of the hand in progress. Add to it only
+    # through stack_doubling(), which enforces the cap shared by every
+    # doubling rule; it resets to 0 once a hand is actually played out.
+    doublings: int = 0
+    # Consecutive passed-out deals behind the hand in progress; resets with
+    # doublings. Lets clients see a throw-in even when the stake is capped.
+    pass_out_count: int = 0
     results_counted: bool = False
     # History of completed hands at this table (in chronological order)
     results_history: List[Dict[str, Any]] = field(default_factory=list)
@@ -193,6 +197,22 @@ class Table:
             return True
         return self.game_player_is_ai.get(seat, True)
 
+    @property
+    def score_multiplier(self) -> int:
+        """Stake the hand in progress is played for: 1 doubled per doubling."""
+        return 2**self.doublings
+
+    def stack_doubling(self) -> bool:
+        """Double the stake of the hand in progress, unless it is at the cap.
+
+        The one entry point for every doubling rule, so they all share
+        MAX_STACKED_DOUBLINGS. Returns whether the stake doubled.
+        """
+        if self.doublings >= MAX_STACKED_DOUBLINGS:
+            return False
+        self.doublings += 1
+        return True
+
     def to_public_dict(self) -> Dict[str, Any]:
         def seat_name(occ_id: Optional[str]) -> Optional[str]:
             if not occ_id:
@@ -237,6 +257,7 @@ class Table:
             "rules": self.rules,
             "fillWithAI": self.fill_with_ai,
             "scoreMultiplier": self.score_multiplier,
+            "passOutCount": self.pass_out_count,
             "seats": seats_named,
             "runningBySeat": running_by_seat,
             "seatOccupants": seats_ids,

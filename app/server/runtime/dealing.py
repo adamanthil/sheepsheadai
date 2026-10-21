@@ -81,6 +81,10 @@ def hand_passed_out(table: Table) -> bool:
 async def redeal_passed_out_hand(table: Table) -> bool:
     """Throw in a passed-out doublers deal and deal the next at double stakes.
 
+    The doubling goes through Table.stack_doubling, so it shares the cap on
+    stacked doublings; a pass-out past that is still thrown in and redealt,
+    at the capped stake.
+
     Returns True when a redeal happened, so callers know the Game they were
     working with is gone. Caller must not hold ``game_lock``.
     """
@@ -89,7 +93,8 @@ async def redeal_passed_out_hand(table: Table) -> bool:
         # both reach this on the same fifth PASS, and only one may redeal.
         if not hand_passed_out(table):
             return False
-        table.score_multiplier *= 2
+        capped = not table.stack_doubling()
+        table.pass_out_count += 1
         table.game = new_game_for_table(table)
         refresh_table_agent(table)
         game = table.game
@@ -100,7 +105,7 @@ async def redeal_passed_out_hand(table: Table) -> bool:
     # game row open and orphaned when it has not.
     await persist_passed_out_game(pool, table)
     await persist_started_game(pool, table, game)
-    await emit_doubler_redeal_message(table, table.score_multiplier)
+    await emit_doubler_redeal_message(table, table.score_multiplier, capped=capped)
     logging.info(
         "Table %s passed out; redealt at %sx",
         table.id,

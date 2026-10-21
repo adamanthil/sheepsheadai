@@ -1439,6 +1439,11 @@
             "title": "Name",
             "type": "string"
           },
+          "passOutCount": {
+            "default": 0,
+            "title": "Passoutcount",
+            "type": "integer"
+          },
           "resultsHistory": {
             "items": {
               "additionalProperties": true,
@@ -2243,6 +2248,11 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "passOutCount": {
+            "default": 0,
+            "title": "Passoutcount",
+            "type": "integer"
           },
           "resultsHistory": {
             "items": {

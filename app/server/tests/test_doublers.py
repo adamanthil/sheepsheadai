@@ -11,6 +11,7 @@ import pytest
 
 from server.runtime.dealing import redeal_passed_out_hand
 from server.runtime.models import Occupant, Table
+from server.runtime.rules import MAX_STACKED_DOUBLINGS
 from server.runtime.views import record_hand_result
 from sheepshead.game import ACTION_IDS, Game
 
@@ -70,6 +71,45 @@ async def test_stake_doubles_again_on_a_second_pass_out(no_persistence):
     assert await redeal_passed_out_hand(table) is True
 
     assert table.score_multiplier == 4
+    assert table.pass_out_count == 2
+
+
+async def _pass_out_again(table: Table) -> None:
+    assert table.game is not None
+    for player in table.game.players:
+        assert player.act(ACTION_IDS["PASS"])
+    assert await redeal_passed_out_hand(table) is True
+
+
+async def test_stake_is_pinned_at_the_maximum(no_persistence):
+    table = _passed_out_table("doublers")
+    assert await redeal_passed_out_hand(table) is True
+    for _ in range(2):
+        await _pass_out_again(table)
+    assert MAX_STACKED_DOUBLINGS == 3
+    assert table.score_multiplier == 8
+    assert not any("(max)" in m["body"] for m in table.chat_log)
+
+    # A fourth pass-out is still thrown in and redealt, just not doubled.
+    thrown_in = table.game
+    await _pass_out_again(table)
+
+    assert table.game is not thrown_in
+    assert table.score_multiplier == 8
+    assert table.pass_out_count == 4
+    last = table.chat_log[-1]["body"]
+    assert last.endswith("redealing at 8x (max)")
+
+
+def test_the_cap_counts_doublings_from_every_source():
+    """Doublings already stacked by another rule use up the same cap."""
+    table = Table(id="t-cap", name="cap")
+    table.doublings = MAX_STACKED_DOUBLINGS - 1
+
+    assert table.stack_doubling() is True
+    assert table.stack_doubling() is False
+    assert table.doublings == MAX_STACKED_DOUBLINGS
+    assert table.score_multiplier == 2**MAX_STACKED_DOUBLINGS
 
 
 async def test_leasters_table_keeps_playing_the_hand_out(no_persistence):
@@ -94,7 +134,7 @@ async def test_a_table_with_no_all_pass_rule_plays_leasters(no_persistence):
 
 def test_record_hand_result_scales_scores_by_the_stake():
     table = _passed_out_table("doublers")
-    table.score_multiplier = 4
+    table.doublings = 2
     game = table.game
     assert game is not None
     while not game.is_done():

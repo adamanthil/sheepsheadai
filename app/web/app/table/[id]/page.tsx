@@ -124,8 +124,14 @@ export default function TablePage() {
     onTrickComplete: triggerCollect,
     onPickerAnnounced: (name) => showCallout("PICK", `${name} picked`),
     onLeaster: () => showCallout("LEASTER", "All passed · Leaster"),
-    onDoubler: (multiplier) =>
-      showCallout("DOUBLER", `All passed · Redealing at ${multiplier}×`, 2600),
+    onDoubler: (multiplier, capped) =>
+      showCallout(
+        "DOUBLER",
+        capped
+          ? `All passed · Already at the ${multiplier}× maximum · Redealing`
+          : `All passed · Redealing at ${multiplier}×`,
+        2600,
+      ),
     onAlone: (name) => showCallout("ALONE", `${name} goes alone`),
     onCall: (name, cardDisplay, under) =>
       showCallout(
