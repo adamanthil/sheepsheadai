@@ -2261,7 +2261,8 @@ removes them at all yet:
 
 1. *Policy iteration as is* keeps lowering the leak ≈ 1 point of
    probability per iteration at this stage (−0.106 total θ₀ → θ₄), slowing
-   as the label's lean becomes the floor.
+   as the label's lean becomes the floor. (Amended 2026-10-22: the
+   iteration-5 candidate took a −4.2 point step, §9.18; −0.148 total.)
 2. *Label-side correction* (one-cell: measured, works, hand-tuned,
    rejected; class-level referee benchmarking: principled, unbuilt) adds
    ≈ 1.4 points per iteration and cannot dislodge a 0.9 prior in one step.
@@ -2354,3 +2355,50 @@ the estimator mix without changing either estimator).
 
 Outputs: `overtrump_probe/leaf_probe_preferred_over.log`,
 `leaf_probe_preferred_decline.log` (argv: node count, `over`|`decline`).
+
+### 9.18 Iteration 5 candidate (2026-10-22): the largest step yet, on the flat iteration
+
+Iteration 5's cert was the series' first null read (routed play-only
++0.0006 ± 0.0021 vs θ₄, full h2h +0.0001 ± 0.0023; stop-rule counter
+1/2). The operator asked for the over-trump read on the candidate
+before the bidding phase finished, so both §9.8 instruments were run on
+d5 = `pi/iter5/distill_epoch10.pt` under the bidding PPO, niced
+(`runs/202609_recall_rc/overtrump_probe/iter5/probe_d5_now.sh`). Since
+the bidding phase has left play unchanged on every node at iterations
+1, 2 and 4 (§9.9: d4 → θ₄ Δ 0), the d5 read is the θ₅ read for play.
+
+**Paired frozen-state read (the §9.8 359 nodes).**
+
+| checkpoint | p(over) | clear blunder | schmear | argmax over |
+|---|---|---|---|---|
+| θ₃ | 0.297 | 0.219 | 0.262 | 29.5% |
+| θ₄ | 0.289 | 0.214 | 0.247 | 28.4% |
+| d5 | **0.247** | **0.182** | **0.205** | **24.0%** |
+
+θ₄ → d5: Δp −0.0415 (one-sided 95% upper −0.0321) → PASS; clear-blunder
+−0.0322 (upper −0.0236) → PASS; schmear −0.0419 (upper −0.0289) → PASS.
+Argmax over-trumps 28.4% → 24.0%: 16 stopped, 0 started (McNemar
+one-sided p < 0.001). The step is four to five times the θ₃ → θ₄ step
+(−0.0086) and larger than the iteration-2 and iteration-3 steps
+(−0.039, −0.034); every flipped argmax went the right way.
+
+**Fresh-deal incidence (§9.2 scan, 4,000 seeds).** 96/346 = 27.7% ± 2.4
+over-trumped (θ₄ 29.7%), trick 0 15.2% ± 3.5 (θ₄ 17.9%), clear-blunder
+share 18.9% (20.3%); p(over) by trick 0.15 / 0.29 / 0.31 / 0.43 / 0.36.
+Same direction, under the scan's power as usual.
+
+**Reading.** The iteration whose aggregate gain went flat is the
+iteration where this cell moved most. That is what §8's model-push
+read says should happen as the series converges: the targets keep
+pulling the residual classes off the prior (iteration 5 model-push
+q95–q99 marginal +0.0236, 32 of 50 classes with a |z| ≥ 3 residual)
+after the mass of ordinary decisions has stopped moving. §9.16 item 1's
+"≈ 1 point per iteration" was the θ₃ → θ₄ pace; θ₀ → d5 now totals
+−0.148 on p(over) and 40.9% → 24.0% on the argmax rate. Whether the
+step persists into θ₅ and iteration 6 is the next read; the
+bidding-boundary rerun on `pi/iter5/bidding/final.pt` confirms d5 = θ₅.
+
+Outputs: `overtrump_probe/iter5/scan_d5_summary.txt`,
+`frozen_overtrump_d5.txt`, `probe.log`.
+
+
