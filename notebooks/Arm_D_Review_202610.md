@@ -2402,3 +2402,87 @@ Outputs: `overtrump_probe/iter5/scan_d5_summary.txt`,
 `frozen_overtrump_d5.txt`, `probe.log`.
 
 
+
+## 10. Leaster play under retention (2026-10-22)
+
+The iteration-5 cert's one clearly negative component was the
+leaster-hand paired score, −0.0219 ± 0.0077 (n 6,533 hands), with the
+non-leaster hands at +0.0021 ± 0.0025. The operator asked how leaster
+play can degrade when retention rows carry 10× weight in the distill
+loss. Two cheap checks (`runs/202609_recall_rc/leaster_probe/`).
+
+**What retention constrains.** The loss is CE toward the search target
+on targeted rows (standard play only; leasters are never searched) plus
+`lambda_ret` = 10 × KL(θ_{k−1} ‖ θ) on retention rows, which are the
+bidding decisions and leaster-play decisions sampled from θ_{k−1}'s own
+trajectories (`policy_iteration.SET_CODES`). The holdout retention KL has
+read 0.0007–0.0008 nats per row all series.
+
+**Check 1: the KL by regime** (`retention_kl_split.py`, distill holdout
+of 4,000 episodes, candidate vs its anchor):
+
+| rows | iteration 4 (d4 vs θ₃): KL mean / p90 / argmax changed | iteration 5 (d5 vs θ₄) |
+|---|---|---|
+| bidding (n ≈ 3,700) | 0.00033 / 0.0006 / 0.46% | 0.00044 / 0.0004 / 0.38% |
+| leaster play (n ≈ 1,200) | 0.00157 / 0.0044 / 2.54% | 0.00186 / 0.0051 / 2.28% |
+| other retained play (n ≈ 730) | 0.00063 / 0.0010 / 0.82% | 0.00110 / 0.0022 / 0.14% |
+| targeted standard play (n ≈ 13,300) | 0.0159 / 0.039 / 4.67% | 0.0143 / 0.035 / 4.57% |
+
+The headline 0.0008 is a bidding-dominated average. Leaster rows carry
+four to five times the bidding rows' KL and a 2.3–2.5% per-decision
+argmax change; over ≈ six leaster decisions a hand that is ≈ 13% of
+leaster hands with at least one different card. Iteration 5 is not
+worse than iteration 4 on any of these.
+
+**Check 2: per-deal divergence from the certs**
+(`cert_leaster_divergence.py`, from `cert.json` `per_deal` and
+`per_deal_leaster_hands`):
+
+| iteration | leaster edge ± SE | leaster deals | leaster deals with a nonzero paired diff | non-leaster deals with a nonzero diff |
+|---|---|---|---|---|
+| 1 | +0.0185 ± 0.0120 | 954 | 14.8% | 25.1% |
+| 2 | −0.0126 ± 0.0065 | 1,314 | 7.3% | 19.8% |
+| 3 | +0.0151 ± 0.0074 | 1,342 | 7.9% | 16.4% |
+| 4 | +0.0003 ± 0.0066 | 1,472 | 8.4% | 14.0% |
+| 5 | −0.0219 ± 0.0077 | 1,347 | 10.7% | 12.9% |
+
+(The bidding-phase certs print their own "leaster hands" line; the
+series above is the distill certs'.) The leaster series flips sign with
+±0.015 swings at ≈ 2 SE, so one 2.8 SE read is weaker than it looks.
+The structural change is the crossover: the non-leaster divergence
+fraction has fallen every iteration, as a converging series should,
+while the leaster fraction rose from 8.4% to 10.7% and is now nearly
+level with standard play after being less than half of it at
+iteration 2.
+
+**Mechanism.** The 10× term pins the policy where it is measured and
+leaster play is hurt through what it does not measure:
+
+1. *Concentration.* Bidding rows are near-deterministic, so their KL is
+   near zero whatever the weight; the leaster rows carry the budget
+   (check 1).
+2. *On-distribution only.* The KL is evaluated at states θ_{k−1}
+   visited. After one changed card the rest of the hand is off that
+   distribution and nothing in the loss speaks there; a per-step
+   divergence ε compounds to O(εT) over the hand (the covariate-shift
+   argument of DAgger, Ross et al. 2011). The targeted rows are off-policy
+   by construction and still dominate the parameter movement.
+3. *Shared parameters.* Six trunk epochs plus a shared bilinear play head
+   mean every targeted update ΔW in standard play moves leaster logits
+   by J_leaster·ΔW; retention cancels only the component visible on its
+   sampled rows. Standard-play pushes (win the trick with high trump)
+   point against leaster play, so the uncancelled component is not
+   random.
+4. *No corrective signal.* Search never labels leasters, so retention
+   only penalizes change there and nothing rewards improvement: leaster
+   play is a random walk of ≈ 2% of decisions per iteration whose only
+   check is a cert read with SE 0.007.
+
+**Reading.** The mechanism is confirmed in structure but did not grow
+at iteration 5, so it does not single out this iteration; the most
+defensible reading of −0.022 is a negative draw of a fixed, unselected
+step. Nothing changes in this run. For the validation run, two small
+recipe options: a separate, larger `lambda_ret` on leaster rows, or
+DAgger-style retention rows drawn from the candidate's own leaster
+trajectories (closing the off-distribution gap in item 2). Either should
+be pre-registered against the leaster-hand cert series above.
