@@ -41,7 +41,7 @@ BOOT_SEED = 42
 
 # Program phases in order; each pattern extracts the stage ordinal.
 PHASES: tuple[tuple[str, str], ...] = (
-    ("Bootstrap", r"bootstrap seed$"),
+    ("Bootstrap", r"bootstrap (\d+)k$|bootstrap (seed)$"),
     ("League PPO", r"league gen (\d+)$"),
     ("Policy iteration (ExIt)", r"iteration (\d+) \(theta_\d+\)$"),
 )
@@ -103,12 +103,22 @@ def program_points(sources: dict[str, dict[str, str]], run: str) -> list[Point]:
             m = re.search(pattern, tail)
             if m is None:
                 continue
-            stage = int(m.group(1)) if m.groups() else 0
-            label = {0: "seed", 1: f"gen {stage}", 2: f"θ{stage}"}[phase]
+            g = next((x for x in m.groups() if x), None)
+            stage = int(g) if g and g.isdigit() else 0
+            label = {
+                0: f"{stage}k" if stage else "seed",
+                1: f"gen {stage}",
+                2: f"θ{stage}",
+            }[phase]
             stat, pa, pb = _composite(by_panel)
             pts.append(Point(agent, phase, stage, label, stat, pa, pb))
             break
     pts.sort(key=lambda p: (p.phase, p.stage))
+    # With bootstrap-stage composites present, the seed point (the 400k
+    # composite on PANEL-A, final.pt on PANEL-B) is superseded by the 400k
+    # read on both panels.
+    if any(p.phase == 0 and p.stage for p in pts):
+        pts = [p for p in pts if not (p.phase == 0 and p.stage == 0)]
     return pts
 
 

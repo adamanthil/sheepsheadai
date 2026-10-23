@@ -67,6 +67,20 @@ def _fresh_run() -> list[Source]:
             RECALL_RC / "panel_seed.npz",
         )
     ]
+    # Bootstrap-phase composites (analysis/bootstrap_panel_reads), same
+    # protocol as the league generations; the 400k PANEL-A composite is
+    # the seed read above under another name.
+    for n in range(150_000, 400_001, 50_000):
+        for prefix, panel in (("panel", "PANEL-A"), ("panelB", "PANEL-B")):
+            out.append(
+                Source(
+                    f"202609_recall_rc bootstrap {n // 1000}k",
+                    lineage,
+                    0,
+                    panel,
+                    RECALL_RC / f"{prefix}_boot{n}.npz",
+                )
+            )
     for g in range(1, 9):
         out.append(
             Source(
