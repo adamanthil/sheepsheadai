@@ -2398,8 +2398,19 @@ after the mass of ordinary decisions has stopped moving. §9.16 item 1's
 step persists into θ₅ and iteration 6 is the next read; the
 bidding-boundary rerun on `pi/iter5/bidding/final.pt` confirms d5 = θ₅.
 
+**θ₅ confirmation (19:03, after the bidding phase; `probe_theta5_now.sh`,
+nice 19 under iteration 6's corpus).** d5 → θ₅ is identical on every
+frozen node (Δ 0, 0 stopped, 0 started) on all three subsets, so the
+table above is the θ₅ read: θ₄ → θ₅ −0.0415 / −0.0322 / −0.0419, all
+PASS. Fresh-deal scan on θ₅: 88/327 = 26.9% ± 2.5 over-trumped in 2,926
+standard called games (the bidding phase shifted the pick/call mix a
+little: 2,926 standard called games from d5's 3,100), trick 0 13/99 =
+13.1% ± 3.4, clear-blunder share 18.1%. Series on the fresh scan at
+trick 0: θ₄ 17.9% → d5 15.2% → θ₅ 13.1%, each ± 3.5.
+
 Outputs: `overtrump_probe/iter5/scan_d5_summary.txt`,
-`frozen_overtrump_d5.txt`, `probe.log`.
+`frozen_overtrump_d5.txt`, `scan_theta5_summary.txt`,
+`frozen_overtrump_theta5.txt`, `probe.log`.
 
 
 
