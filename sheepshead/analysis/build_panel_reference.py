@@ -103,7 +103,7 @@ def _fresh_run() -> list[Source]:
     # Phase 3: the iterate carried forward from each policy iteration
     # (orchestrator `_iteration_panels`), then the release. Single-checkpoint
     # form: distillation leaves no earlier snapshots to composite.
-    for k in range(1, 6):
+    for k in range(1, 7):
         for panel, prefix in (("PANEL-A", "panel"), ("PANEL-B", "panelB")):
             out.append(
                 Source(
