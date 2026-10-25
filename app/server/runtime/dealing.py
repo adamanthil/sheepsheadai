@@ -14,6 +14,7 @@ from server.runtime.models import Table
 from server.runtime.rules import plays_doublers
 from server.runtime.views import try_int
 from server.services.ai_loader import load_agent
+from server.services.ai_sampling import SamplingSpec
 from server.services.persistence.hand_play import persist_passed_out_game
 from server.services.persistence.hand_setup import persist_started_game
 from server.services.persistence.pool import get_db_pool
@@ -23,6 +24,8 @@ from sheepshead.game import Game
 def build_table_agent(settings, table_id: str):
     """Load the table's AI, applying the configured convention mask if any.
 
+    SHEEPSHEAD_TEMPERATURE_* / SHEEPSHEAD_LOGIT_BAND install the deployment
+    sampler (server.services.ai_sampling); all zero = argmax, the default.
     SHEEPSHEAD_CONVENTION_WRAP ("", "c1", "c2", "c1c2") wraps the agent with
     the deploy-time convention mask (sheepshead/agent/convention_wrapper.py):
     convention-violating defender leads are masked, the policy still picks the
@@ -31,6 +34,12 @@ def build_table_agent(settings, table_id: str):
     start rather than silently no-opping).
     """
     agent = load_agent(settings.sheepshead_model_path)
+    sampler = SamplingSpec.from_settings(settings).sampler()
+    if sampler is not None:
+        # Installed on the raw agent (a convention wrapper delegates reads
+        # but not writes); act(deterministic=True) then samples from the
+        # tempered policy. Fresh seed per table agent.
+        agent.deploy_sampling = sampler
     if settings.sheepshead_convention_wrap:
         from sheepshead.agent.convention_wrapper import wrap_agent
 

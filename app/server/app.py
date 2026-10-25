@@ -28,6 +28,7 @@ from server.realtime import websocket as websocket_router
 from server.runtime import lifecycle
 from server.runtime.tasks import spawn
 from server.services.ai_loader import load_agent
+from server.services.ai_sampling import SamplingSpec
 from server.services.persistence.pool import close_pool, open_pool, set_db_state
 from server.services.persistence.sessions import run_identity_purge
 
@@ -75,20 +76,31 @@ async def _upsert_ai_model(conn, label: str) -> int:
     )
 
 
-async def _upsert_ai_player(conn, ai_model_id: int) -> int:
-    """Return the ai_player_id for (model, deterministic=true), inserting if novel."""
+async def _upsert_ai_player(conn, ai_model_id: int, sampling: SamplingSpec) -> int:
+    """Return the ai_player_id for (model, deployment sampling), inserting if
+    novel. The five sampling numbers are the identity (UNIQUE NULLS NOT
+    DISTINCT), so an argmax deployment and a tempered one of the same model
+    are different players."""
+    cols = sampling.columns()
     row = await conn.fetchrow(
-        "INSERT INTO ai_player (ai_model_id, is_deterministic) VALUES ($1, true) "
-        "ON CONFLICT (ai_model_id, is_deterministic) DO NOTHING "
+        "INSERT INTO ai_player (ai_model_id, temperature_pick, temperature_partner, "
+        "temperature_bury, temperature_play, logit_band) "
+        "VALUES ($1, $2, $3, $4, $5, $6) "
+        "ON CONFLICT (ai_model_id, temperature_pick, temperature_partner, "
+        "temperature_bury, temperature_play, logit_band) DO NOTHING "
         "RETURNING ai_player_id",
         ai_model_id,
+        *cols,
     )
     if row is not None:
         return row["ai_player_id"]
     return await conn.fetchval(
         "SELECT ai_player_id FROM ai_player "
-        "WHERE ai_model_id = $1 AND is_deterministic = true",
+        "WHERE ai_model_id = $1 AND temperature_pick = $2 AND temperature_partner = $3 "
+        "AND temperature_bury = $4 AND temperature_play = $5 "
+        "AND logit_band IS NOT DISTINCT FROM $6",
         ai_model_id,
+        *cols,
     )
 
 
@@ -163,7 +175,9 @@ def create_app() -> FastAPI:
 
         async with pool.acquire() as conn:
             ai_model_id = await _upsert_ai_model(conn, settings.sheepshead_model_label)
-            ai_player_id = await _upsert_ai_player(conn, ai_model_id)
+            ai_player_id = await _upsert_ai_player(
+                conn, ai_model_id, SamplingSpec.from_settings(settings)
+            )
         set_db_state(pool, ai_player_id)
         logging.getLogger(__name__).info(
             "AI model '%s' id=%s player_id=%s",

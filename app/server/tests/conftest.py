@@ -16,6 +16,7 @@ import os
 import pytest
 
 from server.config import get_settings
+from server.services.ai_sampling import SamplingSpec
 
 
 @pytest.fixture
@@ -82,7 +83,9 @@ async def db_app(app, monkeypatch):
     pool = await open_pool(os.environ["TEST_DATABASE_URL"])
     async with pool.acquire() as conn:
         ai_model_id = await app_module._upsert_ai_model(conn, "test-model")
-        ai_player_id = await app_module._upsert_ai_player(conn, ai_model_id)
+        ai_player_id = await app_module._upsert_ai_player(
+            conn, ai_model_id, SamplingSpec.from_settings(get_settings())
+        )
     set_db_state(pool, ai_player_id)
     try:
         yield app, pool

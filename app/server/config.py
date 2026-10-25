@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,6 +17,22 @@ class Settings(BaseSettings):
     # scanners measure the unwrapped policy. See
     # sheepshead/agent/convention_wrapper.py + Convention_Optimality notebook.
     sheepshead_convention_wrap: str = ""
+    # Deployment sampling for TABLE agents (sheepshead/agent/sampling.py):
+    # per-head softmax temperatures (0 = argmax) and an optional logit band
+    # in nats. Tuned per checkpoint (Training_Program_Redesign §4.5); the
+    # five values are also the AI player's identity row (ai_player).
+    sheepshead_temperature_pick: float = 0.0
+    sheepshead_temperature_partner: float = 0.0
+    sheepshead_temperature_bury: float = 0.0
+    sheepshead_temperature_play: float = 0.0
+    sheepshead_logit_band: float | None = None
+
+    @field_validator("sheepshead_logit_band", mode="before")
+    @classmethod
+    def _empty_band_is_none(cls, v):
+        # Compose passes the variable through unset as "", which means no band.
+        return None if v in ("", None) else v
+
     # Open tables one creator may hold at once (server.runtime.manager). The
     # IP allowance is higher: several people behind one home or office
     # network may each open a table.
