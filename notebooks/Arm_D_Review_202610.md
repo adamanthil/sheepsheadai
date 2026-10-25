@@ -2497,3 +2497,63 @@ recipe options: a separate, larger `lambda_ret` on leaster rows, or
 DAgger-style retention rows drawn from the candidate's own leaster
 trajectories (closing the off-distribution gap in item 2). Either should
 be pre-registered against the leaster-hand cert series above.
+
+### 9.19 Iteration 6 candidate (2026-10-24): the last iterate, and the fresh scan finally moves
+
+Iteration 6's cert was the second flat read (play-only +0.0013 ± 0.0021),
+so the stop rule fires and d6 = `pi/iter6/distill_epoch10.pt` is the
+program's last candidate (θ₆ after its bidding phase; the bidding phase
+has left play unchanged on every frozen node at iterations 1, 2, 4
+and 5). Both instruments were run on d6 under the bidding PPO at the
+operator's request (`overtrump_probe/iter6/probe_d6_now.sh`, nice 15).
+
+**Paired frozen-state read (the §9.8 359 nodes).**
+
+| checkpoint | p(over) | clear blunder | schmear | argmax over |
+|---|---|---|---|---|
+| θ₀ (league 8M) | 0.395 | 0.315 | 0.376 | 40.9% |
+| θ₁ | 0.377 | 0.295 | 0.352 | 40.1% |
+| θ₂ | 0.338 | 0.263 | 0.297 | 34.5% |
+| θ₃ | 0.297 | 0.219 | 0.262 | 29.5% |
+| θ₄ | 0.289 | 0.214 | 0.247 | 28.4% |
+| θ₅ | 0.247 | 0.182 | 0.205 | 24.0% |
+| d6 | **0.225** | **0.162** | **0.184** | **22.0%** |
+
+θ₅ → d6: Δp −0.0218 (one-sided 95% upper −0.0162) → PASS; clear-blunder
+−0.0200 (upper −0.0148) → PASS; schmear −0.0211 (upper −0.0130) → PASS.
+Argmax 24.0% → 22.0%: 7 stopped, 0 started (McNemar p 0.008). Half the
+iteration-5 step, twice the iteration-4 step; still every flip in the
+right direction. θ₀ → d6 totals −0.170 on p(over) and 40.9% → 22.0% on
+the argmax rate: the program removed 43% of the leak's probability mass
+at these nodes and 46% of its argmax incidence.
+
+**Fresh-deal incidence (§9.2 scan, 4,000 seeds).** 71/315 = 22.5% ± 2.4
+over-trumped (θ₅ 26.9%, θ₄ 29.7%); **trick 0 9/95 = 9.5% ± 3.0** (θ₅
+13.1%, θ₄ 17.9%); clear-blunder share 13.4% (18.1%, 20.3%); schmear
+subset 12.6% ± 2.7 (21.7% at θ₄); 2.4 over-trumps per 100 standard
+called games (3.4 at θ₄). This is the first fresh-scan step that clears
+the scan's own power (the §9.8 amendment put its detectable drop at
+≈ 5.6 points; θ₄ → d6 is −7.2 overall and −8.4 at trick 0). The shape
+is unchanged: position still dominates (0 players after 13%, 2 after
+43%), trick 3 still the worst trick (40%), AD/QD still the most common
+over-trump cards.
+
+**Reading.** The two flat iterations are the two largest over-trump
+steps. That is consistent across the model-push read (the residual
+classes keep moving while the mass of decisions does not) and the
+sharpening series (logit spread 5.0 → 5.4 → 5.7): the search labels'
+weak preference against over-trumping is being realized late, after the
+cheaper gains are exhausted, and the one-step distillation ceiling
+(§9.5) is what paces it. Extrapolating the last three steps the
+trick-0 incidence would reach the single digits in one or two more
+iterations; the stop rule, keyed on the aggregate, ends the run first.
+That is the right call for the aggregate and the wrong one for this
+cell, which is the trade-off the validation run's recipe should name
+explicitly (a cell-aware stop criterion, or the referee-benchmarked
+label of §9.12 so the cell moves faster per iteration).
+
+The θ₆ confirmation (`probe_theta6_now.sh`) runs after the bidding
+phase; d6 = θ₆ on every node is the expectation.
+
+Outputs: `overtrump_probe/iter6/scan_d6_summary.txt`,
+`frozen_overtrump_d6.txt`, `probe.log`.
