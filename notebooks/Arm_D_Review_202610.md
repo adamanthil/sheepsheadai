@@ -2552,8 +2552,16 @@ cell, which is the trade-off the validation run's recipe should name
 explicitly (a cell-aware stop criterion, or the referee-benchmarked
 label of §9.12 so the cell moves faster per iteration).
 
-The θ₆ confirmation (`probe_theta6_now.sh`) runs after the bidding
-phase; d6 = θ₆ on every node is the expectation.
+**θ₆ confirmation (07:29 Oct 25, after the bidding phase;
+`probe_theta6_now.sh`, nice 19 under the final phase).** d6 → θ₆ is
+identical on every frozen node (Δ 0, 0 stopped, 0 started) on all three
+subsets, as at every earlier iteration, so the table above is the θ₆
+read and the program's final one: θ₀ → θ₆ p(over) 0.395 → 0.225, argmax
+40.9% → 22.0%. Fresh-deal scan on θ₆: 71/324 = 21.9% ± 2.3 over-trumped
+in 2,935 standard called games, trick 0 9/95 = 9.5% ± 3.0, clear-blunder
+share 13.4%, 2.4 over-trumps per 100 called games. Fresh trick-0 series
+θ₄ 17.9% → θ₅ 13.1% → θ₆ 9.5%, each ± 3.0-3.5.
 
 Outputs: `overtrump_probe/iter6/scan_d6_summary.txt`,
-`frozen_overtrump_d6.txt`, `probe.log`.
+`frozen_overtrump_d6.txt`, `scan_theta6_summary.txt`,
+`frozen_overtrump_theta6.txt`, `probe.log`.
