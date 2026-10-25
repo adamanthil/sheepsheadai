@@ -442,6 +442,9 @@ class AnalyzeSimulateMeta(BaseModel):
 
     partnerMode: int
     deterministic: bool
+    # How actions were chosen: "argmax", the deployed sampling's label
+    # (e.g. "play=0.5 band=1"), or "raw policy (T=1)" before tuning.
+    sampling: str
     seed: Optional[int] = None
     model_label: str = Field(alias="model")
     gamma: float
@@ -458,6 +461,7 @@ class AnalyzePickMeta(BaseModel):
     seat: int
     seed: Optional[int] = None
     deterministic: bool
+    sampling: str
     model_label: str = Field(alias="model")
 
 
@@ -569,7 +573,7 @@ class AnalyzePickRequest(BaseModel):
     # 6 / 2); the remainder is dealt randomly. None or [] = fully random.
     hand: Optional[List[str]] = None
     blind: Optional[List[str]] = None
-    deterministic: bool = True
+    deterministic: bool = False  # off = the deployed (tuned) sampling
 
 
 class AnalyzePickScenario(BaseModel):

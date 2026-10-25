@@ -821,6 +821,8 @@ export interface components {
             model: string;
             /** Partnermode */
             partnerMode: number;
+            /** Sampling */
+            sampling: string;
             /** Seat */
             seat: number;
             /** Seed */
@@ -854,7 +856,7 @@ export interface components {
             blind?: string[] | null;
             /**
              * Deterministic
-             * @default true
+             * @default false
              */
             deterministic: boolean;
             /** Hand */
@@ -952,6 +954,8 @@ export interface components {
             model: string;
             /** Partnermode */
             partnerMode: number;
+            /** Sampling */
+            sampling: string;
             /** Seed */
             seed?: number | null;
         };

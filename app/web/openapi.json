@@ -799,6 +799,10 @@
             "title": "Partnermode",
             "type": "integer"
           },
+          "sampling": {
+            "title": "Sampling",
+            "type": "string"
+          },
           "seat": {
             "title": "Seat",
             "type": "integer"
@@ -819,6 +823,7 @@
           "partnerMode",
           "seat",
           "deterministic",
+          "sampling",
           "model"
         ],
         "title": "AnalyzePickMeta",
@@ -918,7 +923,7 @@
             "title": "Blind"
           },
           "deterministic": {
-            "default": true,
+            "default": false,
             "title": "Deterministic",
             "type": "boolean"
           },
@@ -1159,6 +1164,10 @@
             "title": "Partnermode",
             "type": "integer"
           },
+          "sampling": {
+            "title": "Sampling",
+            "type": "string"
+          },
           "seed": {
             "anyOf": [
               {
@@ -1174,6 +1183,7 @@
         "required": [
           "partnerMode",
           "deterministic",
+          "sampling",
           "model",
           "gamma",
           "criticMode",

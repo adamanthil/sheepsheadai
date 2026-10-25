@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from server.api.schemas import AnalyzeSimulateRequest
+from server.api.schemas import AnalyzePickRequest, AnalyzeSimulateRequest
 from server.config import get_settings
 
 
@@ -235,3 +235,41 @@ def test_simulate_with_supplied_agent_skips_the_loader(analyze_env, monkeypatch)
     supplied = analyze_mod.simulate_game(req, agent=agent)
 
     assert supplied.model_dump() == via_loader.model_dump()
+
+
+def test_stochastic_default_uses_the_deployed_sampling(monkeypatch):
+    """Unchecked 'deterministic' samples the deployed (tuned) policy, reseeded
+    from the request seed so a seeded run replays; with no tuned
+    temperatures it falls back to the raw policy at T = 1."""
+    import server.services.analyze as analyze_mod
+    import server.services.pick_analysis as pick_mod
+    from server.config import get_settings
+    from sheepshead.agent.ppo import PPOAgent
+    from sheepshead.game import ACTIONS
+
+    agent = PPOAgent(len(ACTIONS), arch="no-aux")
+    monkeypatch.setattr(analyze_mod, "load_agent", lambda path: agent)
+    monkeypatch.setattr(pick_mod, "load_agent", lambda path: agent)
+
+    assert AnalyzeSimulateRequest().deterministic is False
+    assert AnalyzePickRequest().deterministic is False
+
+    raw = analyze_mod.simulate_game(AnalyzeSimulateRequest(seed=5))
+    assert raw.meta.sampling == "raw policy (T=1)"
+
+    monkeypatch.setenv("SHEEPSHEAD_TEMPERATURE_PLAY", "0.5")
+    monkeypatch.setenv("SHEEPSHEAD_LOGIT_BAND", "1.0")
+    get_settings.cache_clear()
+    try:
+        a = analyze_mod.simulate_game(AnalyzeSimulateRequest(seed=5))
+        b = analyze_mod.simulate_game(AnalyzeSimulateRequest(seed=5))
+        assert a.meta.sampling == "play=0.5 band=1"
+        assert [s.action for s in a.trace] == [s.action for s in b.trace]
+        argmax = analyze_mod.simulate_game(
+            AnalyzeSimulateRequest(seed=5, deterministic=True)
+        )
+        assert argmax.meta.sampling == "argmax"
+        pick = pick_mod.analyze_pick(AnalyzePickRequest(seed=5))
+        assert pick.meta.sampling == "play=0.5 band=1"
+    finally:
+        get_settings.cache_clear()

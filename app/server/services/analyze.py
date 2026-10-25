@@ -20,6 +20,7 @@ from server.services.ai_loader import inference_turn_in_thread, load_agent
 from server.services.analysis_common import (
     build_action_detail,
     compute_oracle_values,
+    deployment_sampler,
     find_actor,
     memory_drift,
     run_inference_step,
@@ -261,6 +262,11 @@ def _assemble_response(
         meta=AnalyzeSimulateMeta(
             partnerMode=req.partnerMode,
             deterministic=req.deterministic,
+            sampling=(
+                "argmax"
+                if req.deterministic
+                else deployment_sampler(settings, req.seed)[1]
+            ),
             seed=req.seed,
             model=settings.sheepshead_model_label,
             gamma=float(agent.gamma),
@@ -308,6 +314,8 @@ def simulate_game(
     memory_observes: List[AnalyzeMemoryObserve] = []
     tricks_observed = 0
 
+    sampler, _ = deployment_sampler(get_settings(), req.seed)
+
     # Simulation loop
     while not game.is_done() and step_index < req.maxSteps:
         actor_player = find_actor(game)
@@ -324,7 +332,12 @@ def simulate_game(
             oracle_decision_pos.append((actor_seat, len(seq)))
             seq.append(actor_player.get_oracle_state_dict())
 
-        action_id = select_action_id(inference.action_probs, req.deterministic)
+        action_id = select_action_id(
+            inference.action_probs,
+            req.deterministic,
+            inference.valid_actions,
+            sampler,
+        )
 
         trace.append(
             build_action_detail(

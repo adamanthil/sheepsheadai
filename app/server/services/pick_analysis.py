@@ -33,6 +33,7 @@ from server.runtime.views import build_player_state
 from server.services.ai_loader import load_agent
 from server.services.analysis_common import (
     build_action_detail,
+    deployment_sampler,
     find_actor,
     run_inference_step,
     select_action_id,
@@ -118,6 +119,7 @@ def analyze_pick(req: AnalyzePickRequest) -> AnalyzePickResponse:
         blind=list(game.blind),
     )
 
+    sampler, sampling_label = deployment_sampler(settings, req.seed)
     decisions: List[AnalyzeActionDetail] = []
     while (
         not game.play_started
@@ -131,7 +133,12 @@ def analyze_pick(req: AnalyzePickRequest) -> AnalyzePickResponse:
         actor_seat = actor_player.position
 
         inference = run_inference_step(agent, actor_player, actor_seat, players, device)
-        action_id = select_action_id(inference.action_probs, req.deterministic)
+        action_id = select_action_id(
+            inference.action_probs,
+            req.deterministic,
+            inference.valid_actions,
+            sampler,
+        )
 
         decisions.append(
             build_action_detail(
@@ -166,6 +173,7 @@ def analyze_pick(req: AnalyzePickRequest) -> AnalyzePickResponse:
             seat=req.seat,
             seed=req.seed,
             deterministic=req.deterministic,
+            sampling="argmax" if req.deterministic else sampling_label,
             model=settings.sheepshead_model_label,
         ),
         scenario=scenario,

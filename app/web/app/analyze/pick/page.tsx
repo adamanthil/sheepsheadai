@@ -15,7 +15,7 @@ export default function PickAnalysisPage() {
   const [partnerMode, setPartnerMode] = useState<number>(1);
   const [seat, setSeat] = useState<number>(1);
   const [seed, setSeed] = useState<string>("");
-  const [deterministic, setDeterministic] = useState<boolean>(true);
+  const [deterministic, setDeterministic] = useState<boolean>(false);
   const [picker, setPicker] = useState<PickerState>({
     lockedHand: [],
     lockedBlind: [],

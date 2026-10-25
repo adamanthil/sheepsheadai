@@ -10,6 +10,7 @@ list.
 from __future__ import annotations
 
 import random
+import secrets
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -23,7 +24,9 @@ from server.api.schemas import (
     AnalyzeTrumpSeenMaskEntry,
 )
 from server.services.ai_loader import inference_turn_in_thread
+from server.services.ai_sampling import SamplingSpec
 from sheepshead.agent.observation import observation_for
+from sheepshead.agent.sampling import DeploySampling
 from sheepshead.game import ACTION_LOOKUP, TRUMP, Game
 from sheepshead.training.reward_shaping import (
     compute_any_unseen_trump_higher_than_hand,
@@ -47,11 +50,37 @@ def find_actor(game: Game) -> Optional[Any]:
     return next((p for p in game.players if p.get_valid_action_ids()), None)
 
 
-def select_action_id(action_probs: torch.Tensor, deterministic: bool) -> int:
+def deployment_sampler(
+    settings, seed: Optional[int]
+) -> tuple[Optional[DeploySampling], str]:
+    """The /analyze stochastic policy: the deployed sampling (settings;
+    server.services.ai_sampling), reseeded from the request seed so a seeded
+    run replays. While the deployment is still argmax (no tuned temperatures)
+    the raw policy is sampled at T = 1, the pre-tuning behaviour, so
+    "stochastic" keeps meaning something. Returns (sampler or None, label)."""
+    spec = SamplingSpec.from_settings(settings)
+    if spec.is_argmax:
+        return None, "raw policy (T=1)"
+    sampler = spec.sampler()
+    assert sampler is not None
+    sampler.reseed(seed if seed is not None else secrets.randbits(62))
+    return sampler, spec.label()
+
+
+def select_action_id(
+    action_probs: torch.Tensor,
+    deterministic: bool,
+    valid_actions: Optional[List[int]] = None,
+    sampling: Optional[DeploySampling] = None,
+) -> int:
     """Pick a 1-indexed action from the policy: argmax when deterministic,
-    otherwise a sample from the distribution."""
+    else the deployment sampler when one is given (needs the legal set for
+    its head group), else a sample from the raw distribution."""
     if deterministic:
         return int(torch.argmax(action_probs, dim=1).item()) + 1
+    if sampling is not None and valid_actions is not None:
+        log_probs = torch.log(action_probs[0].detach().cpu().clamp(min=1e-30)).numpy()
+        return sampling.sample(log_probs, valid_actions) + 1
     dist = torch.distributions.Categorical(action_probs)
     return int(dist.sample().item()) + 1
 

@@ -16,7 +16,7 @@ import styles from "./page.module.css";
 export default function AnalyzePage() {
   // Form state
   const [partnerMode, setPartnerMode] = useState<number>(1);
-  const [deterministic, setDeterministic] = useState<boolean>(true);
+  const [deterministic, setDeterministic] = useState<boolean>(false);
   const [seed, setSeed] = useState<string>("");
   const [shapingWeightPercent, setShapingWeightPercent] = useState<number>(100);
   const [terminalRewards, setTerminalRewards] = useState<boolean>(true);
@@ -244,7 +244,9 @@ export default function AnalyzePage() {
                     : "Jack of Diamonds"}
                 </span>
                 <span className={styles.chip}>
-                  {response.meta.deterministic ? "Deterministic" : "Stochastic"}
+                  {response.meta.deterministic
+                    ? "Deterministic"
+                    : `Stochastic (${response.meta.sampling})`}
                 </span>
                 {response.meta.seed != null && (
                   <span className={styles.chip}>Seed {response.meta.seed}</span>
