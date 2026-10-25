@@ -302,6 +302,11 @@ class PPOAgent:
         # (which would advance the recurrent memory again).
         self.stash_action_probs = False
         self.last_action_probs = None
+        # Deployment-time sampler (agent/sampling.DeploySampling). When set,
+        # act(deterministic=True) draws from the tempered/banded policy
+        # instead of the argmax, so evaluation harnesses and the app play
+        # the deployed policy through one path. None = argmax (default).
+        self.deploy_sampling = None
 
         # Hyperparameters
         self.gamma = 0.99
@@ -695,7 +700,13 @@ class PPOAgent:
         # kept explicitly below rather than dropped.
         dist = torch.distributions.Categorical(action_probs, validate_args=False)
 
-        if deterministic:
+        if deterministic and self.deploy_sampling is not None:
+            idx = self.deploy_sampling.sample(
+                torch.log(action_probs[0].detach().cpu().clamp(min=1e-30)).numpy(),
+                valid_actions,
+            )
+            action = torch.tensor([idx], device=action_probs.device)
+        elif deterministic:
             action = torch.argmax(action_probs, dim=1)
         else:
             action = dist.sample()

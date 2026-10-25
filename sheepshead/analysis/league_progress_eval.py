@@ -56,6 +56,7 @@ from typing import Any, Dict, List, Optional, Sequence
 import numpy as np
 
 from sheepshead.agent.ppo import load_agent
+from sheepshead.agent.sampling import DeploySampling
 from sheepshead.analysis.bootstrap import IntervalStat, bootstrap_interval
 from sheepshead.analysis.conventions import lead_options
 from sheepshead.analysis.panels import PANEL_A
@@ -339,11 +340,17 @@ def h2h(
 _H2H_WORKER: Dict[str, Any] = {}
 
 
-def load_model(ckpt: str):
-    """Picklable candidate builder for the sharded h2h: one checkpoint."""
+def load_model(ckpt: str, sampling: Optional[DeploySampling] = None):
+    """Picklable candidate builder for the sharded h2h: one checkpoint,
+    optionally with a deployment sampler installed on its agent (a fresh
+    registry, so a sampled hero never shares the instance of a same-file
+    argmax field)."""
     from sheepshead.analysis.rigorous_eval import ModelRegistry
 
-    return ModelRegistry().get(Path(ckpt))
+    model = ModelRegistry().get(Path(ckpt))
+    if sampling is not None:
+        model.agent.deploy_sampling = sampling
+    return model
 
 
 def _h2h_worker_init(build_cand, prev_ckpt: str) -> None:
@@ -420,8 +427,14 @@ def h2h_duplicate(
     seed: int = 42,
     n_boot: int = 5000,
     workers: Optional[int] = None,
+    hero_sampling: Optional[DeploySampling] = None,
 ) -> Dict:
     """Duplicate-bridge h2h (Extended_League amendment 2026-07-19).
+
+    ``hero_sampling``: a deployment sampler for the candidate only (the
+    field stays argmax), reseeded per deal inside play_hand so arms that
+    differ only in temperature share their uniforms. The candidate is then
+    loaded separately from the registry even when it is the anchor's file.
 
     The candidate is seated in all 5 seats per CRN deal against a field made
     entirely of the previous checkpoint (rigorous_eval gauntlet with a
@@ -457,7 +470,11 @@ def h2h_duplicate(
     from sheepshead.game import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
 
     registry = ModelRegistry()
-    cand = registry.get(Path(gen_ckpt))
+    cand = (
+        load_model(gen_ckpt, hero_sampling)
+        if hero_sampling is not None
+        else registry.get(Path(gen_ckpt))
+    )
     anchor = registry.get(Path(prev_ckpt))
     seed_rng = _random.Random(seed)
     deal_seeds = [seed_rng.randint(0, 2**31 - 1) for _ in range(n_deals_per_mode)]
@@ -476,7 +493,7 @@ def h2h_duplicate(
     for mode, name in ((PARTNER_BY_CALLED_ACE, "called"), (PARTNER_BY_JD, "jd")):
         if workers > 1:
             ev = h2h_parallel_eval(
-                functools.partial(load_model, gen_ckpt),
+                functools.partial(load_model, gen_ckpt, hero_sampling),
                 prev_ckpt,
                 deal_seeds,
                 mode,

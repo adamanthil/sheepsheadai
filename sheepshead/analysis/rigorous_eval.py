@@ -274,6 +274,9 @@ def play_hand(
     # Reset recurrent state once per distinct underlying agent instance.
     for agent in {id(m.agent): m.agent for m in seat_to_model.values()}.values():
         agent.reset_recurrent_state()
+        sampling = getattr(agent, "deploy_sampling", None)
+        if sampling is not None:
+            sampling.reseed(deal_seed)  # common random numbers across arms
 
     while not game.is_done():
         for player in game.players:
