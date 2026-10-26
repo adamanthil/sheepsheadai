@@ -41,6 +41,9 @@ from sheepshead.analysis.league_progress_eval import h2h_duplicate
 
 GROUPS = {
     "play": ("play",),
+    "pick": ("pick",),
+    "partner": ("partner",),
+    "bury": ("bury",),
     "bidding": ("pick", "partner", "bury"),
     "all": HEAD_GROUPS,
 }
