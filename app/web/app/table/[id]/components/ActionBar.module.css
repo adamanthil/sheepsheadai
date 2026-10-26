@@ -50,9 +50,12 @@
 .mob {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   border-top: 1px solid var(--rule);
-  padding: 10px 16px 12px;
+  /* The extra bottom room keeps the buttons' tap targets clear of the screen
+     edge, where a touch in a mobile browser starts a toolbar/scroll gesture
+     instead of a tap. */
+  padding: 8px 16px 14px;
   background: var(--bg-page);
   flex-shrink: 0;
 }
@@ -60,6 +63,9 @@
   font-family: var(--font-display);
   font-style: italic;
   font-size: 12px;
+  /* A fixed line the turn clock fits inside (see .mobHelper .clock), so the
+     line keeps its height whether or not a timer is running. */
+  line-height: 18px;
   color: var(--muted);
   text-align: center;
 }
@@ -68,6 +74,17 @@
   gap: 8px;
   justify-content: center;
   flex-wrap: wrap;
+}
+/* During play the primary row is empty (cards are played from the hand); an
+   empty row would still cost a flex gap, which the ring stage needs more. */
+.mobRow:empty {
+  display: none;
+}
+/* Slightly shorter buttons than the shared .btn: the bar sits under the hand
+   on every phone, so its height comes straight out of the ring stage. */
+.mob button {
+  padding-top: 8px;
+  padding-bottom: 8px;
 }
 
 .utilRow {
@@ -124,6 +141,9 @@
   font-variant-numeric: tabular-nums;
   color: var(--muted);
   margin-left: 8px;
+}
+.mobHelper .clock {
+  line-height: 1;
 }
 .clockUrgent {
   color: var(--accent-2);

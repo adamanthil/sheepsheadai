@@ -82,18 +82,22 @@ export default function PlayerHand({
     >
       <div className={styles.metaRow}>
         <div style={{ minWidth: 0 }}>
-          <div className={ds.overline} style={{ fontSize: isMobile ? 9 : 11 }}>
+          <div
+            className={`${ds.overline} ${styles.overline}`}
+            style={{ fontSize: isMobile ? 9 : 11 }}
+          >
             Your hand · {shownHand.length} cards
             {isDealer && " · Dealer"}
           </div>
-          <div
-            className={styles.metaText}
-            style={{ fontSize: isMobile ? 12 : 16 }}
-          >
-            {meta}
-          </div>
+          {/* Mobile drops the prompt: the action bar below already carries
+              the same instruction, and the line's height goes to the ring. */}
+          {!isMobile && (
+            <div className={styles.metaText} style={{ fontSize: 16 }}>
+              {meta}
+            </div>
+          )}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <div className={styles.badges}>
           {isYourTurn && phase === "play" && (
             <span
               className={`${ds.badge} ${ds.badgeAccent2}`}

@@ -21,6 +21,29 @@
   gap: 8px;
   margin-bottom: 12px;
 }
+/* Mobile reads the meta row as one line: the overline beside the badges. */
+.mobWrap .metaRow {
+  align-items: center;
+  margin-bottom: 8px;
+}
+.overline {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+/* Pin the badge strip to one badge's height (13px line + 5px padding + 2px
+   border) whether or not a badge is showing. On one line the meta row is
+   otherwise only as tall as its overline, so YOUR TURN appearing would grow
+   it and shrink the ring stage's cards with every turn. */
+.mobWrap .badges {
+  height: 20px;
+}
 .metaText {
   font-family: var(--font-display);
   font-style: italic;
@@ -54,6 +77,10 @@
    eat the room the table ring needs above it. Desktop sets --pc-w inline. */
 .mobWrap .fan {
   container-type: inline-size;
+  /* Room for the playable card's 6px lift plus its 2px ring, and no more:
+     every pixel saved here goes to the ring stage above. */
+  padding-top: 10px;
+  padding-bottom: 6px;
 }
 .mobWrap .cardSlot,
 .mobWrap .fan::before {
