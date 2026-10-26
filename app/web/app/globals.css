@@ -59,6 +59,34 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* iOS 27 paints a Liquid Glass blur band over the top of an installed web
+   app (not Safari) unless a position: fixed element sits there: WebKit
+   samples the top few pixels for the status-bar colour and the blur, and an
+   opaque fixed strip at least ~6px tall and ~80% wide turns both solid.
+   Scrolling content (z-index <= 6) passes under it in the page colour;
+   full-screen overlays (z-index 20+) still cover it and become the sampled
+   colour themselves.
+   -webkit-touch-callout scopes it to iOS WebKit. */
+.ios-pwa-status-bar {
+  display: none;
+}
+
+@supports (-webkit-touch-callout: none) {
+  @media (display-mode: standalone) {
+    .ios-pwa-status-bar {
+      display: block;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 8px;
+      background: var(--bg-page);
+      pointer-events: none;
+      z-index: 10;
+    }
+  }
+}
+
 /* Shared pulse used by "your turn" / pending-decision affordances. */
 @keyframes ssPulse {
   0%,

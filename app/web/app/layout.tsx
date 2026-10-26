@@ -67,7 +67,12 @@ export default function RootLayout({
   const fontVars = `${instrumentSerif.variable} ${geist.variable} ${jetbrainsMono.variable}`;
   return (
     <html lang="en" className={fontVars}>
-      <body>{children}</body>
+      <body>
+        {/* Gives iOS 27 a solid colour to sample at the top edge of the
+            installed app; see .ios-pwa-status-bar in globals.css. */}
+        <div className="ios-pwa-status-bar" aria-hidden="true" />
+        {children}
+      </body>
     </html>
   );
 }
