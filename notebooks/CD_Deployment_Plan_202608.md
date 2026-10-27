@@ -322,9 +322,11 @@ Full hashes go in the manifest at implementation time (recompute with
 ```
 
 * `sampling` on the deploy entry is the per-checkpoint deployment
-  sampler (§4.5 of the program notebook; the 10-26 sweep's
-  recommendation is shown — **confirm before the bootstrap release**;
-  bury stays 0 because the sweep attributed the bidding cost to it).
+  sampler (§4.5 of the program notebook). **Decided by the operator
+  10-27**: T 0.5 on pick, partner and play, bury 0 (the 10-26 split
+  attributed the bidding cost to the bury head), global logit band 1.0
+  nats. Measured cost vs the release's own argmax field ≈ −0.0155, about
+  17% of deals changed; vs the 30M still ≈ +0.09.
   The deploy script turns it into the five env vars, so the sampler
   travels with the model and a re-temper is a manifest commit, not a
   box edit. A re-temper without a weight change recreates only the api
@@ -707,12 +709,12 @@ Same deal seed and deal hash as every row in `notebooks/panel_reference.csv`.
    standalone; proves the closure list before anything depends on it).
 2. `models/manifest.json` + `fetch_models.py` + `check_model_manifest.py`
    + CI step; `panels.py` → manifest keys and its callers; **publish the
-   two bootstrap releases first** (§8.2) so `--check` passes in CI; then
+   two bootstrap releases first** (§8.2) so `--check` passes in CI
+   (the deploy entry's `sampling` block is the operator's 10-27
+   decision, §5.2); then
    `git rm final_pfsp_swish_ppo.pt` and re-point its references to
    `models/pfsp-swish-30m.pt` (D5) in the same commit, so the tree never
    has both copies.
-   Confirm the deploy entry's `sampling` block with the operator before
-   the release is cut — it is the §4.5 decision made concrete.
 3. `app/deploy/model.env`.
 4. Compose: `image:` switch, `db-backup` client version, build override
    file, `.env.prod.example` trim.
