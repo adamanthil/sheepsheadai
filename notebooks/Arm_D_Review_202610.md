@@ -2669,3 +2669,51 @@ absorbed what this operator can teach.
 
 Outputs: `ceiling/theta0/ceiling_h2h.json`, `nodes.jsonl`, `run.log`;
 `ceiling/theta6/` likewise; `ceiling/launcher.log`.
+
+**Addendum (10-27 11:50): the direct play-only read, and what the
+ceiling shrink is made of.** The operator asked for the one paired
+measurement the compounding sum approximates: θ₆'s PLAY with θ₀'s
+bidding (head-routed) against raw θ₀ in the other four seats, 8,000
+duplicate deals/mode, seed 42 (`final/play_only_theta6_vs_theta0/`).
+
+| quantity | overall | called | jd |
+|---|---|---|---|
+| ceiling(θ₀) = search-θ₀ − raw θ₀ | +0.1652 ± 0.0283 | +0.186 | +0.145 |
+| ceiling shrink θ₀ → θ₆ (paired) | +0.0752 ± 0.0371 | +0.022 | +0.129 |
+| compounding play-only sum (6 certs) | +0.042 (± ≈0.006) | | |
+| **direct play-only θ₆ vs raw θ₀** | **+0.0341 ± 0.0041** | +0.0293 ± 0.0055 | +0.0389 ± 0.0061 |
+
+Three readings. (1) Realised play skill over the ExIt phase, against
+the baseline the ceiling was measured on, is +0.034 = **21% of
+ceiling(θ₀)**; the compounding sum (+0.042) overstated it by 0.008,
+i.e. the six step edges did not add perfectly (transitivity loss of
+about 1 SE of the sum). (2) The ceiling shrink (+0.075) is 0.041 ±
+0.037 larger than the realised gain, and the mode split says where the
+difference lives: in jd games the self-ceiling collapsed by +0.129 while
+θ₆'s play gained only +0.039 against θ₀; in called games the ceiling
+barely moved (+0.022) while the realised gain was +0.029. So the jd
+headroom was absorbed in the SELF-REFERENTIAL sense — the search with
+θ₆'s beliefs can no longer beat θ₆ in jd games — far more than in the
+skill sense; roughly 0.09 of the jd shrink is the policy converging to
+the search's own fixed point rather than becoming better against θ₀.
+This is the quantitative form of the operator's 10-27 assessment: the
+ceiling is a best response to the current agent with the current
+agent's beliefs, computed in a hidden-partner game, and part of its
+shrink is co-adaptation, not skill. (3) The headline absorption figure
+for the final report is therefore **21% realised (direct, paired, ± 1
+SE 18–25% on the numerator), 45% of the self-ceiling removed**, with
+the gap between them named as the self-referential component; the
+compounding sum is retired as an absorption statistic (it remains the
+stop rule's per-iteration signal, which is what it was built for).
+
+The remaining +0.09 self-ceiling should be read the same way: an upper
+bound on what a search-driven program could still add, of which the
+called-game part (+0.164) may be mostly real (its shrink tracked the
+realised gain) and the jd part is spent. A population-scored ceiling
+(search-θ₆ vs panel members in the other seats and in the
+determinization opponent model) is the instrument that would separate
+the two directly; it needs a per-seat opponent model in the committee
+search, which it does not have today — validation-run item, not
+post-program work.
+
+Outputs: `final/play_only_theta6_vs_theta0/result.json`, `run.log`.
