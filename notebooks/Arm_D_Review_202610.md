@@ -2565,3 +2565,107 @@ share 13.4%, 2.4 over-trumps per 100 called games. Fresh trick-0 series
 Outputs: `overtrump_probe/iter6/scan_d6_summary.txt`,
 `frozen_overtrump_d6.txt`, `scan_theta6_summary.txt`,
 `frozen_overtrump_theta6.txt`, `probe.log`.
+
+### 9.20 Search-ceiling pair (2026-10-27): how much of what the search knew did the program absorb?
+
+The deploy-time ceiling read (`ceiling_h2h`: committee search R=3×1024,
+d_rollout 1, 2-of-3 votes, pi_gumbel argmax readout, at every unforced
+play node of the hero with the checkpoint's own weights, vs the raw
+argmax of the same checkpoint in the other seats; duplicate 250
+deals/mode, same deal seeds for both checkpoints) was run on θ₀, the
+league endpoint the ExIt phase started from, and on θ₆, the release
+(`ceiling/theta0/`, `ceiling/theta6/`; 10.9 h and 10.5 h at 7 workers).
+The pre-ExIt ceiling is the lineage's search-knowable headroom; the
+post-ExIt ceiling is what is left.
+
+| checkpoint | ceiling (search − raw) | called | jd | hero won | outcome changed | nodes searched / resolved / deviated |
+|---|---|---|---|---|---|---|
+| θ₀ (league 8M) | **+0.1652 ± 0.0283** | +0.1856 ± 0.0391 | +0.1448 ± 0.0410 | 58.7% | 53.4% | 9,264 / 8,606 (93%) / 3,343 (36%) |
+| θ₆ (release) | **+0.0900 ± 0.0251** | +0.1640 ± 0.0369 | +0.0160 ± 0.0340 | 55.6% | 45.6% | 9,158 / 8,519 (93%) / 2,995 (33%) |
+| absorbed (θ₀ − θ₆) | **+0.0752 ± 0.0371** (paired per deal, 2.0 SE) | +0.022 | +0.129 | | | |
+
+**Headroom absorbed: 46% of ceiling(θ₀), ± 1 SE 23–68%.** θ₆'s own
+remaining ceiling is 54% of θ₀'s. This lineage's θ₀ ceiling is within
+1 SE of the v2 lineage's pre-ExIt reads (+0.180 ± 0.029 at its θ₀,
++0.166 ± 0.028 at θ₁; CE_Teacher §20.13 add. 9) even though this θ₀
+started 0.04 composite stronger, so the search headroom is a property
+of the operator (what the committee can see that a one-pass policy
+cannot), not of where the policy started.
+
+**Reconciliation with the compounding sum.** The six play-only
+iteration edges sum to +0.042 (25% of ceiling(θ₀)); the release is
++0.0460 ± 0.0059 over the v2 release. The ceiling shrink is +0.075 ±
+0.037. The two numbers measure different things and the gap between
+them (0.033 ± 0.037) is not resolved: the compounding sum is realised
+argmax-vs-argmax skill against the previous iterate, while the ceiling
+shrink is how much less the search can still add against the raw
+policy, which also moves when the raw policy moves toward the search's
+own fixed point without becoming stronger against third parties (the
+10-26 panel paired-difference note: iterations 4–6 transferred nothing
+measurable to the panel). The honest statement for the final report is
+"the program realised about a quarter of the pre-ExIt search headroom
+as measured skill, and the search can still add about +0.09 on top of
+the release".
+
+**Where the headroom went, by mode.** Almost all of the absorbed
+headroom is in jack-of-diamonds partner games: the jd ceiling fell from
++0.145 to +0.016 (effectively nothing left), while the called-partner
+ceiling barely moved (+0.186 → +0.164). The residual deploy-time
+headroom is therefore nearly all in called games, which is the mode
+whose lead-node cell this review has been about since §9: the
+called-suit over-trump (§9.12–§9.19) and the called-suit lead schedule
+are where the search still disagrees with the policy. A validation-run
+recipe that wants to close the remaining gap should spend its label
+budget there, not uniformly.
+
+**Convention adherence at the searched nodes, policy vs what the search
+acted.**
+
+| convention | θ₀ policy | θ₀ search | θ₆ policy | θ₆ search | trick-0 θ₀ pol / search | trick-0 θ₆ pol / search |
+|---|---|---|---|---|---|---|
+| def-lead no-trump | 93.8% | 82.9% | 88.4% | 81.3% | 96.3% / 95.3% (183, 181 / 190) | 98.5% / 96.0% (198, 193 / 201) |
+| partner leads trump | 96.3% | 86.4% | 91.9% | 77.3% | 98.6% / 85.7% (69, 60 / 70) | 97.3% / 82.7% (73, 62 / 75) |
+| called-suit lead | 97.3% | 83.1% | 94.1% | 89.5% | 100% / 91.0% (78, 71 / 78) | 100% / 96.3% (81, 78 / 81) |
+
+Three reads. (1) At trick 0 the release adheres as well as or better
+than θ₀ (def-lead 96.3% → 98.5%, called-suit 100% → 100%), and the
+search barely disagrees with it there: at the 201 trick-0 defender-lead
+nodes the search broke the no-trump convention where the policy kept
+it 5 times and fixed a policy break 0 times (θ₀: 4 and 2); at the
+trick-0 called-suit leads it broke it 3/81 times (θ₀: 7/78). The
+over-trump cell's trick-0 behaviour is settled, which agrees with the
+fresh-deal series of §9.19 (trick-0 over-trump 17.9% → 9.5%). (2) The
+policy's ALL-trick adherence fell θ₀ → θ₆ on every convention (93.8 →
+88.4, 96.3 → 91.9, 97.3 → 94.1) entirely at tricks 2–4, and it fell
+TOWARD the search's late-trick rates (search-acted 75–80% at tricks
+2–4 on both checkpoints). That is the tie-band exception structure of
+Convention_Optimality being learned: the conventions are
+near-mandatory at the first lead and optional late, and the program
+moved the policy that way. It is a legitimate change, but it is also
+the first place to look if a future deployment is judged on a
+convention-adherence rate measured over all tricks. (3) The search's
+own convention breaks did not fall much (82.9 → 81.3, 86.4 → 77.3,
+83.1 → 89.5), so the search is not converging to the conventions; the
+policy is converging to the search.
+
+**Deviation rate by trick** (fraction of resolved nodes where the
+committee's choice differed from the policy argmax): θ₀ 31 / 37 / 43 /
+44 / 30%; θ₆ 31 / 34 / 38 / 40 / 27% for tricks 0–4. The program
+reduced disagreement most at tricks 2–3 and least at trick 0, where
+both are already at the ~30% floor that the committee's own
+tie-breaking noise sets at 1,024 iterations (the 10-22 head-determinism
+read: trick-0 lead nodes are the policy's sharpest).
+
+**Release-with-search vs raw.** Deploying θ₆ behind the committee
+search would be worth about +0.09 ± 0.025 against the raw release in
+its own field, roughly twice the release's measured edge over the v2
+release. The cost is ~9 worker-minutes per duplicate deal-mode at
+R=3×1024 (500 deal-modes in 10.5 h on 7 workers), i.e. ~2 minutes of
+one core per hand, which is offline-grade, not table-time; the §4.5
+deployment setting therefore remains raw θ₆ with the chosen sampler.
+The remaining-headroom number is the validation run's target: a
+fixed-recipe run that reads a θ₆-equivalent ceiling under +0.05 has
+absorbed what this operator can teach.
+
+Outputs: `ceiling/theta0/ceiling_h2h.json`, `nodes.jsonl`, `run.log`;
+`ceiling/theta6/` likewise; `ceiling/launcher.log`.
