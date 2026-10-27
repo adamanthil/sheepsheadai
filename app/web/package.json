@@ -14,13 +14,13 @@
     "e2e": "playwright test"
   },
   "dependencies": {
-    "next": "^16.3.1",
+    "next": "^16.4.3",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "zod": "^4.4.3"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@next/eslint-plugin-next": "^16.3.1",
+    "@next/eslint-plugin-next": "^16.4.3",
     "@playwright/test": "^1.62.1",
     "@types/node": "^22.0.0",
     "@types/react": "^19.2.18",
