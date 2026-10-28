@@ -33,7 +33,7 @@ from sheepshead.game import (
 )
 from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 
-CKPT = "final_pfsp_swish_ppo.pt"
+CKPT = "models/pfsp-swish-30m.pt"
 PASS_ID = ACTIONS.index("PASS") + 1
 
 

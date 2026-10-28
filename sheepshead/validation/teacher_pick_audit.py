@@ -155,7 +155,7 @@ def main():
     ap.add_argument(
         "-r",
         "--reference",
-        default="final_pfsp_swish_ppo.pt",
+        default="models/pfsp-swish-30m.pt",
         help="pristine 30M seed (the warm-start initial state)",
     )
     ap.add_argument("--games", type=int, default=300)

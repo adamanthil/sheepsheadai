@@ -42,7 +42,7 @@ from sheepshead.ismcts import (
 )
 from sheepshead.training.training_utils import get_partner_selection_mode
 
-CKPT = "final_pfsp_swish_ppo.pt"
+CKPT = "models/pfsp-swish-30m.pt"
 
 
 def collect_node(agent, game, want_head):

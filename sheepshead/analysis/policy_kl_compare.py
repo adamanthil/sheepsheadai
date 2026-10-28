@@ -27,7 +27,7 @@ it once with --driver a and once with --driver b to see both regions of state sp
 Usage (from repo root):
     PYTHONPATH=. .venv/bin/python analysis/policy_kl_compare.py \
         --model-a runs/.../pfsp_swish_checkpoint_30000000.pt \
-        --model-b final_pfsp_swish_ppo.pt \
+        --model-b models/pfsp-swish-30m.pt \
         --games 400
 
     # both partner modes (default), 1000 games, JSON summary to a file:

@@ -33,7 +33,7 @@ export default defineConfig({
       timeout: 240_000,
       reuseExistingServer: !process.env.CI,
       env: {
-        SHEEPSHEAD_MODEL_PATH: path.join(repoRoot, "final_pfsp_swish_ppo.pt"),
+        SHEEPSHEAD_MODEL_PATH: path.join(repoRoot, "models/pfsp-swish-30m.pt"),
         SHEEPSHEAD_MODEL_LABEL: "e2e-smoke",
         DATABASE_URL: E2E_DATABASE_URL,
         ENV: "development",

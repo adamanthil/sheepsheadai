@@ -39,12 +39,12 @@ DEFAULT_CKPTS = [
     "runs/reference_pfsp_ppo/pfsp_checkpoints_swish/pfsp_swish_checkpoint_1000000.pt",
     "runs/reference_pfsp_ppo/pfsp_checkpoints_swish/pfsp_swish_checkpoint_5000000.pt",
     "runs/reference_pfsp_ppo/pfsp_checkpoints_swish/pfsp_swish_checkpoint_15000000.pt",
-    "final_pfsp_swish_ppo.pt",
+    "models/pfsp-swish-30m.pt",
 ]
 
 # final_pfsp is the 30M run's terminal artifact (see
 # memory: project_final_model_provenance) — no episode count in its filename.
-KNOWN_EPISODES = {"final_pfsp_swish_ppo.pt": 30_000_000}
+KNOWN_EPISODES = {"models/pfsp-swish-30m.pt": 30_000_000}
 
 
 def _episodes_from_name(path: str) -> int | None:

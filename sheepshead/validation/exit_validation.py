@@ -217,13 +217,13 @@ def main():
     ap.add_argument(
         "-m",
         "--model",
-        default="final_pfsp_swish_ppo.pt",
+        default="models/pfsp-swish-30m.pt",
         help="challenger model (the ExIt agent under test)",
     )
     ap.add_argument(
         "-b",
         "--baseline",
-        default="final_pfsp_swish_ppo.pt",
+        default="models/pfsp-swish-30m.pt",
         help="baseline field for head-to-head",
     )
     ap.add_argument("--games", type=int, default=1500)

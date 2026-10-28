@@ -44,7 +44,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 FAIL_SET = set(FAIL)
 
-DEFAULT_MODEL = str(REPO_ROOT / "final_pfsp_swish_ppo.pt")
+DEFAULT_MODEL = str(REPO_ROOT / "models/pfsp-swish-30m.pt")
 
 
 @functools.cache

@@ -103,10 +103,17 @@ Install the server dependencies (includes FastAPI, uvicorn, asyncpg, etc.):
 uv sync --extra server
 ```
 
+Fetch the model checkpoints. They are GitHub Release assets pinned by
+sha256 in `models/manifest.json` and land under `models/` (gitignored):
+
+```bash
+uv run python -m sheepshead.analysis.fetch_models
+```
+
 Start the backend (pass the path to your trained model checkpoint):
 
 ```bash
-./app/server/run_server.sh --model final_pfsp_swish_ppo.pt
+./app/server/run_server.sh --model models/pfsp-swish-30m.pt
 ```
 
 The server listens on `http://localhost:9000` by default.
@@ -115,7 +122,7 @@ The server listens on `http://localhost:9000` by default.
 
 | Variable | Required | Description | Example |
 |---|---|---|---|
-| `SHEEPSHEAD_MODEL_PATH` | Yes | Path to the trained `.pt` model file. Must point to a file owned and reviewed by you — never load untrusted checkpoints. | `./final_pfsp_swish_ppo.pt` |
+| `SHEEPSHEAD_MODEL_PATH` | Yes | Path to the trained `.pt` model file. Must point to a file owned and reviewed by you — never load untrusted checkpoints. | `./models/pfsp-swish-30m.pt` |
 | `DATABASE_URL` | Yes | Postgres connection string. Server fails fast at startup if missing. | `postgres://sheepshead:sheepshead@localhost:5433/sheepshead` |
 | `SHADOW_DATABASE_URL` | Dev/CI | Shadow DB used by graphile-migrate `watch` / `reset`. Never set in production. | `postgres://...:5433/sheepshead_shadow` |
 | `ROOT_DATABASE_URL` | Dev/CI | Superuser DB used by graphile-migrate to create/drop the shadow. | `postgres://...:5433/postgres` |
@@ -291,12 +298,13 @@ uv run training-program --smoke --run-name _smoke                    # every pha
 The smoke run exercises every phase and stage of the orchestrator on a toy
 configuration and must end with `PROGRAM FINISHED`; it proves the plumbing,
 not the learning (its policy never leaves the initial weights). Reference
-checkpoints used by the review gates (the 8M league seed of the July run,
-the iteration-1 policy-iteration checkpoint) are training artifacts and are
-not distributed; the orchestrator skips a reference read with a log line
-when the file is absent. The one reference that ships with the repository
-is `final_pfsp_swish_ppo.pt`, the 30M-episode production model the web app
-serves — point `final.references` at it to compare a fresh run against it.
+checkpoints are read from paths, and the orchestrator skips a reference
+read with a log line when the file is absent. The distributed checkpoints —
+the 30M-episode production model, the `202609_recall_rc` release and every
+PANEL-A/PANEL-B member — are GitHub Release assets pinned in
+`models/manifest.json`; `uv run python -m sheepshead.analysis.fetch_models`
+puts them under `models/`. Point `final.references` at
+`models/pfsp-swish-30m.pt` to compare a fresh run against the 30M.
 
 ### The orchestrator
 

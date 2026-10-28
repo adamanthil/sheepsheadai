@@ -29,7 +29,7 @@ Run from the repo root:
       -m runs/pfsp_exit_warmstart/checkpoints/<collapsed>.pt
   # restrict to hands a sane bidder would pick:
   PYTHONPATH=. .venv/bin/python validation/forced_pick_check.py -m <ckpt> \
-      -f final_pfsp_swish_ppo.pt --min-hand-strength 7
+      -f models/pfsp-swish-30m.pt --min-hand-strength 7
 """
 
 from __future__ import annotations
@@ -162,13 +162,13 @@ def main():
     ap.add_argument(
         "-r",
         "--reference",
-        default="final_pfsp_swish_ppo.pt",
+        default="models/pfsp-swish-30m.pt",
         help="control agent run through the same protocol (the pristine 30M seed)",
     )
     ap.add_argument(
         "-f",
         "--field",
-        default="final_pfsp_swish_ppo.pt",
+        default="models/pfsp-swish-30m.pt",
         help="opponent field model (4 non-picker seats)",
     )
     ap.add_argument("--games", type=int, default=1000)

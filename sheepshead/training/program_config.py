@@ -173,7 +173,7 @@ class FinalConfig:
         default_factory=lambda: {
             "v2_release": "runs/rc_validate_v2/final/release.pt",
             "iter11_p1": "runs/policy_iteration_202609/iter11/distill_epoch7.pt",
-            "prod_30m": "final_pfsp_swish_ppo.pt",
+            "prod_30m": "models/pfsp-swish-30m.pt",
         }
     )
     # 8000 deals/mode (SE ~0.0025): the final bars (30M positive at 2 SE,

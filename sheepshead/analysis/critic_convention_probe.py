@@ -32,7 +32,7 @@ Stage-1 intermediate checkpoints: the oracle head fresh-initialized at the
 Usage:
 
   uv run python -m sheepshead.analysis.critic_convention_probe \
-      --ckpt final_pfsp_swish_ppo.pt --convention c2 --nodes 80 --rollouts 25 \
+      --ckpt models/pfsp-swish-30m.pt --convention c2 --nodes 80 --rollouts 25 \
       --out runs/convention_optimality_202607/critic_gap_final_c2.json
 """
 

@@ -26,7 +26,7 @@ Design notes:
     exactly 0 with deviating_frac 0, validating the pairing machinery.
 
 Usage:
-  PYTHONPATH=. python analysis/scripted_probe.py --ckpt final_pfsp_swish_ppo.pt
+  PYTHONPATH=. python analysis/scripted_probe.py --ckpt models/pfsp-swish-30m.pt
   PYTHONPATH=. python analysis/scripted_probe.py --ckpt a.pt b.pt --deals 500
   PYTHONPATH=. python analysis/scripted_probe.py --self-check
 """

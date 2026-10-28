@@ -67,7 +67,7 @@ def time_ismcts(n_searches):
     from sheepshead.agent.ppo import load_agent
     from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 
-    agent = load_agent("final_pfsp_swish_ppo.pt")
+    agent = load_agent("models/pfsp-swish-30m.pt")
     cfg = ISMCTSConfig(
         iters={"pick": 48, "partner": 64, "bury": 96, "play": 96},
         det_max_tries=2000,

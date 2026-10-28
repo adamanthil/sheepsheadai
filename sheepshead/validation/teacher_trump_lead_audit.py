@@ -23,7 +23,7 @@ record the policy prior's trump mass, then run the production teacher
 t_full=1) and record pi''s trump mass. Report the paired delta.
 
 Usage: PYTHONPATH=. .venv/bin/python validation/teacher_trump_lead_audit.py \
-           [-m final_pfsp_swish_ppo.pt] [--nodes 150] [--max-games 2000]
+           [-m models/pfsp-swish-30m.pt] [--nodes 150] [--max-games 2000]
 """
 
 from __future__ import annotations
@@ -84,7 +84,7 @@ def _load_population_opponents(pop_dir: str, k: int = 4):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("-m", "--model", default="final_pfsp_swish_ppo.pt")
+    ap.add_argument("-m", "--model", default="models/pfsp-swish-30m.pt")
     ap.add_argument("--nodes", type=int, default=150, help="target audit nodes")
     ap.add_argument("--max-games", type=int, default=2000)
     ap.add_argument("--seed", type=int, default=0)

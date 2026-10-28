@@ -30,7 +30,7 @@ population exists (same harness, sharper world) to get the derivative: does
 search value-add grow when rollout fields contain real punishment?
 
 Usage: PYTHONPATH=. .venv/bin/python validation/teacher_value_add_probe.py \
-           [-m final_pfsp_swish_ppo.pt] [--deals 300] [--iters-play 96]
+           [-m models/pfsp-swish-30m.pt] [--deals 300] [--iters-play 96]
 """
 
 from __future__ import annotations
@@ -133,7 +133,7 @@ def _play_deal(
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("-m", "--model", default="final_pfsp_swish_ppo.pt")
+    ap.add_argument("-m", "--model", default="models/pfsp-swish-30m.pt")
     ap.add_argument("--deals", type=int, default=300)
     ap.add_argument("--iters-play", type=int, default=96)
     ap.add_argument("--seed", type=int, default=0)

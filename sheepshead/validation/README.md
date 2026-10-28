@@ -20,9 +20,9 @@ uv run python -m sheepshead.validation.t_full_probe --games 3000
 
 **Model arg:** several scripts default `-m` to
 `pfsp_checkpoints_swish/pfsp_swish_checkpoint_30000000.pt`, which has been moved.
-Point `-m` at an available checkpoint, e.g. `final_pfsp_swish_ppo.pt` (repo root)
+Point `-m` at an available checkpoint, e.g. `models/pfsp-swish-30m.pt` (fetched by `sheepshead.analysis.fetch_models`)
 or `runs/reference_pfsp_ppo/pfsp_checkpoints_swish/pfsp_swish_checkpoint_9995000.pt`.
-The Stage C scripts already default to `final_pfsp_swish_ppo.pt`.
+The Stage C scripts already default to `models/pfsp-swish-30m.pt`.
 
 Findings for Gate 0 / Stage A / Stage B reflect the conclusions recorded in
 `notebooks/ISMCTS_Teacher_Refactor_Plan.md` and the Stage B project notes; the Stage C,
@@ -135,7 +135,7 @@ bands (PICK / ALONE / leaster rates, held WITHOUT epsilon controllers), trick-0
 defender trump-lead rate (the leak), and head-to-head mean score. PPO baseline
 recorded: PICK 32.9%, ALONE 6.6%, leaster 9.2%, trick-0 trump-lead **4.8%**;
 self-h2h ≈0 (unbiased-harness sanity). Real use:
-`exit_validation.py -m <exit>.pt -b final_pfsp_swish_ppo.pt`. See
+`exit_validation.py -m <exit>.pt -b models/pfsp-swish-30m.pt`. See
 `notebooks/Validation_Baseline_Notes.md`. NOTE: do NOT route h2h through
 `play_population_game` (full training game ~2–3 s/game); this uses a bare
 mixed-agent loop (~150 ms/game self-play, which cannot batch).

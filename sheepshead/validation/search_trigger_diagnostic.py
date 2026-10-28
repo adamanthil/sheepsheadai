@@ -34,7 +34,7 @@ latency. Forced moves (one legal action) are reported as a free skip.
 
 Usage:
   PYTHONPATH=. .venv/bin/python validation/search_trigger_diagnostic.py \
-      [-m final_pfsp_swish_ppo.pt] [--deals 150] [--iters-play 384] \
+      [-m models/pfsp-swish-30m.pt] [--deals 150] [--iters-play 384] \
       [--out /tmp/search_trigger_rows.csv]
   # re-analyze a saved run without re-searching:
   PYTHONPATH=. .venv/bin/python validation/search_trigger_diagnostic.py \
@@ -320,7 +320,7 @@ def _read_csv(path):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("-m", "--model", default="final_pfsp_swish_ppo.pt")
+    ap.add_argument("-m", "--model", default="models/pfsp-swish-30m.pt")
     ap.add_argument("--deals", type=int, default=150)
     ap.add_argument("--iters-play", type=int, default=384)
     ap.add_argument("--seed", type=int, default=0)

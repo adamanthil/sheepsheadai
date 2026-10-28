@@ -81,7 +81,7 @@ def collect_terminal(agent, n_games, seed):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("-m", "--model", default="final_pfsp_swish_ppo.pt")
+    ap.add_argument("-m", "--model", default="models/pfsp-swish-30m.pt")
     ap.add_argument("--games", type=int, default=3000)
     ap.add_argument("--epochs", type=int, default=60)
     ap.add_argument("--lr", type=float, default=1e-3)

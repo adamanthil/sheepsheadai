@@ -2246,7 +2246,7 @@ class PPOAgent:
         """Inference-compatibility shim for pre-value_trunk checkpoints.
 
         Older checkpoints (e.g. the pfsp-ppo-30M-baseline tag,
-        final_pfsp_swish_ppo.pt) predate the dedicated deep ``value_trunk``
+        models/pfsp-swish-30m.pt) predate the dedicated deep ``value_trunk``
         and trained the value head off ``critic_adapter`` directly. A naive
         strict=False load leaves the new ``value_trunk.*`` at random init, so
         ``forward`` bootstraps the value off noise (~uncorrelated with the

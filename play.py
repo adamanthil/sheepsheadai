@@ -23,8 +23,8 @@ parser = ArgumentParser(
 parser.add_argument(
     "-m",
     "--model",
-    default="final_pfsp_swish_ppo.pt",
-    help="PyTorch model file. Default: final_pfsp_swish_ppo.pt",
+    default="models/pfsp-swish-30m.pt",
+    help="PyTorch model file. Default: models/pfsp-swish-30m.pt",
 )
 parser.add_argument(
     "--partner-mode",

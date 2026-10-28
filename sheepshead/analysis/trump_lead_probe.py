@@ -30,7 +30,7 @@ Design:
     construction, validating the instrument.
 
 Usage:
-  PYTHONPATH=. python analysis/trump_lead_probe.py --ckpt final_pfsp_swish_ppo.pt
+  PYTHONPATH=. python analysis/trump_lead_probe.py --ckpt models/pfsp-swish-30m.pt
   PYTHONPATH=. python analysis/trump_lead_probe.py --scripted   # instrument check
 """
 

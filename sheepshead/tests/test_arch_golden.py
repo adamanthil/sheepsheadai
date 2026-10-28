@@ -163,7 +163,7 @@ class TestCheckpointPickleSafety:
                 os.path.dirname(
                     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
                 ),
-                "final_pfsp_swish_ppo.pt",
+                "models/pfsp-swish-30m.pt",
             )
         ),
         reason="legacy checkpoint not present",
@@ -173,7 +173,7 @@ class TestCheckpointPickleSafety:
             os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         )
         ckpt = torch.load(
-            os.path.join(root, "final_pfsp_swish_ppo.pt"),
+            os.path.join(root, "models/pfsp-swish-30m.pt"),
             map_location="cpu",
             weights_only=True,
         )

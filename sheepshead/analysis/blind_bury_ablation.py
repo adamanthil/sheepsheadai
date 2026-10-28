@@ -37,7 +37,7 @@ outcome changed. Bootstrap is deal-clustered (bootstrap.py conventions).
 
 Usage:
   uv run python -m sheepshead.analysis.blind_bury_ablation \
-      --ckpt final_pfsp_swish_ppo.pt --deals-per-mode 1000 --workers 7 \
+      --ckpt models/pfsp-swish-30m.pt --deals-per-mode 1000 --workers 7 \
       --out-json runs/blind_bury_ablation_202608/prod30m.json
 """
 

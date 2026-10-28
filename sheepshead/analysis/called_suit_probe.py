@@ -28,7 +28,7 @@ taken before/after 2026-07-28 are different instrument versions even at the
 frozen PROBE_SEED.
 
 Usage:
-  uv run python -m sheepshead.analysis.called_suit_probe --ckpt final_pfsp_swish_ppo.pt
+  uv run python -m sheepshead.analysis.called_suit_probe --ckpt models/pfsp-swish-30m.pt
   uv run python -m sheepshead.analysis.called_suit_probe --scripted
 """
 

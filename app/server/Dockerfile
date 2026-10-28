@@ -3,7 +3,7 @@
 # training utilities), so the build context must be the repo root.
 #
 # The model checkpoint is NOT baked in — mount it and set
-# SHEEPSHEAD_MODEL_PATH (e.g. -v ./final_pfsp_swish_ppo.pt:/models/model.pt
+# SHEEPSHEAD_MODEL_PATH (e.g. -v ./models/pfsp-swish-30m.pt:/models/model.pt
 # and SHEEPSHEAD_MODEL_PATH=/models/model.pt).
 
 FROM python:3.14-slim
