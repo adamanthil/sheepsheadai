@@ -61,8 +61,11 @@ export const viewport = {
 
 export default function RootLayout({
   children,
+  modal,
 }: {
   children: React.ReactNode;
+  /** The @modal slot: overlays opened by intercepting routes. */
+  modal: React.ReactNode;
 }) {
   const fontVars = `${instrumentSerif.variable} ${geist.variable} ${jetbrainsMono.variable}`;
   return (
@@ -72,6 +75,7 @@ export default function RootLayout({
             installed app; see .ios-pwa-status-bar in globals.css. */}
         <div className="ios-pwa-status-bar" aria-hidden="true" />
         {children}
+        {modal}
       </body>
     </html>
   );

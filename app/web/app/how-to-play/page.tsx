@@ -1,13 +1,14 @@
 "use client";
 
 import PageShell from "../components/PageShell";
+import HowToPlay from "./HowToPlay";
 
-/** Placeholder for the rules page the home intro links to; the rules
- * themselves are still to be written. */
+/** The lesson as a full page, for direct visits and shared links; links
+ * inside the app open it as a modal instead (app/@modal/(.)how-to-play). */
 export default function HowToPlayPage() {
   return (
     <PageShell title="How to play" wide>
-      {null}
+      <HowToPlay />
     </PageShell>
   );
 }

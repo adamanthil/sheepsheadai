@@ -1,0 +1,394 @@
+/* How to Play chapter player. The stage is a size container: scene
+   coordinates are in percent of its width, rendered as cqw, so every card
+   and label scales with the stage without any measuring. */
+
+.player {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* A printed figure: white plate, hairline rule. */
+.frame {
+  background: var(--bg-card);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  box-shadow: var(--shadow-1);
+  padding: 14px;
+}
+.stageBox {
+  container-type: inline-size;
+  position: relative;
+}
+.stage {
+  position: relative;
+  width: 100%;
+  height: calc(var(--h) * 1cqw);
+  --pc-w: calc(var(--cw) * 1cqw);
+  touch-action: pan-y;
+  cursor: pointer;
+  user-select: none;
+}
+
+/* ---- Cards ---- */
+.slot {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(calc(var(--x) * 1cqw - 50%), calc(var(--y) * 1cqw - 50%))
+    rotate(var(--r));
+  transition:
+    transform 780ms cubic-bezier(0.22, 0.75, 0.2, 1) var(--d),
+    opacity 420ms ease var(--d);
+  will-change: transform;
+}
+.hidden {
+  opacity: 0;
+  transition-duration: 780ms, 260ms;
+}
+.dim {
+  opacity: 0.32;
+}
+
+.flip {
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform 620ms cubic-bezier(0.4, 0, 0.2, 1) var(--d);
+}
+.flipped {
+  transform: rotateY(180deg);
+}
+.face,
+.flip > .back {
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+.flip > .back {
+  position: absolute;
+  inset: 0;
+  transform: rotateY(180deg);
+}
+.face {
+  transition:
+    box-shadow 400ms ease var(--d),
+    background-color 400ms ease var(--d);
+}
+.trump .face {
+  background-color: color-mix(in oklab, var(--accent) 7%, var(--card-paper));
+  box-shadow:
+    0 0 0 1.5px var(--accent),
+    var(--shadow-1);
+}
+.hi .face {
+  box-shadow:
+    0 0 0 2px var(--accent-2),
+    var(--shadow-2);
+}
+
+.still .slot,
+.still .flip,
+.still .face {
+  transition: none;
+}
+
+/* ---- Stage labels ---- */
+.label {
+  position: absolute;
+  left: calc(var(--x) * 1cqw);
+  top: calc(var(--y) * 1cqw);
+  transform: translate(-50%, -50%);
+  z-index: 100;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: labelIn 520ms ease 260ms both;
+}
+.alignStart {
+  transform: translate(0, -50%);
+}
+.labelOverline {
+  font-size: max(10px, 1.25cqw);
+}
+.narrow .labelOverline {
+  font-size: 10px;
+}
+.labelBig {
+  font-family: var(--font-display);
+  font-size: 5.6cqw;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.narrow .labelBig {
+  font-size: 10cqw;
+}
+
+@keyframes labelIn {
+  from {
+    opacity: 0;
+    translate: 0 4px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+/* The closing call to action sits over the stage, outside its aria-hidden
+   card layer, in the same coordinates as the labels. */
+.cta {
+  position: absolute;
+  left: calc(var(--x) * 1cqw);
+  top: calc(var(--y) * 1cqw);
+  transform: translate(-50%, -50%);
+  z-index: 101;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  animation: labelIn 520ms ease 260ms both;
+}
+.ctaBtn {
+  font-family: var(--font-display);
+  font-size: 5.6cqw;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  color: var(--accent);
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid var(--accent);
+  padding: 0 2px 6px;
+  cursor: pointer;
+  transition:
+    color 0.12s ease,
+    border-color 0.12s ease,
+    transform 0.12s ease;
+}
+.narrow .ctaBtn {
+  font-size: 10cqw;
+}
+.ctaBtn:hover:not(:disabled) {
+  color: var(--accent-2);
+  border-color: var(--accent-2);
+  transform: translateY(-1px);
+}
+.ctaBtn:focus-visible {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: 4px;
+}
+.ctaBtn:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+.ctaError {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  color: var(--accent-2);
+  background: var(--bg-card);
+  white-space: normal;
+  max-width: 60cqw;
+  text-align: center;
+}
+
+/* ---- Caption ---- */
+.captionBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 2px;
+}
+.caption {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 23px;
+  line-height: 1.25;
+  color: var(--ink);
+  /* Room for three lines so the controls don't hop between beats. */
+  min-height: calc(3 * 1.25em);
+  text-wrap: pretty;
+  animation: captionIn 480ms ease both;
+}
+.redCard {
+  color: var(--card-red);
+}
+.narrow .caption {
+  font-size: 19px;
+}
+
+@keyframes captionIn {
+  from {
+    opacity: 0;
+    translate: 0 6px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+/* ---- Controls ---- */
+.controls {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  border-top: 1px solid var(--rule);
+  padding-top: 12px;
+}
+.transport {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.iconBtn {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid var(--rule-strong);
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.08s ease;
+}
+.iconBtn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-1);
+}
+.iconBtn:focus-visible {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: 2px;
+}
+.iconBtn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.iconBtn svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.iconBtn svg .fill {
+  fill: currentColor;
+  stroke: none;
+}
+.playBtn {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--bg-page);
+}
+
+.rail {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 6px;
+}
+.rail > li {
+  flex: 1;
+  min-width: 0;
+}
+.chapterBtn {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 15px 0 4px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  color: var(--muted);
+}
+.chapterBtn:focus-visible {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: 2px;
+}
+.chapterBtn:hover,
+.chapterCurrent {
+  color: var(--ink);
+}
+.segments {
+  display: flex;
+  gap: 2px;
+  width: 100%;
+}
+.segment {
+  position: relative;
+  flex: 1;
+  height: 3px;
+  background: var(--rule);
+  overflow: hidden;
+}
+.segmentDone,
+.segmentActive {
+  position: absolute;
+  inset: 0;
+  background: var(--ink);
+  transform-origin: left;
+}
+.chapterCurrent .segmentDone,
+.segmentActive {
+  background: var(--accent-2);
+}
+.segmentActive {
+  animation: segmentFill var(--dur) linear both;
+}
+@keyframes segmentFill {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+.chapterTitle {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chapterNum {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  margin-right: 2px;
+}
+.narrow .chapterTitle {
+  display: none;
+}
+.narrow .controls {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+.narrow .transport {
+  justify-content: center;
+}
+.narrow .chapterBtn {
+  padding: 12px 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slot,
+  .flip,
+  .face {
+    transition-duration: 0ms;
+    transition-delay: 0ms;
+  }
+  .label,
+  .cta,
+  .caption {
+    animation: none;
+  }
+}
