@@ -412,7 +412,7 @@ export const CHAPTERS: Chapter[] = [
       },
       {
         caption:
-          "But in Sheepshead every Queen, every Jack and every Diamond is trump: fourteen cards that beat everything else.",
+          "But in Sheepshead every Queen, Jack, and Diamond is trump: fourteen cards that beat everything else.",
         scene: (narrow) => suitRows(narrow, true),
       },
       {
@@ -467,7 +467,7 @@ export const CHAPTERS: Chapter[] = [
     beats: [
       {
         caption:
-          "Starting to the dealer's left, each player may pick up the blind or pass. The first to pick becomes the picker.",
+          'Starting to the dealer\'s left, players decide whether to pick up the blind or pass. The player who picks becomes the "picker".',
         scene: (narrow) => {
           const b = blindSpot(narrow);
           return {
@@ -515,7 +515,7 @@ export const CHAPTERS: Chapter[] = [
       },
       {
         caption:
-          "Then the picker calls the Ace of a fail suit they hold, here hearts. Whoever has the A♥ is the secret partner: two against three.",
+          "Then the picker calls the Ace of a fail suit they hold, hearts in this case. Whoever has the A♥ is the secret partner: two against three.",
         scene: (narrow) => {
           const b = blindSpot(narrow);
           // Drawn last and raised out of the partner's hand so the viewer
@@ -562,7 +562,7 @@ export const CHAPTERS: Chapter[] = [
     beats: [
       {
         caption:
-          "Play moves to the left. The player on your right leads the K♥, and everyone must follow the led suit if they can, so you must play a heart.",
+          "Play moves to the left. The player on your right leads the K♥. Everyone must follow the led suit if they can, so you must play a heart.",
         scene: (narrow) => ({
           cards: withTone(
             withTone(trickTable(narrow, 1), ["9H", "8H"], "hi"),
@@ -635,7 +635,7 @@ export const CHAPTERS: Chapter[] = [
     beats: [
       {
         caption:
-          "After six tricks, each team counts its points. With 61 or more, the picker and partner win; otherwise the defenders do. The app keeps score for you.",
+          "After six tricks, each team counts its points. With 61 or more, the picker and partner win; otherwise the defenders do.",
         scene: (narrow) => {
           const rest = DECK.filter((c) => !PICKER_74.includes(c));
           const [lx, rx, py, spread] = narrow
@@ -682,7 +682,7 @@ export const CHAPTERS: Chapter[] = [
     beats: [
       {
         caption:
-          "When to pick: four or more trump, including at least one Queen, like the hand you picked with here.",
+          "When to pick: four or more trump with at least one Queen, like the hand you picked with here.",
         scene: (narrow) => {
           const hand = DEAL.you;
           const step = narrow ? 14 : 8.4;
@@ -715,8 +715,7 @@ export const CHAPTERS: Chapter[] = [
         },
       },
       {
-        caption:
-          "On the picker's team, lead trump. Drawing out the defenders' trump keeps it from taking your fail and your points.",
+        caption: "On the picker's team, lead trump.",
         scene: (narrow) =>
           tipLead(
             narrow,
@@ -728,7 +727,7 @@ export const CHAPTERS: Chapter[] = [
       },
       {
         caption:
-          "On defense, lead the called suit or another fail, and save your trump. Leading the called suit makes the partner give up their Ace.",
+          "On defense, lead the called suit or another fail, and save your trump.",
         scene: (narrow) =>
           tipLead(
             narrow,
