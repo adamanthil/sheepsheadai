@@ -24,7 +24,7 @@ from sheepshead.agent.observation import (
 from sheepshead.agent.ppo import PPOAgent
 from sheepshead.game import Game
 from sheepshead.ismcts import infer_head, minmax_unit
-from sheepshead.training.reward_shaping import (
+from sheepshead.rewards import (
     compute_any_unseen_trump_higher_than_hand,
     compute_known_points_rel,
     compute_seen_trump_mask,

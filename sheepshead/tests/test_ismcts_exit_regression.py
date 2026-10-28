@@ -512,7 +512,7 @@ def test_ismcts_backup_discount_uses_agent_gamma():
 # 5. Terminal reward contract (pure)
 # ---------------------------------------------------------------------------
 def test_terminal_reward_contract():
-    from sheepshead.training.reward_shaping import (
+    from sheepshead.rewards import (
         RETURN_SCALE,
         process_terminal_rewards,
     )

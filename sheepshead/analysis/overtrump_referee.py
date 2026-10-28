@@ -59,7 +59,7 @@ from sheepshead.agent.observation import last_trick_observation_for
 from sheepshead.analysis.frozen_node_policy_read import POINT_TRUMPS, driver_actions
 from sheepshead.analysis.scan_defender_trump_leads import load_scan_agent
 from sheepshead.game import ACTIONS, DECK, TRUMP_POWER, Game
-from sheepshead.training.reward_shaping import RETURN_SCALE
+from sheepshead.rewards import RETURN_SCALE
 
 DEVICE = torch.device("cpu")
 SEATS = list(ANALYZE_SEAT_NAMES)

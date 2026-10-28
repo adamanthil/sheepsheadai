@@ -25,13 +25,13 @@ import sys
 
 import torch
 
+from sheepshead.rewards import RETURN_SCALE
 from sheepshead.training.corpus_rows import (
     OOF_FILE,
     TARGETED_SUBDIR,
     load_shard,
     shard_paths,
 )
-from sheepshead.training.reward_shaping import RETURN_SCALE
 from sheepshead.training.search_advantage import (
     RowTable,
     format_model_diagnostics,

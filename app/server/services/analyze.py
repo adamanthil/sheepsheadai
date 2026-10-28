@@ -30,7 +30,7 @@ from server.services.analysis_common import (
 from sheepshead.agent.observation import last_trick_observation_for
 from sheepshead.agent.ppo import PPOAgent
 from sheepshead.game import Game
-from sheepshead.training.reward_shaping import (
+from sheepshead.rewards import (
     handle_trick_completion,
     process_episode_rewards,
     process_terminal_rewards,
@@ -85,7 +85,7 @@ def _compute_discounted_returns(
 
     Stage (c) of ``simulate_game``: the reward-shaping replay + discounted-
     return computation. Both reward schedules are computed from the SAME
-    reward_shaping functions the trainers use: the shaped baseline
+    sheepshead.rewards functions the trainers use: the shaped baseline
     (``process_episode_rewards``) and the terminal-only return
     (``process_terminal_rewards``, i.e. the league trainer's
     ``reward_mode="terminal"``). The client toggles between them.

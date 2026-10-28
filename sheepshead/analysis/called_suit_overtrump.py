@@ -63,7 +63,7 @@ from sheepshead.game import (
     get_card_suit,
     get_trick_winner,
 )
-from sheepshead.training.reward_shaping import RETURN_SCALE
+from sheepshead.rewards import RETURN_SCALE
 
 DEFAULT_RUN = "runs/202609_recall_rc"
 DEFAULT_ITERATIONS = ("iter1", "iter2", "iter3")

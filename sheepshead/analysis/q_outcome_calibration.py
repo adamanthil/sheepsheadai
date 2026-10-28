@@ -35,7 +35,7 @@ import numpy as np
 import torch
 
 from sheepshead.analysis.called_suit_overtrump import POINT_TRUMPS, load_rows
-from sheepshead.training.reward_shaping import RETURN_SCALE
+from sheepshead.rewards import RETURN_SCALE
 
 CALIB_BINS = 40  # equal-count bins of Q for the P(win) curve
 

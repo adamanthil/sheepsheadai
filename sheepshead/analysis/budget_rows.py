@@ -43,8 +43,8 @@ import torch
 
 from sheepshead.game import ACTIONS, DECK, PARTNER_BY_CALLED_ACE, TRUMP_POWER, Game
 from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
+from sheepshead.rewards import RETURN_SCALE
 from sheepshead.training import distill_corpus as dc
-from sheepshead.training.reward_shaping import RETURN_SCALE
 from sheepshead.training.search_advantage import (
     NOISE_POOL_DF,
     AdvantageModel,

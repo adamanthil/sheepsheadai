@@ -50,7 +50,7 @@ import torch
 
 from sheepshead.analysis.research_corpus_nodes import load_results
 from sheepshead.game import ACTIONS, TRUMP
-from sheepshead.training.reward_shaping import RETURN_SCALE
+from sheepshead.rewards import RETURN_SCALE
 
 CARD_POINTS_BY_RANK = {"A": 11, "10": 10, "K": 4, "Q": 3, "J": 2}
 TRUMP_SET = set(TRUMP)

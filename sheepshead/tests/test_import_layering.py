@@ -3,7 +3,7 @@
 
 Layers, bottom to top:
 
-  core       game, scripted_agent, ismcts, agent.*
+  core       game, rewards, scripted_agent, ismcts, agent.*
   devtools   golden gate, model artifacts, benchmarks
   analysis   measurement instruments (imports devtools.fetch_models)
   training   library modules (reward math, configs, corpus formats, the
@@ -23,10 +23,6 @@ from pathlib import Path
 
 PACKAGE = Path(__file__).resolve().parents[1]
 TRAINING_STACK = ("train_ppo", "league")
-# core -> training.reward_shaping predates these rules: the reward math is
-# pure game arithmetic that lives in training. Moving it into core would
-# remove this exception.
-CORE_EXCEPTIONS = {"sheepshead.training.reward_shaping"}
 
 
 def _module_name(path: Path) -> str:
@@ -96,13 +92,7 @@ def _violations(importers: tuple[str, ...], forbidden) -> list[str]:
 
 
 def test_core_imports_only_core():
-    assert (
-        _violations(
-            ("core",),
-            lambda d: _layer(d) != "core" and d not in CORE_EXCEPTIONS,
-        )
-        == []
-    )
+    assert _violations(("core",), lambda d: _layer(d) != "core") == []
 
 
 def test_instruments_and_tooling_stay_below_the_training_stack():
@@ -125,4 +115,4 @@ def test_stack_closure_reaches_the_orchestrators():
     on_top = _training_on_top()
     for name in ("run_training_program", "policy_iteration", "exploitability_audit"):
         assert f"sheepshead.training.{name}" in on_top
-    assert "sheepshead.training.reward_shaping" not in on_top
+    assert "sheepshead.training.pfsp_runtime" not in on_top

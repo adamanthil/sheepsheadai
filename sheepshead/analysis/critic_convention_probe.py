@@ -68,7 +68,10 @@ from sheepshead.game import (
     TRUMP_SET,
     Game,
 )
-from sheepshead.training.reward_shaping import RETURN_SCALE, TRICK_POINT_RATIO
+from sheepshead.rewards import (
+    RETURN_SCALE,
+    TRICK_POINT_RATIO,
+)
 
 DEV = ppo.device
 _FAIL_SET = set(FAIL)

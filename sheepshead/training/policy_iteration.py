@@ -64,13 +64,13 @@ import torch.nn.functional as F
 from sheepshead.agent import ppo as ppo_module
 from sheepshead.agent.ppo import load_agent
 from sheepshead.game import ACTIONS, TRUMP
+from sheepshead.rewards import RETURN_SCALE
 from sheepshead.training.corpus_rows import (
     OOF_FILE,
     TARGETED_SUBDIR,
     load_shard,
     shard_paths,
 )
-from sheepshead.training.reward_shaping import RETURN_SCALE
 from sheepshead.training.search_advantage import (
     CAPACITIES,
     CE_WEIGHTS,

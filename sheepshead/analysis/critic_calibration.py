@@ -46,7 +46,10 @@ from sheepshead.agent.observation import (
 )
 from sheepshead.agent.ppo import load_agent
 from sheepshead.game import ACTION_IDS, ACTIONS, TRUMP, Game
-from sheepshead.training.reward_shaping import RETURN_SCALE, TRICK_POINT_RATIO
+from sheepshead.rewards import (
+    RETURN_SCALE,
+    TRICK_POINT_RATIO,
+)
 from sheepshead.training.training_utils import get_partner_selection_mode
 
 DEV = ppo.device

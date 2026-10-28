@@ -3,7 +3,7 @@
 (Training_Program_Redesign_202609 §4, §6): one loop, three phases.
 
   bootstrap   Phase 0. Shaped self-play from scratch: intermediate trick
-              rewards + leaster bonus (reward_shaping.py), limited critic,
+              rewards + leaster bonus (rewards.py), limited critic,
               an EMPTY population (every seat is the training agent), the
               bootstrap cadence (BootstrapHyperparams), leaster watchdog.
   league      Phase 2. Terminal-only reward, privileged (oracle) critic as

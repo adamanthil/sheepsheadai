@@ -17,7 +17,7 @@ from sheepshead.game import (
     UNDER_ACTIONS,
     UNDER_TOKEN,
 )
-from sheepshead.training.reward_shaping import RETURN_SCALE
+from sheepshead.rewards import RETURN_SCALE
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

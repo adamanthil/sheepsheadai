@@ -39,8 +39,8 @@ import torch
 
 from sheepshead.agent.ppo import load_agent
 from sheepshead.game import ACTIONS, DECK, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
+from sheepshead.rewards import estimate_hand_strength_score
 from sheepshead.training.pfsp_runtime import play_population_game
-from sheepshead.training.reward_shaping import estimate_hand_strength_score
 
 
 def _stratum(row: dict) -> list[str]:

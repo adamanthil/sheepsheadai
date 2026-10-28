@@ -16,8 +16,7 @@ independently checked there.
 import sys
 
 from sheepshead.game import ACTION_IDS, DECK, TRUMP, Game, get_trick_points
-from sheepshead.tests.game_test_utils import act, make_game, valid_action_names
-from sheepshead.training.reward_shaping import (
+from sheepshead.rewards import (
     LEASTER_FINAL_REWARD_BONUS,
     RETURN_SCALE,
     TRICK_POINT_RATIO,
@@ -30,6 +29,7 @@ from sheepshead.training.reward_shaping import (
     process_terminal_rewards,
     update_intermediate_rewards_for_action,
 )
+from sheepshead.tests.game_test_utils import act, make_game, valid_action_names
 
 
 def deal_with_p1_hand(p1_hand):
