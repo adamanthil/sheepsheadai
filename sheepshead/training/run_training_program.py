@@ -1312,7 +1312,7 @@ class Program:
             self._run(
                 "exploitability audit",
                 self._py(
-                    "sheepshead.analysis.exploitability_audit",
+                    "sheepshead.training.exploitability_audit",
                     "--main-ckpt",
                     release,
                     "--run-name",

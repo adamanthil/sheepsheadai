@@ -8,7 +8,7 @@ definition has not moved. Use it when a probe column is added or redefined
 after a phase ran (Training_Program_Redesign §7.1, 09-16: the seen-trump
 memory columns) to get one consistent series across the run.
 
-    uv run python -m sheepshead.analysis.reprobe_checkpoints \
+    uv run python -m sheepshead.training.reprobe_checkpoints \
         runs/<run>/checkpoints/checkpoint_*.pt \
         --out runs/<run>/checkpoints/greedy_health_recall.csv
 """

@@ -188,7 +188,7 @@ GREEDY_CSV_HEADER = [
 def greedy_csv_row(episode: int, probe: dict) -> list:
     """One ``GREEDY_CSV_HEADER`` row for ``probe`` (greedy_health_probe's
     dict) at ``episode``; the trainer and the checkpoint re-probe instrument
-    (analysis/reprobe_checkpoints.py) write the same schema."""
+    (training/reprobe_checkpoints.py) write the same schema."""
     return [
         episode,
         f"{probe['pick_rate']:.2f}",
