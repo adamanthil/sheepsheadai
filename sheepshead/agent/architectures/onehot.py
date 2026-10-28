@@ -11,6 +11,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from sheepshead.agent.observation import LEGACY_PICKER_MEMORY_KEYS, RECALL_KEYS
+
 # Card ids are 0 (pad), 1..32 (deck), 33 (UNDER token) -> 34 slots per card
 # field. The vector is a pure function of Player.get_state_dict(); no game
 # code is touched.
@@ -31,6 +33,12 @@ _ONEHOT_SECTIONS = (
     ("picker_position_onehot", 6),
 )
 ONEHOT_STATE_DIM = sum(size for _, size in _ONEHOT_SECTIONS)
+# The recall layout (observation.RECALL_KEYS) drops the two picker-memory
+# sections; every other section keeps its order and width.
+_PICKER_MEMORY_SECTIONS = ("blind_multi_hot", "bury_multi_hot")
+ONEHOT_RECALL_STATE_DIM = sum(
+    size for name, size in _ONEHOT_SECTIONS if name not in _PICKER_MEMORY_SECTIONS
+)
 
 
 def _scalar(state: Dict[str, Any], key: str) -> int:
@@ -39,11 +47,16 @@ def _scalar(state: Dict[str, Any], key: str) -> int:
     return int(arr[0]) if arr.size else 0
 
 
-def build_onehot_state(state: Dict[str, Any]) -> np.ndarray:
-    """Flatten an observation (merged with the picker memory, see
-    ``sheepshead.agent.observation.observation_for``) into the legacy one-hot
-    vector."""
-    out = np.zeros(ONEHOT_STATE_DIM, dtype=np.float32)
+def build_onehot_state(
+    state: Dict[str, Any], observe_picker_memory: bool = True
+) -> np.ndarray:
+    """Flatten an observation into the one-hot vector. The legacy layout
+    reads the observation merged with the picker memory (see
+    ``sheepshead.agent.observation.observation_for``); the recall layout
+    (``observe_picker_memory=False``) omits the blind/bury sections and
+    never reads those keys."""
+    dim = ONEHOT_STATE_DIM if observe_picker_memory else ONEHOT_RECALL_STATE_DIM
+    out = np.zeros(dim, dtype=np.float32)
     off = 0
 
     def multi_hot(ids) -> None:
@@ -69,16 +82,17 @@ def build_onehot_state(state: Dict[str, Any]) -> np.ndarray:
     # Blind / bury: the legacy picker-memory interface (zeros for everyone
     # but the picker). Missing keys mean a call site bypassed
     # observation.observation_for — fail loudly, never encode zeros.
-    try:
-        multi_hot(state["blind_ids"])
-        off += _N_CARD
-        multi_hot(state["bury_ids"])
-        off += _N_CARD
-    except KeyError as err:
-        raise KeyError(
-            f"onehot encoder needs the legacy picker-memory keys ({err}); "
-            "observe through sheepshead.agent.observation.observation_for"
-        ) from err
+    if observe_picker_memory:
+        try:
+            multi_hot(state["blind_ids"])
+            off += _N_CARD
+            multi_hot(state["bury_ids"])
+            off += _N_CARD
+        except KeyError as err:
+            raise KeyError(
+                f"onehot encoder needs the legacy picker-memory keys ({err}); "
+                "observe through sheepshead.agent.observation.observation_for"
+            ) from err
     # Called card
     called = _scalar(state, "called_card_id")
     if called > 0:
@@ -108,12 +122,20 @@ class OneHotFeedForwardEncoder(nn.Module):
     (encode_batch / encode_sequences returning 'features' (…,256) and
     'memory_out' (B,256)) but emits no per-card tokens — actors that need
     hand_tokens cannot be paired with this encoder.
+
+    ``observe_picker_memory=False`` builds the recall layout: the input
+    vector omits the blind/bury sections (ONEHOT_RECALL_STATE_DIM) and the
+    encoder reads exactly ``observation.RECALL_KEYS``.
     """
 
-    def __init__(self):
+    def __init__(self, observe_picker_memory: bool = True):
         super().__init__()
+        self.observe_picker_memory = bool(observe_picker_memory)
+        self.state_dim = (
+            ONEHOT_STATE_DIM if self.observe_picker_memory else ONEHOT_RECALL_STATE_DIM
+        )
         self.mlp = nn.Sequential(
-            nn.Linear(ONEHOT_STATE_DIM, 512),
+            nn.Linear(self.state_dim, 512),
             nn.SiLU(),
             nn.Linear(512, 256),
             nn.SiLU(),
@@ -137,6 +159,14 @@ class OneHotFeedForwardEncoder(nn.Module):
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0.0)
 
+    def observation_keys(self) -> tuple[str, ...]:
+        """Every observation-dict key this encoder reads, sorted (the
+        observation contract, agent/observation.py)."""
+        keys = RECALL_KEYS
+        if self.observe_picker_memory:
+            keys = keys | LEGACY_PICKER_MEMORY_KEYS
+        return tuple(sorted(keys))
+
     def param_groups(self, base_lr: float, card_lr_scale: float = 0.2):
         # No embedding table to scale; a single group keeps optimizer wiring
         # uniform with the token encoder's param_groups contract.
@@ -150,9 +180,11 @@ class OneHotFeedForwardEncoder(nn.Module):
     ) -> Dict[str, torch.Tensor]:
         B = len(batch)
         if B:
-            x_np = np.stack([build_onehot_state(s) for s in batch])
+            x_np = np.stack(
+                [build_onehot_state(s, self.observe_picker_memory) for s in batch]
+            )
         else:
-            x_np = np.zeros((0, ONEHOT_STATE_DIM), dtype=np.float32)
+            x_np = np.zeros((0, self.state_dim), dtype=np.float32)
         x = torch.as_tensor(x_np, dtype=torch.float32, device=device)
         if memory_in is None:
             memory_in = torch.zeros((B, 256), dtype=torch.float32, device=device)

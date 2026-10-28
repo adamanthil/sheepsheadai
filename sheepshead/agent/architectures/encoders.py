@@ -41,10 +41,15 @@ class PooledMemoryEncoder(CardReasoningEncoder):
     params — accepted to keep the base encode_batch untouched).
     """
 
-    def __init__(self, card_config: "CardEmbeddingConfig | None" = None):
+    def __init__(
+        self,
+        card_config: "CardEmbeddingConfig | None" = None,
+        observe_picker_memory: bool = True,
+    ):
         super().__init__(
             card_config=card_config or CardEmbeddingConfig(),
             n_reasoning_layers=0,
+            observe_picker_memory=observe_picker_memory,
         )
         # Replace the context-token GRU (d_token -> d_model) with a
         # fused-features GRU.

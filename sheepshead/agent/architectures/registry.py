@@ -735,6 +735,112 @@ register(
 )
 
 
+# --- Recall-contract ladder (Architecture_Ablation_202610) ----------------
+# Additive, under the human-recall observation (no blind/bury re-injection)
+# and the 202609_recall_rc bootstrap recipe: each rung adds one component
+# to the one below, ending at perceiver-recall. Order follows the July
+# ladder (Architecture_Ablation_202607 §3.2), reversed into additions.
+
+
+def _flat_actor(action_size, action_groups, encoder, mappings):
+    return FlatHeadActorNetwork(action_size, action_groups)
+
+
+register(
+    ArchitectureSpec(
+        name="onehot-recall",
+        description=(
+            "Ladder rung 1: onehot-ff under the recall observation (the "
+            "one-hot vector omits the blind/bury sections). Flat one-hot "
+            "state -> MLP + GRU memory, flat per-phase heads, no aux."
+        ),
+        build_encoder=lambda: OneHotFeedForwardEncoder(observe_picker_memory=False),
+        build_actor=_flat_actor,
+        build_critic=_no_aux_critic,
+        has_aux_heads=False,
+    )
+)
+
+register(
+    ArchitectureSpec(
+        name="pooled-recall-uninformed-noaux",
+        description=(
+            "Ladder rung 2: + card tokens. Uninformed card embeddings -> "
+            "per-bag attention pools -> GRU over the fused features, pointer "
+            "actor, no aux (no-transformer-uninformed under the recall "
+            "observation)."
+        ),
+        build_encoder=lambda: PooledMemoryEncoder(
+            card_config=CardEmbeddingConfig(use_informed_init=False),
+            observe_picker_memory=False,
+        ),
+        build_actor=_pointer_actor,
+        build_critic=_no_aux_critic,
+        has_aux_heads=False,
+    )
+)
+
+register(
+    ArchitectureSpec(
+        name="pooled-recall-noaux",
+        description=(
+            "Ladder rung 3: + informed card-embedding init "
+            "(no-transformer under the recall observation)."
+        ),
+        build_encoder=lambda: PooledMemoryEncoder(observe_picker_memory=False),
+        build_actor=_pointer_actor,
+        build_critic=_no_aux_critic,
+        has_aux_heads=False,
+    )
+)
+
+register(
+    ArchitectureSpec(
+        name="full-recall-noaux",
+        description=(
+            "Ladder rung 4: + transformer card reasoning (no-aux under the "
+            "recall observation: bag pools, context-token memory driver)."
+        ),
+        build_encoder=lambda: CardReasoningEncoder(
+            card_config=CardEmbeddingConfig(), observe_picker_memory=False
+        ),
+        build_actor=_pointer_actor,
+        build_critic=_no_aux_critic,
+        has_aux_heads=False,
+    )
+)
+
+register(
+    ArchitectureSpec(
+        name="full-recall",
+        description=(
+            "Ladder rung 5: + aux critic heads (full, the production 30M "
+            "design, under the recall observation)."
+        ),
+        build_encoder=lambda: CardReasoningEncoder(
+            card_config=CardEmbeddingConfig(), observe_picker_memory=False
+        ),
+        build_actor=_pointer_actor,
+        build_critic=_aux_critic,
+        has_aux_heads=True,
+    )
+)
+
+register(
+    ArchitectureSpec(
+        name="perceiver-recall-nobilinear",
+        description=(
+            "Ladder rung 6: + shared 16-query readout and memory-token "
+            "memory driver (perceiver-recall with the plain pointer actor)."
+        ),
+        build_encoder=lambda: RecallEncoder(card_config=CardEmbeddingConfig()),
+        build_actor=_pointer_actor,
+        build_critic=_aux_critic,
+        has_aux_heads=True,
+    )
+)
+
+
 def available_architectures() -> list:
     return sorted(ARCHITECTURES.keys())
 

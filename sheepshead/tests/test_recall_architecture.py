@@ -14,7 +14,11 @@ import pytest
 import torch
 
 from sheepshead.agent.architectures.encoders import RecallEncoder
-from sheepshead.agent.architectures.onehot import build_onehot_state
+from sheepshead.agent.architectures.onehot import (
+    ONEHOT_RECALL_STATE_DIM,
+    ONEHOT_STATE_DIM,
+    build_onehot_state,
+)
 from sheepshead.agent.architectures.registry import (
     ARCHITECTURES,
     available_architectures,
@@ -43,6 +47,17 @@ from sheepshead.game import ACTIONS, Game
 from sheepshead.scripted_agent import ScriptedAgent
 from sheepshead.tests.ppo_test_helpers import seed_all
 from sheepshead.training.train_ppo import build_arg_parser
+
+# The recall-contract ladder (Architecture_Ablation_202610), bottom to top.
+RECALL_LADDER = (
+    "onehot-recall",
+    "pooled-recall-uninformed-noaux",
+    "pooled-recall-noaux",
+    "full-recall-noaux",
+    "full-recall",
+    "perceiver-recall-nobilinear",
+    "perceiver-recall",
+)
 
 
 def _picker_states(agent: PPOAgent, seed: int = 5) -> list:
@@ -140,7 +155,57 @@ class TestObservationContract:
             for name, spec in ARCHITECTURES.items()
             if not spec.legacy_picker_memory
         }
-        assert recall == {"perceiver-recall"}
+        assert recall == set(RECALL_LADDER)
+
+
+class TestRecallLadder:
+    @pytest.mark.parametrize("arch", RECALL_LADDER)
+    def test_reads_exactly_recall_keys_and_ignores_picker_memory(self, arch):
+        seed_all(0)
+        agent = PPOAgent(len(ACTIONS), arch=arch)
+        assert set(agent.observation_keys) == RECALL_KEYS
+        states = _picker_states(agent)
+        assert states, "the seeded game produced no picker states"
+        out = agent.encoder.encode_batch(states)
+        masked = agent.encoder.encode_batch([_masked(s) for s in states])
+        for key in ("features", "memory_out"):
+            assert torch.equal(out[key], masked[key]), key
+        clean = Game(seed=2).players[0].get_state_dict()
+        agent.encoder.encode_batch([clean])  # no KeyError without the keys
+
+    def test_onehot_recall_vector_is_legacy_minus_the_memory_sections(self):
+        seed_all(0)
+        legacy_agent = PPOAgent(len(ACTIONS), arch="onehot-ff")
+        state = _picker_states(legacy_agent)[0]
+        legacy = build_onehot_state(state)
+        recall = build_onehot_state(state, observe_picker_memory=False)
+        assert recall.shape == (ONEHOT_RECALL_STATE_DIM,)
+        assert ONEHOT_STATE_DIM - ONEHOT_RECALL_STATE_DIM == 2 * 34
+        # Sections before the blind/bury block (hand, trick cards, two flag
+        # rows) and after it keep their values and order.
+        cut = 34 + 5 * 34 + 5 + 5
+        assert legacy[cut : cut + 68].any(), "picker state carries no memory"
+        assert np.array_equal(recall[:cut], legacy[:cut])
+        assert np.array_equal(recall[cut:], legacy[cut + 68 :])
+
+    def test_uninformed_rung_differs_only_in_card_init(self):
+        seed_all(0)
+        uninformed = PPOAgent(len(ACTIONS), arch="pooled-recall-uninformed-noaux")
+        seed_all(0)
+        informed = PPOAgent(len(ACTIONS), arch="pooled-recall-noaux")
+        a, b = uninformed.encoder.state_dict(), informed.encoder.state_dict()
+        assert a.keys() == b.keys()
+        assert not torch.equal(a["card.weight"], b["card.weight"])
+
+    def test_nobilinear_rung_is_recall_without_the_bilinear_term(self):
+        seed_all(0)
+        plain = PPOAgent(len(ACTIONS), arch="perceiver-recall-nobilinear")
+        seed_all(0)
+        recall = PPOAgent(len(ACTIONS), arch="perceiver-recall")
+        assert plain.encoder.state_dict().keys() == recall.encoder.state_dict().keys()
+        extra = set(recall.actor.state_dict()) - set(plain.actor.state_dict())
+        assert extra == {"pointer_U.weight", "pointer_V.weight"}
+        assert set(plain.actor.state_dict()) <= set(recall.actor.state_dict())
 
 
 class TestDeterministicAuxScale:
