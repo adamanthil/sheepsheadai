@@ -98,6 +98,43 @@
   text-transform: uppercase;
   white-space: nowrap;
 }
+.mobRight {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+/* The cheat sheet's "?": no taller than the 20px card mark and room name
+   beside it, so the header row keeps its height. */
+.mobHelp {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--rule-strong);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.mobHelp svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+}
+.mobHelp circle {
+  fill: currentColor;
+  stroke: none;
+}
+.mobHelp:focus-visible {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: 2px;
+}
 .mobLeave {
   font-family: var(--font-ui);
   font-size: 11px;

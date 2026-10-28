@@ -43,6 +43,7 @@ import {
 } from "./hooks";
 import GameOverBanner from "./components/GameOverBanner";
 import ScoresOverlay from "./components/ScoresOverlay";
+import CheatSheet from "../../how-to-play/CheatSheet";
 import TableHeader from "./components/TableHeader";
 import Stage from "./components/Stage";
 import PlayerHand from "./components/PlayerHand";
@@ -148,6 +149,7 @@ export default function TablePage() {
   const [showScores, setShowScores] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
   const [showMobileLog, setShowMobileLog] = useState(false);
+  const [showCheatSheet, setShowCheatSheet] = useState(false);
 
   const isYourTurn = !!lastState && computeIsYourTurn(lastState);
   const isHost = lastState ? computeIsHost(lastState) : false;
@@ -467,6 +469,9 @@ export default function TablePage() {
       {showScores && (
         <ScoresOverlay table={table} onClose={() => setShowScores(false)} />
       )}
+      {showCheatSheet && (
+        <CheatSheet onClose={() => setShowCheatSheet(false)} />
+      )}
     </>
   );
 
@@ -486,6 +491,7 @@ export default function TablePage() {
       }
       onLeaveAfterHand={(on) => void setLeaveAfterHand(on)}
       onShowScores={() => setShowScores(true)}
+      onShowCheatSheet={() => setShowCheatSheet(true)}
     />
   );
 

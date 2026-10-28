@@ -16,6 +16,7 @@ interface TableHeaderProps {
   leavingAfterHand: boolean;
   onLeaveAfterHand: (on: boolean) => void;
   onShowScores: () => void;
+  onShowCheatSheet: () => void;
   onShowLog?: () => void;
 }
 
@@ -31,6 +32,7 @@ export default function TableHeader({
   leavingAfterHand,
   onLeaveAfterHand,
   onShowScores,
+  onShowCheatSheet,
   onShowLog,
 }: TableHeaderProps) {
   const [choosing, setChoosing] = useState(false);
@@ -115,7 +117,26 @@ export default function TableHeader({
             )}
           </div>
         )}
-        {leave}
+        <div className={styles.mobRight}>
+          {/* Hidden with the table name while Leave's choices take the row. */}
+          {!leaveExpanded && (
+            <button
+              type="button"
+              className={styles.mobHelp}
+              onClick={onShowCheatSheet}
+              aria-label="Cheat sheet: card power and points"
+              title="Cheat sheet"
+            >
+              {/* Drawn, not typed: a text "?" sits off-centre by however
+                  the font sets its glyph. */}
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M5.9 5.9a2.1 2.1 0 1 1 3.1 1.85c-.6.33-1 .8-1 1.45v.5" />
+                <circle cx="8" cy="11.5" r="0.8" />
+              </svg>
+            </button>
+          )}
+          {leave}
+        </div>
       </div>
     );
   }
@@ -145,6 +166,13 @@ export default function TableHeader({
           <span className={styles.phase}>{phaseLabel}</span>
         </div>
         <div className={styles.links}>
+          <a
+            className={ds.link}
+            style={{ fontSize: 12 }}
+            onClick={onShowCheatSheet}
+          >
+            Cheat sheet
+          </a>
           <a
             className={ds.link}
             style={{ fontSize: 12 }}
