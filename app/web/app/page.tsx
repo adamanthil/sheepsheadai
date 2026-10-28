@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { TableSummary } from "../lib/types";
 import { apiFetch, storeSessionToken } from "../lib/api";
 import { STORAGE_KEYS } from "../lib/storage";
+import { createAndJoinTable } from "../lib/createTable";
 import { ds } from "../lib/ds";
 import { allPassModeLabel, partnerModeLabel } from "../lib/rules";
 import { useIdentity } from "../lib/hooks/useIdentity";
@@ -22,15 +23,6 @@ const LOBBY_POLL_MS = 5000;
 const NOTICES: Record<string, string> = {
   removed: "The host removed you from that table.",
   idle: "That table closed after sitting idle.",
-};
-
-// Why the server refused to open a table, in the player's terms.
-const CREATE_REFUSED: Record<string, string> = {
-  table_limit_per_player:
-    "You already have 2 open tables. Close one to start another.",
-  table_limit_per_ip:
-    "Too many tables are open from your network right now. Try again once one closes.",
-  table_limit_reached: "The server is full right now. Try again in a bit.",
 };
 
 export default function HomePage() {
@@ -124,59 +116,15 @@ export default function HomePage() {
     setCreating(true);
 
     try {
-      // Create table
-      const res = await apiFetch("/api/tables", {
-        method: "POST",
-        body: JSON.stringify({
-          name,
-          fillWithAI: true,
-          rules: {
-            partnerMode: 1,
-            allPassMode: "leasters",
-            doubleOnTheBump: true,
-          },
-        }),
+      const tableId = await createAndJoinTable({
+        name,
+        displayName: resolvedDisplayName,
+        typedName: displayNameInput.trim(),
+        persistIdentityFromJoin,
       });
-
-      if (!res.ok) {
-        const detail = (await res.json().catch(() => ({})))?.detail;
-        throw new Error(
-          CREATE_REFUSED[detail as string] ??
-            `Failed to create table: ${res.status} ${res.statusText}`,
-        );
-      }
-
-      const t = await res.json();
-
-      // Auto-join the table; identity rides on the Authorization header.
-      const res2 = await apiFetch(`/api/tables/${t.id}/join`, {
-        method: "POST",
-        // The one-time key from the create response makes this join host.
-        body: JSON.stringify({
-          display_name: resolvedDisplayName,
-          host_key: t.host_key,
-        }),
-      });
-
-      if (!res2.ok) {
-        throw new Error(
-          `Failed to join table: ${res2.status} ${res2.statusText}`,
-        );
-      }
-
-      const joined = await res2.json();
-      storeSessionToken(joined.session_token);
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(
-          STORAGE_KEYS.clientId(t.id),
-          joined.client_id,
-        );
-      }
-      const typedName = displayNameInput.trim();
-      await persistIdentityFromJoin(joined, typedName);
-
-      // localStorage writes above are synchronous; navigate directly.
-      router.push(`/waiting/${t.id}`);
+      // createAndJoinTable's localStorage writes are synchronous; navigate
+      // directly.
+      router.push(`/waiting/${tableId}`);
     } catch (err) {
       const errorMessage =
         err instanceof Error
