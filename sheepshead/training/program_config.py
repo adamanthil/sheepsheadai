@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 from dataclasses import MISSING, asdict, dataclass, field, fields, is_dataclass
 
-from sheepshead.analysis.panels import PANEL_A, PANEL_B
+from sheepshead.analysis.panels import panel_files
 from sheepshead.training.stop_rules import AuxReadinessConfig
 
 
@@ -68,12 +68,12 @@ class LeagueConfig:
     h2h_min_gain: float = 0.02
     h2h_ci_z: float = 2.0
     # Absolute yardstick (recorded; the gen-2 review gate reads it).
-    panel: list[str] = field(default_factory=lambda: list(PANEL_A))
+    panel: list[str] = field(default_factory=lambda: panel_files("PANEL-A"))
     panel_deals: int = 3996
     # PANEL-B (tentative, 09-16): the strong-skill / cross-ecology yardstick,
     # recorded per generation and at the final; no gate reads it. Empty
     # list = not run.
-    panel_b: list[str] = field(default_factory=lambda: list(PANEL_B))
+    panel_b: list[str] = field(default_factory=lambda: panel_files("PANEL-B"))
     # Convention battery (guards, not triggers) and the B2 hard bounds.
     convention_probe_games: int = 1000
     convention_probe_seeds: int = 4

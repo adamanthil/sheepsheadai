@@ -1,0 +1,115 @@
+{
+  "release_base": "https://github.com/adamanthil/sheepsheadai/releases/download",
+  "artifacts": {
+    "recall-rc-theta6": {
+      "tag": "artifact/recall-rc-theta6",
+      "asset": "recall-rc-theta6.pt",
+      "sha256": "d96a6224ecc3e5e1135f9cbd0f5ed822581c20cb3878d49a563ac515d0d280fb",
+      "bytes": 21140707,
+      "roles": [
+        "deploy"
+      ],
+      "arch": "perceiver-recall",
+      "provenance": "runs/202609_recall_rc/final/release.pt (= pi/iter6/bidding/final.pt); 202609_recall_rc release theta_6, Training_Program_Redesign decision log 2026-10-25",
+      "sampling": {
+        "pick": 0.5,
+        "partner": 0.5,
+        "bury": 0.0,
+        "play": 0.5,
+        "band": 1.0
+      }
+    },
+    "pfsp-swish-30m": {
+      "tag": "artifact/panels-2026-10",
+      "asset": "pfsp-swish-30m.pt",
+      "sha256": "cc644b7109d5896b6cc14e73cd12a8cddb352532605a32245ef72b2b63f351b4",
+      "bytes": 10629409,
+      "roles": [
+        "panel-a",
+        "panel-b"
+      ],
+      "arch": "full",
+      "provenance": "final_pfsp_swish_ppo.pt (repo root until 2026-10); production 30M = the 30M run's final_swish.pt + one flush update"
+    },
+    "pfsp-swish-15m": {
+      "tag": "artifact/panels-2026-10",
+      "asset": "pfsp-swish-15m.pt",
+      "sha256": "6951cd42c52a9a84686c5d44d572ea87e83df70b320120bae7cf152325024d00",
+      "bytes": 10635253,
+      "roles": [
+        "panel-a"
+      ],
+      "arch": "full",
+      "provenance": "runs/reference_pfsp_ppo/pfsp_checkpoints_swish/pfsp_swish_checkpoint_15000000.pt"
+    },
+    "pfsp-swish-5m": {
+      "tag": "artifact/panels-2026-10",
+      "asset": "pfsp-swish-5m.pt",
+      "sha256": "c8ec0d1df24875c82ec3789231f8a1ee367c335e01012f1f2c2921f0743ca682",
+      "bytes": 10634675,
+      "roles": [
+        "panel-a"
+      ],
+      "arch": "full",
+      "provenance": "runs/reference_pfsp_ppo/pfsp_checkpoints_swish/pfsp_swish_checkpoint_5000000.pt"
+    },
+    "selfplay-swish-100k": {
+      "tag": "artifact/panels-2026-10",
+      "asset": "selfplay-swish-100k.pt",
+      "sha256": "7f5426b68d3ebc6bcb3970bf8b353ffe37945d78bca7aff476f75eb9f926ee64",
+      "bytes": 10619055,
+      "roles": [
+        "panel-a"
+      ],
+      "arch": "full",
+      "provenance": "runs/reference_selfplay_ppo/checkpoints/swish_checkpoint_100000.pt"
+    },
+    "v2-release": {
+      "tag": "artifact/panels-2026-10",
+      "asset": "v2-release.pt",
+      "sha256": "6ce80a5e6bc533e00560053709ae58b91d792f73a11a16a5bf64f3355a7fe64c",
+      "bytes": 21155651,
+      "roles": [
+        "panel-b"
+      ],
+      "arch": "perceiver-shared-v2-bp",
+      "provenance": "runs/rc_validate_v2/final/release.pt; perceiver-shared-v2 lineage release (CE_Teacher section 21)"
+    },
+    "v2-iter11-p1": {
+      "tag": "artifact/panels-2026-10",
+      "asset": "v2-iter11-p1.pt",
+      "sha256": "348490d8df0273061f8aa27275676490ff7fe80bd2b7ed2cc0a8f772e1e4e62b",
+      "bytes": 21202037,
+      "roles": [
+        "panel-b"
+      ],
+      "arch": "perceiver-shared-v2-bp",
+      "provenance": "runs/policy_iteration_202609/iter11/distill_epoch7.pt"
+    },
+    "v2-league-8m": {
+      "tag": "artifact/panels-2026-10",
+      "asset": "v2-league-8m.pt",
+      "sha256": "b56ba26c5c0977dc699530086f25a22378c7e837f41dbf0e1d2e9a491c359ca0",
+      "bytes": 20979519,
+      "roles": [
+        "panel-b"
+      ],
+      "arch": "perceiver-shared-v2",
+      "provenance": "runs/league_retention_pg/checkpoints/pfsp_perceiver-shared-v2_checkpoint_8000000.pt; perceiver-shared-v2 8M league seed"
+    }
+  },
+  "panels": {
+    "PANEL-A": [
+      "pfsp-swish-30m",
+      "pfsp-swish-15m",
+      "pfsp-swish-5m",
+      "selfplay-swish-100k"
+    ],
+    "PANEL-B": [
+      "pfsp-swish-30m",
+      "v2-release",
+      "v2-iter11-p1",
+      "v2-league-8m"
+    ]
+  }
+}

@@ -59,7 +59,7 @@ from sheepshead.agent.ppo import load_agent
 from sheepshead.agent.sampling import DeploySampling
 from sheepshead.analysis.bootstrap import IntervalStat, bootstrap_interval
 from sheepshead.analysis.conventions import lead_options
-from sheepshead.analysis.panels import PANEL_A
+from sheepshead.analysis.panels import panel_files
 from sheepshead.analysis.rigorous_eval import (
     DecisionProbe,
     Model,
@@ -200,7 +200,7 @@ def eval_endpoint(
     n_deals: int = 3996,  # nearest multiple of 2 modes x 3 ckpts to 4000
     seed: int = PANEL_SEED,
     field_seed: int = FIELD_SEED,
-    panel_paths: Sequence[str] = tuple(PANEL_A),
+    panel_paths: Optional[Sequence[str]] = None,
     out_npz: Optional[Path] = None,
     registry: Optional[ModelRegistry] = None,
     n_boot: int = N_BOOT,
@@ -212,6 +212,8 @@ def eval_endpoint(
     (boundary-100k, boundary-50k, boundary). A single-checkpoint endpoint
     (e.g. the gen-0 resume baseline) is expressed by repeating the path.
     """
+    if panel_paths is None:
+        panel_paths = panel_files("PANEL-A")
     if len(ckpt_paths) != N_CHECKPOINTS:
         raise ValueError(f"need exactly {N_CHECKPOINTS} checkpoints, oldest first")
     if n_deals % (2 * N_CHECKPOINTS) != 0:

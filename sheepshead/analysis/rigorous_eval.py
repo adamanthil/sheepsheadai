@@ -65,7 +65,7 @@ Example
   uv run python analysis/rigorous_eval.py \
     --input-dir checkpoints_swish \
     --episode-divisor 1000000 \
-    --anchors final_pfsp_swish_ppo.pt \
+    --panel PANEL-A \
     --deals 1000 \
     --partner-mode called \
     --out-csv rigorous_results.csv \
@@ -92,6 +92,8 @@ from sheepshead.agent.observation import (
     observation_for,
 )
 from sheepshead.agent.ppo import PPOAgent, load_agent
+from sheepshead.analysis.fetch_models import verify_managed
+from sheepshead.analysis.panels import panel_files
 from sheepshead.game import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
 
 NUM_SEATS = 5
@@ -132,6 +134,9 @@ class ModelRegistry:
     ) -> Model:
         path = path.resolve()
         if path not in self._by_path:
+            # A manifest artifact (models/<key>.pt) must hash to its pin: a
+            # stale or corrupted panel file fails here instead of scoring.
+            verify_managed(path)
             # Arch-aware: builds whatever architecture the checkpoint records
             # (legacy checkpoints without the key are the full architecture).
             agent = load_agent(str(path))
@@ -783,12 +788,19 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         default=None,
         help="Explicit candidate .pt paths (overrides --input-dir discovery)",
     )
-    p.add_argument(
+    anchors = p.add_mutually_exclusive_group()
+    anchors.add_argument(
         "--anchors",
         type=str,
         nargs="*",
         default=None,
         help="Reference-field panel .pt paths. Default: strongest candidate.",
+    )
+    anchors.add_argument(
+        "--panel",
+        type=str,
+        default=None,
+        help="Frozen panel from models/manifest.json (e.g. PANEL-A) as the field.",
     )
     p.add_argument(
         "--episode-divisor",
@@ -826,6 +838,8 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
 
 def main(argv: Optional[List[str]] = None) -> int:
     args = parse_args(argv)
+    if args.panel:
+        args.anchors = panel_files(args.panel)
     partner_mode = resolve_partner_mode(args.partner_mode)
     registry = ModelRegistry()
 

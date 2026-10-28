@@ -36,7 +36,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
-from sheepshead.analysis.panels import PANEL_A
+from sheepshead.analysis.panels import panel_files
 
 ARCHS = [
     "full",
@@ -224,7 +224,8 @@ class Orchestrator:
         if not finals:
             self.log("PANEL-A: no finals to evaluate; skipping")
             return
-        missing = [p for p in PANEL_A if not os.path.exists(p)]
+        panel = panel_files("PANEL-A")
+        missing = [p for p in panel if not os.path.exists(p)]
         if missing:
             self.log(f"PANEL-A: anchors missing {missing}; skipping")
             return
@@ -237,7 +238,7 @@ class Orchestrator:
                 "--candidates",
                 *finals,
                 "--anchors",
-                *PANEL_A,
+                *panel,
                 "--deals",
                 str(self.args.panel_deals),
                 "--partner-mode",
