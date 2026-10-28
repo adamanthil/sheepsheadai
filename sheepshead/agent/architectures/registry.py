@@ -80,7 +80,7 @@ def _pointer_actor(action_size, action_groups, encoder, mappings):
 def _bilinear_pointer_actor(action_size, action_groups, encoder, mappings):
     """The pointer actor plus the zero-initialized bilinear state x card
     term (CE_Teacher_Design §20.9); loads a plain pointer-actor
-    checkpoint bit-identically via analysis/migrate_arch_checkpoint.py."""
+    checkpoint bit-identically via research/migrate_arch_checkpoint.py."""
     return MultiHeadRecurrentActorNetwork(
         action_size,
         action_groups,

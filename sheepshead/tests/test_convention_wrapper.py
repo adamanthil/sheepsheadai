@@ -25,9 +25,8 @@ from sheepshead.agent.convention_wrapper import (
     parse_wrap_spec,
     wrap_agent,
 )
-from sheepshead.analysis.called_suit_probe import probe_agent
-from sheepshead.analysis.conventions import called_suit_fail
-from sheepshead.analysis.trump_lead_probe import probe_agent as probe_trump
+from sheepshead.eval.conventions import called_suit_fail
+from sheepshead.eval.trump_lead_probe import probe_agent as probe_trump
 from sheepshead.game import (
     ACTIONS,
     FAIL,
@@ -36,6 +35,7 @@ from sheepshead.game import (
     TRUMP,
     Game,
 )
+from sheepshead.research.called_suit_probe import probe_agent
 from sheepshead.scripted_agent import ScriptedAgent, card_name
 
 _TRUMP = set(TRUMP)

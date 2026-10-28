@@ -37,7 +37,7 @@ def set_all_seeds(seed: int) -> None:
 
     Consolidates the copy-pasted ``random.seed(s); np.random.seed(s);
     torch.manual_seed(s)`` triple that recurred across the trainers and
-    analysis/validation scripts. Order matters for exact reproducibility
+    research scripts. Order matters for exact reproducibility
     with existing runs: random, then numpy, then torch.
     """
     random.seed(seed)

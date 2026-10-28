@@ -9,7 +9,7 @@ import os
 import numpy as np
 import pytest
 
-from sheepshead.analysis.league_progress_eval import h2h_duplicate
+from sheepshead.eval.league_progress_eval import h2h_duplicate
 
 CAND = "runs/policy_iteration_202609/iter11/distill_epoch7.pt"
 ANCHOR = "runs/league_retention_pg/checkpoints/pfsp_perceiver-shared-v2_checkpoint_8000000.pt"

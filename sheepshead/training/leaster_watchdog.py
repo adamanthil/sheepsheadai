@@ -12,7 +12,7 @@ class LeasterWatchdog:
     leasters within the first few thousand episodes: play skill is
     terrible at init, so picking has negative EV and every seat learns to
     PASS (see the leaster-rate scan in
-    notebooks/Architecture_Ablation_202607.md; `analysis/leaster_scan.py`).
+    notebooks/Architecture_Ablation_202607.md; `research/leaster_scan.py`).
     The stage-1 league runs (July 2026) showed the same attractor can be
     re-entered from a well-trained policy once the bidding anchor is
     released, so the league trainer takes the watchdog as an option too.

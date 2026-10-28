@@ -7,7 +7,11 @@ import os
 
 import torch
 
-from sheepshead.analysis.merge_corpora import main, merge_manifests, offset_games
+from sheepshead.research.merge_corpora import (
+    main,
+    merge_manifests,
+    offset_games,
+)
 
 
 def shard(game_ids):

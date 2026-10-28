@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
-"""Trump-lead incidence probe invariants (sheepshead/analysis/trump_lead_probe.py)."""
+"""Trump-lead incidence probe invariants (sheepshead/eval/trump_lead_probe.py)."""
 
-from sheepshead.analysis.trump_lead_probe import PROBE_SEED, probe_agent
+from sheepshead.eval.trump_lead_probe import (
+    PROBE_SEED,
+    probe_agent,
+)
 from sheepshead.game import PARTNER_BY_CALLED_ACE
 from sheepshead.scripted_agent import ScriptedAgent
 

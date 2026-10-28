@@ -12,8 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from sheepshead.analysis.panels import panel_files
-from sheepshead.devtools.fetch_models import (
+from sheepshead.eval.fetch_models import (
     ArtifactError,
     fetch,
     lint,
@@ -22,6 +21,7 @@ from sheepshead.devtools.fetch_models import (
     verify,
     verify_managed,
 )
+from sheepshead.eval.panels import panel_files
 
 TAG = "artifact/test"
 PAYLOAD = b"not really a checkpoint"

@@ -1,7 +1,7 @@
 """Training/research test suite for the sheepshead package.
 
 Scope: game engine rules and invariants, agent architectures, league/PPO
-training runtime, ISMCTS search, and analysis probes. Product/server tests
+training runtime, ISMCTS search, and instruments. Product/server tests
 live in app/server/tests and run against the FastAPI app.
 
 Conventions:

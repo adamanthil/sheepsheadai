@@ -102,7 +102,7 @@ class UpdateTargets(NamedTuple):
 # soft-band FRACTION tracks whether the decision-boundary band is alive —
 # per-head mean H_norm hides it in a tail (backfill 2026-07-28: pick median
 # ~0.0001, mean ~0.05, all mass in the softest decile). Shared by the live
-# update telemetry and analysis/entropy_probe.py.
+# update telemetry and research/entropy_probe.py.
 SOFTBAND_HNORM = 0.3
 
 # Original loss coefficients of the four DETERMINISTIC aux heads, the

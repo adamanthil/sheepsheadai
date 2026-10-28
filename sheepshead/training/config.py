@@ -157,7 +157,7 @@ class CommitteeConfig:
     # calibration:  s2_a <- (nu*s2_global + (n_obs-1)*s2_node_a)/(nu + n_obs - 1).
     shrink_nu: float = 4.0
     # Per-replicate per-action Q variance at the 1024/1 budget, measured by
-    # the §1.2 calibration gate (analysis/calibrate_shrinkage.py on the
+    # the §1.2 calibration gate (research/calibrate_shrinkage.py on the
     # archived §12.8 deflead gating study: 144 nodes x 6 reps, pooled mean
     # over 720 action cells; per-action per-replicate SD ~0.026 Q). See
     # CE_Teacher_Design §10 for the recorded gate results.

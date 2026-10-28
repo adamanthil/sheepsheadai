@@ -1,7 +1,16 @@
 """Sheepshead RL core package.
 
-The game engine lives in :mod:`sheepshead.game`. Subpackages: ``agent``
-(networks + PPO), ``training`` (trainers, league, orchestrators),
-``analysis`` (measurement instruments), ``devtools`` (golden gate, model
-artifacts, benchmarks), ``validation`` (historical one-off gate checks).
+Layers, bottom to top (a package imports only from layers below it;
+sheepshead/tests/test_import_layering.py enforces this):
+
+  game, rewards, scripted_agent   the engine, scoring and reward math
+  agent       networks, PPO, observation, deploy sampling
+  search      the ISMCTS teacher
+  eval        maintained measurement instruments and model artifacts
+  training    trainers, league, corpus/policy-iteration drivers, the
+              program orchestrator
+
+and two leaves that may import any of those but are imported by nothing:
+``research`` (journal experiments, incl. the ISMCTS-era ``validation``)
+and ``devtools`` (golden gate, benchmarks).
 """

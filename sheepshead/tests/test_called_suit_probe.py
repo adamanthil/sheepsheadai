@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Called-suit-lead adherence probe invariants (sheepshead/analysis/called_suit_probe.py)."""
+"""Called-suit-lead adherence probe invariants (sheepshead/research/called_suit_probe.py)."""
 
-from sheepshead.analysis.called_suit_probe import probe_agent
-from sheepshead.analysis.conventions import called_suit_fail
-from sheepshead.analysis.trump_lead_probe import PROBE_SEED
+from sheepshead.eval.conventions import called_suit_fail
+from sheepshead.eval.trump_lead_probe import PROBE_SEED
+from sheepshead.research.called_suit_probe import probe_agent
 from sheepshead.scripted_agent import ScriptedAgent, card_name
 
 

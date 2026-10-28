@@ -3,7 +3,7 @@
 Two measurement paths must agree in definition (per-node H/ln(n_legal) over
 the legal set, per head, forced moves excluded): the live theta_old update
 telemetry (stats["head_entropy_norm"]) and the offline checkpoint probe
-(analysis/entropy_probe.py). These tests pin the shared contract: values in
+(research/entropy_probe.py). These tests pin the shared contract: values in
 [0, 1], forced moves excluded, first-epoch-only measurement (theta_old under
 grad accumulation), probe determinism and side-effect freedom.
 
@@ -14,8 +14,11 @@ bumplessly from measured values (Astrom & Wittenmark, Adaptive Control)."""
 import random
 
 from sheepshead.agent.ppo import PPOAgent
-from sheepshead.analysis.entropy_probe import HEADS, probe_agent
 from sheepshead.game import ACTIONS, PARTNER_BY_JD
+from sheepshead.research.entropy_probe import (
+    HEADS,
+    probe_agent,
+)
 from sheepshead.tests.ppo_test_helpers import seed_all
 from sheepshead.training.league import SELF_PLAY
 from sheepshead.training.league_worker import OpponentAdapter

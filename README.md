@@ -12,9 +12,10 @@ sheepshead/         installable RL core (uv sync installs it editable)
   search/           ISMCTS teacher (search / ExIt)
   training/         the PPO trainer, oracle pretraining, corpus + policy
                     iteration, and the program orchestrator
-  analysis/         measurement instruments (rigorous_eval, probes, panels)
-  devtools/         golden gate, model-artifact fetching, benchmarks
-  validation/       historical one-off gate checks
+  eval/             maintained instruments (rigorous_eval, panels, h2h,
+                    probes) and model-artifact fetching
+  research/         journal experiments; validation/ = ISMCTS-era gates
+  devtools/         golden gate, benchmarks
   tests/            training/research test suite (kept out of the wheel)
 app/                the hosted product: server/ (FastAPI), web/ (Next.js),
                     db/ (graphile-migrate), deploy/, scripts/, compose files
@@ -109,7 +110,7 @@ Fetch the model checkpoints. They are GitHub Release assets pinned by
 sha256 in `models/manifest.json` and land under `models/` (gitignored):
 
 ```bash
-uv run python -m sheepshead.devtools.fetch_models
+uv run python -m sheepshead.eval.fetch_models
 ```
 
 Start the backend (pass the path to your trained model checkpoint):
@@ -304,7 +305,7 @@ checkpoints are read from paths, and the orchestrator skips a reference
 read with a log line when the file is absent. The distributed checkpoints —
 the 30M-episode production model, the `202609_recall_rc` release and every
 PANEL-A/PANEL-B member — are GitHub Release assets pinned in
-`models/manifest.json`; `uv run python -m sheepshead.devtools.fetch_models`
+`models/manifest.json`; `uv run python -m sheepshead.eval.fetch_models`
 puts them under `models/`. Point `final.references` at
 `models/pfsp-swish-30m.pt` to compare a fresh run against the 30M.
 
@@ -617,11 +618,11 @@ adopted checkpoint. Measured on the perceiver-shared-v2 lineage
 uv run python -m sheepshead.training.policy_iteration cert --ckpt <reference.pt> \
     --out-dir <dir> --candidate <candidate.pt> --h2h-deals 8000
 # a head-routed chimera read (bidding from one checkpoint, play from another)
-uv run python -m sheepshead.analysis.head_routed_h2h --bid-ckpt <a.pt> --play-ckpt <b.pt> --deals-per-mode 8000
+uv run python -m sheepshead.eval.head_routed_h2h --bid-ckpt <a.pt> --play-ckpt <b.pt> --deals-per-mode 8000
 # duplicate-deal h2h of two league boundaries
-uv run python -m sheepshead.analysis.league_progress_eval --h2h <gen.pt> <prev.pt>
+uv run python -m sheepshead.eval.league_progress_eval --h2h <gen.pt> <prev.pt>
 # the anchored PANEL-A gauntlet / rigorous paired comparison
-uv run python -m sheepshead.analysis.rigorous_eval --help
+uv run python -m sheepshead.eval.rigorous_eval --help
 ```
 
 ### Reading the trainer log

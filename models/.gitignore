@@ -1,4 +1,4 @@
-# Fetched model artifacts (uv run python -m sheepshead.devtools.fetch_models).
+# Fetched model artifacts (uv run python -m sheepshead.eval.fetch_models).
 *
 !.gitignore
 !manifest.json

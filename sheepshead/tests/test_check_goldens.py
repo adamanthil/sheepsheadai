@@ -28,7 +28,8 @@ class TestIsWatched:
 
     def test_tests_and_analysis_are_not(self):
         assert not is_watched("sheepshead/tests/test_arch_golden.py")
-        assert not is_watched("sheepshead/analysis/rigorous_eval.py")
+        assert not is_watched("sheepshead/eval/rigorous_eval.py")
+        assert not is_watched("sheepshead/research/leaster_scan.py")
         assert not is_watched("sheepshead/devtools/check_goldens.py")
         assert not is_watched("app/server/main.py")
         assert not is_watched("notebooks/notes.md")

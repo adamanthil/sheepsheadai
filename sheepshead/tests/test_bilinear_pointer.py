@@ -6,11 +6,11 @@ import numpy as np
 import torch
 
 from sheepshead.agent.ppo import PPOAgent, load_agent
-from sheepshead.analysis.migrate_arch_checkpoint import (
+from sheepshead.game import ACTIONS
+from sheepshead.research.migrate_arch_checkpoint import (
     max_prob_divergence,
     migrate,
 )
-from sheepshead.game import ACTIONS
 from sheepshead.tests.ppo_test_helpers import seed_all
 
 

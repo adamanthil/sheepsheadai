@@ -1163,7 +1163,7 @@ def stage_cert(args) -> dict:
     epoch) against theta_k (``--ckpt``): greedy probes at n=CERT_GAMES on
     the fixed CERT_SEEDS, the duplicate h2h vs theta_k with its leaster-hand
     paired score, and the pre-registered bars. Writes cert.json."""
-    from sheepshead.analysis.league_progress_eval import h2h_duplicate
+    from sheepshead.eval.league_progress_eval import h2h_duplicate
 
     log = _log_to(os.path.join(args.out_dir, "policy_iteration.log"))
     candidate = args.candidate
@@ -1216,7 +1216,7 @@ def stage_cert(args) -> dict:
     )
     routed = {}
     if getattr(args, "routed_reads", True):
-        from sheepshead.analysis.head_routed_h2h import routed_h2h
+        from sheepshead.eval.head_routed_h2h import routed_h2h
 
         # §20.14 step 5: the play-only route (bidding from theta_k) is the
         # compounding statistic — it strips the +-0.005 bidding variance the

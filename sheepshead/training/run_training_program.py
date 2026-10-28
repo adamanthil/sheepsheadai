@@ -49,7 +49,7 @@ from typing import Optional
 
 import numpy as np
 
-from sheepshead.analysis.league_progress_eval import (
+from sheepshead.eval.league_progress_eval import (
     CONFIRM_SEED,
     PANEL_SEED,
     eval_endpoint,

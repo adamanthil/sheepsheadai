@@ -38,7 +38,7 @@ HAND_SLOTS = 8  # the encoder's fixed hand width
 
 # Layout of a policy-iteration target stage's output directory: written by
 # sheepshead.training.policy_iteration, read by
-# sheepshead.analysis.target_diagnostics.
+# sheepshead.research.target_diagnostics.
 TARGETED_SUBDIR = "targeted"
 OOF_FILE = "oof_predictions.pt"
 

@@ -9,18 +9,18 @@ beats intra-op threads). As each run finishes, the next queued job starts
 and the run's endpoint probes fire (scripted paired probe + trump-lead
 incidence probe). After the whole matrix, optionally runs the PANEL-A
 gauntlet over every final checkpoint (both partner modes) and always calls
-analysis/aggregate_ablation.py to produce the learning-curve CSV, results
+eval/aggregate_ablation.py to produce the learning-curve CSV, results
 table, and plots.
 
 Everything is resumable: jobs whose status file says "done" are skipped, so
 re-running the same command continues an interrupted matrix.
 
 Usage (full experiment):
-  PYTHONPATH=. nohup .venv/bin/python analysis/run_ablation_matrix.py \
+  uv run python -m sheepshead.training.run_ablation_matrix \
       > runs/ablation_202607/orchestrator.out 2>&1 &
 
 Smoke test of the whole pipeline:
-  PYTHONPATH=. .venv/bin/python analysis/run_ablation_matrix.py \
+  uv run python -m sheepshead.training.run_ablation_matrix \
       --smoke --out-dir runs/ablation_smoke --prefix smokeablate
 """
 
@@ -36,7 +36,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
-from sheepshead.analysis.panels import panel_files
+from sheepshead.eval.panels import panel_files
 
 ARCHS = [
     "full",
@@ -142,7 +142,7 @@ class Orchestrator:
                 [
                     sys.executable,
                     "-m",
-                    "sheepshead.analysis.scripted_probe",
+                    "sheepshead.eval.scripted_probe",
                     "--ckpt",
                     final_ckpt,
                     "--deals",
@@ -157,7 +157,7 @@ class Orchestrator:
                 [
                     sys.executable,
                     "-m",
-                    "sheepshead.analysis.trump_lead_probe",
+                    "sheepshead.eval.trump_lead_probe",
                     "--ckpt",
                     final_ckpt,
                     "--deals",
@@ -234,7 +234,7 @@ class Orchestrator:
             cmd = [
                 sys.executable,
                 "-m",
-                "sheepshead.analysis.rigorous_eval",
+                "sheepshead.eval.rigorous_eval",
                 "--candidates",
                 *finals,
                 "--anchors",
@@ -275,7 +275,7 @@ class Orchestrator:
             [
                 sys.executable,
                 "-m",
-                "sheepshead.analysis.aggregate_ablation",
+                "sheepshead.eval.aggregate_ablation",
                 "--out-dir",
                 self.out_dir,
                 "--prefix",

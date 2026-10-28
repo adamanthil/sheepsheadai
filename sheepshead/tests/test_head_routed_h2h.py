@@ -8,7 +8,7 @@ import os
 import numpy as np
 import pytest
 
-from sheepshead.analysis.head_routed_h2h import (
+from sheepshead.eval.head_routed_h2h import (
     HeadRoutedAgent,
     is_lead_decision,
     routed_h2h,

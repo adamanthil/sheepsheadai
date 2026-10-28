@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import random
 
-from sheepshead.analysis.subsample_targeted import subsample_episodes
+from sheepshead.research.subsample_targeted import subsample_episodes
 
 
 def row(node_class: str, dset: str, weight: float | None = None) -> dict:

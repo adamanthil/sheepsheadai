@@ -106,12 +106,17 @@ class Capture:
 
 def is_watched(path: str) -> bool:
     """Whether a change to ``path`` can move a fingerprint: package code
-    other than tests, analysis and dev tooling (no capture imports them),
-    plus the capture scripts themselves."""
+    other than tests, instruments, research and dev tooling (no capture
+    imports them), plus the capture scripts themselves."""
     if path in (ARCH_SCRIPT, SEARCH_SCRIPT):
         return True
     return path.startswith("sheepshead/") and not path.startswith(
-        ("sheepshead/tests/", "sheepshead/analysis/", "sheepshead/devtools/")
+        (
+            "sheepshead/tests/",
+            "sheepshead/eval/",
+            "sheepshead/research/",
+            "sheepshead/devtools/",
+        )
     )
 
 

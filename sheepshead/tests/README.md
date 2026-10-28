@@ -58,7 +58,7 @@ share lives here, under a public name.
 | `test_architectures.py` / `test_bilinear_pointer.py` | Registry architectures: shapes, forward smoke, param groups; the bilinear play pointer |
 | `test_recall_architecture.py` | `perceiver-recall` and the observation contract: recall keys, `observation_for` merge rule, loud failures |
 | `test_arch_golden.py` | Registry consistency + structural goldens + legacy checkpoint shim |
-| `test_import_layering.py` | Package import layering: core below everything, instruments and dev tooling below the training stack, nothing imports validation |
+| `test_import_layering.py` | Package import layering: core below everything, instruments below the training stack, nothing imports the research and devtools leaves |
 | `test_check_goldens.py` | Planning logic of the bit-exact gate: watched paths, trailer parsing, comparison segments |
 | `test_search_encode_path.py` | Encoder split and the opt-in compiled encoder |
 | `test_oracle_critic.py` / `test_oracle_aux_heads.py` / `test_oracle_init_guard.py` | Privileged-critic mode: oracle encoding, dual GAE, aux heads, deal-seeded games, `--oracle-init` guard |
@@ -75,7 +75,7 @@ share lives here, under a public name.
 | `test_ismcts_exit_regression.py` / `test_ismcts_replay_equivalence.py` / `test_ismcts_committee.py` / `test_ismcts_oracle_leaves.py` / `test_committee_summary.py` | ISMCTS teacher: determinizer, forced replay, committee search, oracle leaves, committee summary |
 | `test_distill_pipeline.py` / `test_policy_iteration.py` | Search-corpus generation; the policy-iteration stages (fit, target, distill, cert) |
 | `test_scripted_agent.py` / `test_convention_wrapper.py` | Scripted baseline + convention wrappers |
-| `test_trump_lead_probe.py` / `test_called_suit_probe.py` | Analysis probe plumbing (shared geometry in `sheepshead/analysis/conventions.py`) |
+| `test_trump_lead_probe.py` / `test_called_suit_probe.py` | Analysis probe plumbing (shared geometry in `sheepshead/eval/conventions.py`) |
 
 ## When you change the algorithm, what do you update?
 

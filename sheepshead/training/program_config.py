@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 from dataclasses import MISSING, asdict, dataclass, field, fields, is_dataclass
 
-from sheepshead.analysis.panels import panel_files
+from sheepshead.eval.panels import panel_files
 from sheepshead.training.stop_rules import AuxReadinessConfig
 
 

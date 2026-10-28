@@ -5,15 +5,14 @@ Layers, bottom to top:
 
   core       game, rewards, scripted_agent, agent.*
   search     ismcts (imports only core)
-  devtools   golden gate, model artifacts, benchmarks
-  analysis   measurement instruments (imports devtools.fetch_models)
-  training   library modules (reward math, configs, corpus formats, the
-             episode runtime, ...) usable by analysis and devtools, and the
-             part ON TOP of the instruments: the PPO trainer and league
-             roster (``TRAINING_STACK``) plus every training module that
-             imports them or analysis/devtools, directly or transitively
-             (the orchestrators).
-  validation historical gate checks; nothing imports them.
+  eval       maintained measurement instruments and model artifacts
+  training   library modules (configs, corpus formats, the episode
+             runtime, ...) usable by eval, and the part ON TOP of the
+             instruments: the PPO trainer and league roster
+             (``TRAINING_STACK``) plus every training module that imports
+             them or eval, directly or transitively (the orchestrators).
+  research, devtools
+             leaves: they may import any layer; nothing imports them.
 
 Every import counts, including function-local ones: a lazy import hides a
 dependency from a casual reader, not from this test.
@@ -76,7 +75,7 @@ def _training_on_top() -> set[str]:
         for module, deps in GRAPH.items():
             if _layer(module) != "training" or module in on_top:
                 continue
-            if any(d in on_top or _layer(d) in ("analysis", "devtools") for d in deps):
+            if any(d in on_top or _layer(d) == "eval" for d in deps):
                 on_top.add(module)
                 grew = True
     return on_top
@@ -96,18 +95,15 @@ def test_core_imports_only_core():
     assert _violations(("core",), lambda d: _layer(d) != "core") == []
 
 
-def test_instruments_and_tooling_stay_below_the_training_stack():
+def test_instruments_stay_below_the_training_stack():
     on_top = _training_on_top()
-    assert _violations(("analysis", "devtools"), lambda d: d in on_top) == []
+    assert _violations(("eval",), lambda d: d in on_top) == []
 
 
-def test_devtools_stays_below_analysis():
-    assert _violations(("devtools",), lambda d: _layer(d) == "analysis") == []
-
-
-def test_nothing_imports_validation():
-    importers = ("core", "training", "analysis", "devtools")
-    assert _violations(importers, lambda d: _layer(d) == "validation") == []
+def test_nothing_imports_the_leaves():
+    importers = ("core", "search", "eval", "training")
+    leaves = ("research", "devtools")
+    assert _violations(importers, lambda d: _layer(d) in leaves) == []
 
 
 def test_stack_closure_reaches_the_orchestrators():
