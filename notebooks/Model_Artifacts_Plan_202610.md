@@ -1,7 +1,10 @@
 # Model Artifacts as Release Assets — Plan (October 2026)
 
-**Status (2026-10-27): PLAN ONLY — no code written, no release created.**
-Split out of `CD_Deployment_Plan_202608.md` (its former D5, D10–D12 and
+**Status (2026-10-27): IMPLEMENTED.** Both releases are published and
+immutable, the `artifact/*` tag ruleset is active, and the manifest, fetch
+tool, CI lint and panel resolution are committed with the root checkpoint
+removed. Decisions taken during implementation are marked **[impl]**; the
+one that changes the plan's promise is A4 (panel identity). Split out of `CD_Deployment_Plan_202608.md` (its former D5, D10–D12 and
 §5) after the 10-27 audit. **This plan is a prerequisite of the CD
 plan**: the deploy script reads the deployed model, its sha256 and its
 sampling from the manifest defined here. It is also valuable on its
@@ -54,10 +57,27 @@ a two-step: upload a release, commit the manifest.
 * **A4 — Panel identity is the bytes, not the path.**
   `sheepshead/analysis/panels.py` stops naming `runs/...` paths and
   names manifest keys; the panel loader resolves a key to
-  `models/<asset>` and refuses to run if the file's sha256 does not
-  match the manifest. The frozen pre-registration (membership, order,
-  deal seed, deal hash) is unchanged; only the on-disk location moves.
-  Every recorded panel number remains comparable.
+  `models/<key>.pt` and refuses to run if the file's sha256 does not
+  match the manifest. The membership, deal seed and deal list are
+  unchanged.
+  **[impl, operator 10-27] Members are identified by manifest key, and
+  recorded reads are NOT per-deal pairable with new ones.** The plan
+  assumed only the on-disk location moved, but two things are taken over
+  the panel's path strings: the field's seat order
+  (`eval_endpoint` and `rigorous_eval` sort the panel by path before
+  drawing seats) and the endpoint design hash (`design_hash` hashes the
+  sorted paths; `paired_delta` refuses endpoints whose hashes differ).
+  The new paths sort differently (PANEL-A was 30M, 15M, 5M, 100k; it is
+  now 15M, 30M, 5M, 100k), so new reads use different seat draws and a
+  new hash: PANEL-A `f17b2dc28d0c` → `3e6443e4c5e9`, PANEL-B
+  `5fd2564a6425` → `04046aaca26e` (3,996-deal protocol). The rejected
+  alternative kept each member's historical path as a frozen ID
+  (bit-identical, pairable); the operator chose clean key identity.
+  Consequence: every row of `notebooks/panel_reference.csv` stays valid
+  as recorded, and a new read is comparable to it **statistically**
+  (same members, deals and protocol; different field draws), not by a
+  per-deal paired delta. A paired comparison against an old agent means
+  re-reading that agent under the new hash.
 
 ## 1. Current state (2026-10-27)
 
@@ -157,24 +177,34 @@ calls before every panel read, so a stale or corrupted cache fails
 loudly instead of producing a number. `models/` is gitignored except
 `manifest.json`.
 
+**[impl]** Files land with mode 0644 (`mkstemp` would leave 0600).
+
 `--lint` is a CI step in the `training` job. It asserts: every sha256
 is 64 hex chars; every `bytes` is a positive int; **exactly one** entry
 has role `deploy`, and it carries a `sampling` block with exactly the
 five keys `pick`, `partner`, `bury`, `play`, `band` as non-negative
-numbers; every `arch` is a registered architecture; `panels` lists
-only known keys. (It replaces the CD plan's former
+numbers (and no other entry carries `sampling`); every `arch` is a
+registered architecture; every asset is named `<key>.pt` **[impl]**
+(so path order equals key order, A4); `panels` lists only known keys,
+and an artifact's `panel-a`/`panel-b` roles agree with the `panels`
+lists in both directions. (It replaces the CD plan's former
 `check_model_manifest.py`: with one file there is nothing to keep in
 sync, only a shape to enforce.)
 
-Panel resolution (A4): `panels.py` exposes
-`panel_paths(name) -> list[Path]` built from the manifest, replacing
-the two path lists; `program_config.py`, `rigorous_eval`'s CLI,
-`league_progress_eval.eval_endpoint` and `build_panel_reference` call
-it. The `checkpoints` column of `notebooks/panel_reference.csv`
-records whatever path was used, so old rows keep their `runs/...`
-strings and new rows record `models/...`; the `protocol` column, deal
-seed and deal hash are unaffected, which is what makes the rows
-comparable.
+Panel resolution (A4) **[impl]**: `panels.py` exposes
+`panel_files(name) -> list[str]` (repo-root-relative `models/<key>.pt`,
+in manifest order), replacing `PANEL_A`/`PANEL_B`. Callers:
+`program_config.py` (league panel defaults; `final.references.prod_30m`
+→ `models/pfsp-swish-30m.pt`), `league_progress_eval.eval_endpoint`
+(default field), `run_ablation_matrix.py`, and a new
+`rigorous_eval --panel NAME` (mutually exclusive with `--anchors`).
+`build_panel_reference` never read the lists (it reads `.npz` files),
+so it is unchanged. The hash check sits in `rigorous_eval.ModelRegistry.get`
+— the one load path every panel read goes through — via
+`fetch_models.verify_managed`, which checks any file under `models/`
+that the manifest names and passes every other path through. Saved run
+configs under `runs/*/program/config.json` still name the old paths;
+the programs that wrote them have concluded and are not resumed.
 
 ## 5. Invariants
 
@@ -235,13 +265,22 @@ Same deal seed and deal hash as every row in
 
 1. GitHub settings: immutable releases, `artifact/*` tag ruleset (A3)
    — before anything is published, so the bootstrap is born immutable.
-2. Publish the two bootstrap releases (§6.1).
+   **[impl]** Immutable releases were already on; ruleset "artifact tags
+   are permanent" (id 26009298) blocks deletion, update and
+   non-fast-forward on `refs/tags/artifact/*`.
+2. Publish the two bootstrap releases (§6.1). **[impl]** Done as drafts
+   first, then published; GitHub's server-side sha256 digests and an
+   anonymous download of all eight assets match the manifest. An
+   interrupted first attempt left two unpublished duplicate drafts,
+   since deleted.
 3. `models/manifest.json` + `models/.gitignore` + `fetch_models.py` +
    the `--lint` CI step; then, in the same commit,
    `git rm final_pfsp_swish_ppo.pt` and re-point its references to
    `models/pfsp-swish-30m.pt` (A1), so the tree never has both copies.
-4. `panels.py` → manifest keys (A4) and its four callers; verify one
-   PANEL-A row reproduces bit-for-bit against `panel_reference.csv`.
+4. `panels.py` → manifest keys (A4) and its callers. **[impl]** The
+   bit-for-bit reproduction check is moot under key identity (A4); a
+   small end-to-end read through `eval_endpoint` (PANEL-A) and
+   `rigorous_eval --panel PANEL-B` stands in for it.
 
 ## 8. Deferred
 
