@@ -1,0 +1,149 @@
+/* The card stage shared by the lesson and the table's cheat sheet. Scene
+   coordinates are in percent of the stage box's width, rendered as cqw. */
+
+/* A printed figure: white plate, hairline rule. */
+.frame {
+  background: var(--bg-card);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  box-shadow: var(--shadow-1);
+  padding: 14px;
+}
+.stageBox {
+  container-type: inline-size;
+  position: relative;
+  /* Display type over the stage; exposed so overlays from other modules
+     (the lesson's call to action) can match it. Resolved where used, inside
+     this container. */
+  --stage-big: 5.6cqw;
+}
+.narrow {
+  --stage-big: 10cqw;
+}
+.stage {
+  position: relative;
+  width: 100%;
+  height: calc(var(--h) * 1cqw);
+  --pc-w: calc(var(--cw) * 1cqw);
+  user-select: none;
+}
+.interactive {
+  touch-action: pan-y;
+  cursor: pointer;
+}
+
+/* ---- Cards ---- */
+.slot {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(calc(var(--x) * 1cqw - 50%), calc(var(--y) * 1cqw - 50%))
+    rotate(var(--r));
+  transition:
+    transform 780ms cubic-bezier(0.22, 0.75, 0.2, 1) var(--d),
+    opacity 420ms ease var(--d);
+  will-change: transform;
+}
+.hidden {
+  opacity: 0;
+  transition-duration: 780ms, 260ms;
+}
+.dim {
+  opacity: 0.32;
+}
+
+.flip {
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform 620ms cubic-bezier(0.4, 0, 0.2, 1) var(--d);
+}
+.flipped {
+  transform: rotateY(180deg);
+}
+.face,
+.flip > .back {
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+.flip > .back {
+  position: absolute;
+  inset: 0;
+  transform: rotateY(180deg);
+}
+.face {
+  transition:
+    box-shadow 400ms ease var(--d),
+    background-color 400ms ease var(--d);
+}
+.trump .face {
+  background-color: color-mix(in oklab, var(--accent) 7%, var(--card-paper));
+  box-shadow:
+    0 0 0 1.5px var(--accent),
+    var(--shadow-1);
+}
+.hi .face {
+  box-shadow:
+    0 0 0 2px var(--accent-2),
+    var(--shadow-2);
+}
+
+.still .slot,
+.still .flip,
+.still .face {
+  transition: none;
+}
+
+/* ---- Labels ---- */
+.label {
+  position: absolute;
+  left: calc(var(--x) * 1cqw);
+  top: calc(var(--y) * 1cqw);
+  transform: translate(-50%, -50%);
+  z-index: 100;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: labelIn 520ms ease 260ms both;
+}
+.alignStart {
+  transform: translate(0, -50%);
+}
+.labelOverline {
+  font-size: max(10px, 1.25cqw);
+}
+.narrow .labelOverline {
+  font-size: 10px;
+}
+.labelBig {
+  font-family: var(--font-display);
+  font-size: var(--stage-big);
+  line-height: 1;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.redCard {
+  color: var(--card-red);
+}
+
+@keyframes labelIn {
+  from {
+    opacity: 0;
+    translate: 0 4px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slot,
+  .flip,
+  .face {
+    transition-duration: 0ms;
+    transition-delay: 0ms;
+  }
+  .label {
+    animation: none;
+  }
+}

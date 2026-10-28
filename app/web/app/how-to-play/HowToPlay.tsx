@@ -1,21 +1,9 @@
 "use client";
 
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import { PlayingCard, ds, useMediaQuery } from "../../lib/ds";
-import {
-  CARD_W,
-  CHAPTERS,
-  DECK,
-  STAGE_H,
-  type CardPlacement,
-  type LabelKind,
-} from "./lessonScenes";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { ds, useMediaQuery } from "../../lib/ds";
+import { CHAPTERS } from "./lessonScenes";
+import CardStage, { redSuits } from "./CardStage";
 import DealMeIn from "./DealMeIn";
 import styles from "./HowToPlay.module.css";
 
@@ -29,52 +17,9 @@ const FIRST_BEAT = CHAPTERS.map((_, c) =>
 /** How long autoplay holds a beat: a beat of animation plus reading time. */
 const beatMs = (caption: string) => 2600 + caption.length * 45;
 
-/** Cards cascade into place in scene order, capped so big moves don't drag. */
-const STAGGER_MS = 14;
-const MAX_STAGGER_MS = 420;
-
-const LABEL_CLASS: Record<LabelKind, string> = {
-  overline: `${ds.overline} ${styles.labelOverline}`,
-  tag: ds.badge,
-  tagTrump: `${ds.badge} ${ds.badgeAccent}`,
-  tagRed: `${ds.badge} ${ds.badgeAccent2}`,
-  big: styles.labelBig,
-};
-
-const TONE_CLASS = {
-  hi: styles.hi,
-  trump: styles.trump,
-  dim: styles.dim,
-} as const;
-
-/** Stage coordinates as fixed-precision strings: the server and the browser
- * serialize long floats differently, which breaks hydration of the page. */
-const fixed = (v: number) => v.toFixed(3);
-
-/** A card named in lesson text with a red suit, e.g. "A♥" or "10♦". */
-const RED_CARD = /((?:10|[2-9AKQJ])[♥♦])/;
-
-/** Text with its red-suit cards set in the cards' red, matching the
- * faces on the stage. Splitting on a capturing group puts the cards at the
- * odd indices. */
-const redSuits = (text: string) =>
-  text.split(RED_CARD).map((part, i) =>
-    i % 2 ? (
-      <span key={i} className={styles.redCard}>
-        {part}
-      </span>
-    ) : (
-      part
-    ),
-  );
-
-/** Swipes shorter than this count as a tap on the stage. */
-const SWIPE_PX = 40;
-
 /**
- * The How to Play lesson as a chapter player: one stage of all 32 cards that
- * glide between scenes, a caption under it, and a chapter rail that doubles
- * as the progress bar. Autoplay is driven by the active progress segment's
+ * The How to Play lesson as a chapter player: the card stage, a caption
+ * under it, and a chapter rail that doubles as the progress bar. Autoplay is driven by the active progress segment's
  * CSS animation, so pausing freezes the bar exactly where it is.
  */
 export default function HowToPlay() {
@@ -82,24 +27,9 @@ export default function HowToPlay() {
   const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
   const [beat, setBeat] = useState(0);
   const [playing, setPlaying] = useState(true);
-  // Placements land without transitions until the first narrow/wide answer
-  // is in, so a phone doesn't watch the deck slide from the wide layout.
-  const [settled, setSettled] = useState(false);
-
   const current = BEATS[beat];
   const chapter = CHAPTERS[current.chapter];
   const atEnd = beat === BEATS.length - 1;
-
-  useEffect(() => {
-    let inner = 0;
-    const outer = requestAnimationFrame(() => {
-      inner = requestAnimationFrame(() => setSettled(true));
-    });
-    return () => {
-      cancelAnimationFrame(outer);
-      cancelAnimationFrame(inner);
-    };
-  }, []);
 
   useEffect(() => {
     if (reducedMotion) setPlaying(false);
@@ -150,102 +80,16 @@ export default function HowToPlay() {
 
   const scene = useMemo(() => current.scene(narrow), [current, narrow]);
 
-  // Cards a scene leaves out fade where they last stood rather than flying
-  // off to some parking spot.
-  const lastPlaced = useRef<Record<string, CardPlacement>>({});
-  const stageH = narrow ? STAGE_H.narrow : STAGE_H.wide;
-  const order = Object.keys(scene.cards);
-  const cards = DECK.map((code) => {
-    const placed = scene.cards[code];
-    return {
-      code,
-      p: placed ?? lastPlaced.current[code] ?? { x: 50, y: stageH / 2 },
-      hidden: !placed,
-      order: placed ? order.indexOf(code) : -1,
-    };
-  });
-  useEffect(() => {
-    Object.assign(lastPlaced.current, scene.cards);
-  }, [scene]);
-
-  const swipeStart = useRef<number | null>(null);
-  const onPointerDown = (e: React.PointerEvent) => {
-    swipeStart.current = e.clientX;
-  };
-  const onPointerUp = (e: React.PointerEvent) => {
-    if (swipeStart.current === null) return;
-    const dx = e.clientX - swipeStart.current;
-    swipeStart.current = null;
-    if (dx <= -SWIPE_PX) go(beat + 1);
-    else if (dx >= SWIPE_PX) go(beat - 1);
-    else togglePlay();
-  };
-
-  const stageVars = {
-    "--h": stageH,
-    "--cw": narrow ? CARD_W.narrow : CARD_W.wide,
-  } as React.CSSProperties;
-
   return (
     <div className={`${styles.player} ${narrow ? styles.narrow : ""}`}>
-      <div className={styles.frame}>
-        <div className={styles.stageBox}>
-          <div
-            className={`${styles.stage} ${settled ? "" : styles.still}`}
-            style={stageVars}
-            onPointerDown={onPointerDown}
-            onPointerUp={onPointerUp}
-            onPointerCancel={() => (swipeStart.current = null)}
-            aria-hidden="true"
-          >
-            {cards.map(({ code, p, hidden, order: o }) => {
-              const slotVars = {
-                "--x": fixed(p.x),
-                "--y": fixed(p.y),
-                "--r": `${fixed(p.r ?? 0)}deg`,
-                "--d": `${hidden ? 0 : Math.min(o * STAGGER_MS, MAX_STAGGER_MS)}ms`,
-                zIndex: hidden ? 0 : o + 1,
-              } as React.CSSProperties;
-              const classes = [
-                styles.slot,
-                hidden ? styles.hidden : "",
-                !hidden && p.tone ? TONE_CLASS[p.tone] : "",
-              ]
-                .filter(Boolean)
-                .join(" ");
-              return (
-                <div key={code} className={classes} style={slotVars}>
-                  <div
-                    className={`${styles.flip} ${p.faceDown ? styles.flipped : ""}`}
-                  >
-                    <PlayingCard
-                      code={code}
-                      className={styles.face}
-                      ariaHidden
-                    />
-                    <PlayingCard code="__" className={styles.back} ariaHidden />
-                  </div>
-                </div>
-              );
-            })}
-            {scene.labels.map((l) => (
-              <div
-                key={`${l.id}:${l.text}`}
-                className={`${styles.label} ${l.align === "start" ? styles.alignStart : ""}`}
-                style={
-                  {
-                    "--x": fixed(l.x),
-                    "--y": fixed(l.y),
-                  } as React.CSSProperties
-                }
-              >
-                <span className={LABEL_CLASS[l.kind]}>{redSuits(l.text)}</span>
-              </div>
-            ))}
-          </div>
-          {scene.cta && <DealMeIn key={beat} {...scene.cta} />}
-        </div>
-      </div>
+      <CardStage
+        scene={scene}
+        narrow={narrow}
+        onSwipe={(dir) => go(beat + dir)}
+        onTap={togglePlay}
+      >
+        {scene.cta && <DealMeIn key={beat} {...scene.cta} />}
+      </CardStage>
 
       <div className={styles.captionBlock} aria-live="polite">
         <div className={ds.overline}>
