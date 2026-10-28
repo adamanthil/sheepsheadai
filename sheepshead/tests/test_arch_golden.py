@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Golden-fixture and consistency guards for the architecture registry.
+"""Structural golden and consistency guards for the architecture registry.
 
-Fixtures live in sheepshead/tests/fixtures/arch_golden/ and are captured by
-sheepshead/analysis/capture_arch_goldens.py at a known-good commit. Structural checks
-(state_dict key names) run everywhere; weight/numerical bit-identity checks
-run only on the environment recorded in the fixture manifest (orthogonal
-init and kernels are LAPACK/BLAS dependent).
+The committed fixture (sheepshead/tests/fixtures/arch_structure.json, written
+by ``capture_arch_goldens --write-structure``) pins each architecture's
+state_dict key names, parameter counts and aux-head flags, which hold on
+every platform. Weight and forward-output bit identity is platform-dependent
+and is checked commit-against-commit by ``sheepshead.devtools.check_goldens``
+(CI runs it on every push), not here.
 """
 
 import os
@@ -21,21 +22,14 @@ from sheepshead.agent.architectures.registry import (
 from sheepshead.agent.observation import observation_for
 from sheepshead.agent.ppo import PPOAgent
 from sheepshead.analysis.capture_arch_goldens import (
-    FIXTURE_DIR,
     build_agent,
-    check_arch,
-    key_sha,
-    load_manifest,
-    manifest_path,
-    runtime_matches_manifest,
+    load_structure,
+    structure_record,
 )
 from sheepshead.game import ACTIONS, Game
 
-_HAVE_FIXTURES = os.path.exists(manifest_path())
-
-
-def _golden(arch: str) -> dict:
-    return torch.load(os.path.join(FIXTURE_DIR, f"{arch}.pt"), weights_only=True)
+_STRUCTURE = load_structure()
+_REWRITE = "uv run python -m sheepshead.analysis.capture_arch_goldens --write-structure"
 
 
 class TestRegistryConsistency:
@@ -58,47 +52,28 @@ class TestRegistryConsistency:
             assert hasattr(agent.encoder, attr), attr
         assert callable(agent.encoder.param_groups)
 
-        if _HAVE_FIXTURES:
-            golden = _golden(key)
-            for net_name, net in (
-                ("encoder", agent.encoder),
-                ("actor", agent.actor),
-                ("critic", agent.critic),
-            ):
-                assert key_sha(net) == golden["key_sha"][net_name], (
-                    f"{key}/{net_name}: state_dict key names drifted "
-                    "from the golden fixture"
-                )
 
+class TestStructuralGoldens:
+    """Every registered architecture's structure matches the committed
+    fixture, and the fixture covers exactly the registry."""
 
-@pytest.mark.skipif(not _HAVE_FIXTURES, reason="no golden fixtures captured")
-class TestNumericalGoldens:
-    """Full bit-identity check (weights + forward outputs) against the
-    fixtures; only meaningful on the environment that captured them."""
-
-    @classmethod
-    def setup_class(cls):
-        manifest = load_manifest()
-        if not runtime_matches_manifest(manifest):
-            pytest.skip(
-                "runtime differs from fixture manifest "
-                f"(torch {manifest['torch']}, {manifest['platform']}); "
-                "expected on CI, but on the dev machine (e.g. after a torch "
-                "upgrade) the bit-exact gate is now silently OFF -- re-capture "
-                "with sheepshead/analysis/capture_arch_goldens.py to restore it"
-            )
+    def test_fixture_covers_registry(self):
+        assert sorted(_STRUCTURE) == sorted(available_architectures()), (
+            f"registry and arch_structure.json disagree; rewrite with: {_REWRITE}"
+        )
 
     @pytest.mark.parametrize("arch", available_architectures())
-    def test_all_archs_bit_identical(self, arch):
-        # Goldens were captured single-threaded; restore afterwards so later
-        # tests in the same process keep their own numeric environment.
-        previous_threads = torch.get_num_threads()
-        torch.set_num_threads(1)
-        try:
-            problems = check_arch(arch)
-        finally:
-            torch.set_num_threads(previous_threads)
-        assert problems == [], f"{arch}: {problems}"
+    def test_structure_matches(self, arch):
+        golden = _STRUCTURE.get(arch)
+        assert golden is not None, f"{arch} not in the fixture; run: {_REWRITE}"
+        current = structure_record(build_agent(arch))
+        for net, keys in golden["keys"].items():
+            gk, ck = set(keys), set(current["keys"][net])
+            assert gk == ck, (
+                f"{arch}/{net}: state_dict keys drifted "
+                f"(missing={sorted(gk - ck)} added={sorted(ck - gk)})"
+            )
+        assert current["meta"] == golden["meta"]
 
 
 class TestLegacyValueTrunkShim:

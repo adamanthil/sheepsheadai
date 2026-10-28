@@ -83,6 +83,26 @@ jobs:
       - run: uv run python -m sheepshead.analysis.fetch_models --lint
       - run: uv run pytest sheepshead/tests -q
 
+  # Weight-init, forward-output and ISMCTS bit identity of this push (or PR)
+  # against the commit before it, both captured on this runner in this
+  # environment -- the fingerprints are BLAS-dependent, so they are never
+  # committed. Intentional changes are declared per commit with a
+  # `Changes-Network-Outputs:` trailer; see sheepshead/devtools/check_goldens.py.
+  # Full history is needed for the baseline worktree and the trailer scan.
+  goldens:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync
+      - run: uv run python -m sheepshead.devtools.check_goldens --baseline "$BASELINE"
+        env:
+          BASELINE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+
   web:
     runs-on: ubuntu-latest
     defaults:

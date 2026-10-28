@@ -8,6 +8,8 @@ Conventions:
   * Long-running files carry a module-level ``pytestmark = pytest.mark.slow``
     (registered in pyproject.toml); ``-m "not slow"`` gives a fast local run.
   * Shared game-driving helpers live in ``sheepshead.tests.game_test_utils``.
-  * Golden architecture fixtures live in ``fixtures/arch_golden/`` and are
-    captured/checked by ``sheepshead.analysis.capture_arch_goldens``.
+  * The structural architecture fixture is ``fixtures/arch_structure.json``
+    (``sheepshead.analysis.capture_arch_goldens --write-structure``); bit
+    identity is checked commit-against-commit by
+    ``sheepshead.devtools.check_goldens``.
 """

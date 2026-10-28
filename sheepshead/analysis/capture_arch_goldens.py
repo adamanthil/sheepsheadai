@@ -1,31 +1,36 @@
 #!/usr/bin/env python3
-"""Per-architecture golden fixtures for the registry refactor.
+"""Per-architecture golden fingerprints (architecture bit-identity gate).
 
 Captures, for every registered architecture, three fingerprints of a
 freshly seeded agent plus deterministic forward-pass outputs:
 
-  * structural  — sha256 over sorted state_dict key names per network.
-    Torch-version and platform independent; any drift means the module
-    structure changed.
+  * structural  — sorted state_dict key names per network, plus parameter
+    counts and the aux-head flags. Torch-version and platform independent.
+    Committed as sheepshead/tests/fixtures/arch_structure.json and checked
+    by every pytest run.
   * weights     — sha256 over the raw parameter/buffer bytes in state_dict
     order. Catches construction-order or RNG-consumption drift that keeps
-    the key set identical. Same-machine/same-torch only (orthogonal init
-    goes through LAPACK).
+    the key set identical.
   * numerical   — encoder/actor/critic outputs on a fixed probe set of
     seeded game states, compared with torch.equal (bit identity, not
-    allclose). Same-machine/same-torch only.
+    allclose).
 
-The fixtures gate the architecture-registry refactor: capture once at the
-pre-refactor commit, then run --check after every structural change.
+Weights and outputs depend on the BLAS/LAPACK the torch build links
+(orthogonal init runs a QR factorization; every matmul goes through BLAS).
+On macOS that is the system Accelerate framework, so an OS update changes
+them with no code change. They are therefore never committed: the
+``sheepshead.devtools.check_goldens`` driver captures them at a baseline
+commit and at the working tree, on the same machine, and compares the two.
+
+The capture-to-directory CLI below is what that driver runs at *older*
+commits, so its interface (``--fixture-dir DIR [--arch NAME]...``, one
+``<arch>.pt`` per architecture) and the fingerprint dict layout must stay
+stable.
 
 Usage:
-    uv run python -m sheepshead.analysis.capture_arch_goldens            # write fixtures
-    uv run python -m sheepshead.analysis.capture_arch_goldens --check    # compare
-    uv run python -m sheepshead.analysis.capture_arch_goldens --check --arch full
-
-sheepshead/tests/test_arch_golden.py imports this module and re-runs the comparison
-under pytest (numerical/weight checks are skipped there when the runtime
-torch version does not match the manifest).
+    uv run python -m sheepshead.analysis.capture_arch_goldens --write-structure
+    uv run python -m sheepshead.analysis.capture_arch_goldens --fixture-dir DIR
+    uv run python -m sheepshead.devtools.check_goldens     # the bit-exact gate
 """
 
 import argparse
@@ -46,12 +51,13 @@ from sheepshead.game import ACTIONS, Game
 from sheepshead.training.training_utils import set_all_seeds
 
 SEED = 42
-FIXTURE_DIR = os.path.join(
+STRUCTURE_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "tests",
     "fixtures",
-    "arch_golden",
+    "arch_structure.json",
 )
+NETS = ("encoder", "actor", "critic")
 
 
 def _seed_all(s: int) -> None:
@@ -94,7 +100,7 @@ def collect_probe_states(agent) -> list:
     return states
 
 
-def key_sha(net: torch.nn.Module) -> str:
+def _key_sha(net: torch.nn.Module) -> str:
     h = hashlib.sha256()
     for k in sorted(net.state_dict().keys()):
         h.update(k.encode())
@@ -161,14 +167,12 @@ def capture_outputs(agent: PPOAgent) -> dict:
     return out
 
 
-def capture_arch(arch: str) -> dict:
-    agent = build_agent(arch)
+def structure_record(agent: PPOAgent) -> dict:
+    """The platform-independent part of the fingerprint: what is committed
+    to arch_structure.json and checked by the pytest suite."""
     nets = {"encoder": agent.encoder, "actor": agent.actor, "critic": agent.critic}
     return {
-        "arch": arch,
-        "key_sha": {n: key_sha(net) for n, net in nets.items()},
         "keys": {n: sorted(net.state_dict().keys()) for n, net in nets.items()},
-        "weight_sha": {n: _weight_sha(net) for n, net in nets.items()},
         "meta": {
             "has_aux_heads": bool(agent.critic.has_aux_heads),
             "spec_has_aux_heads": bool(agent.arch_spec.has_aux_heads),
@@ -177,39 +181,37 @@ def capture_arch(arch: str) -> dict:
                 n: sum(p.numel() for p in net.parameters()) for n, net in nets.items()
             },
         },
+    }
+
+
+def capture_arch(arch: str) -> dict:
+    agent = build_agent(arch)
+    nets = {"encoder": agent.encoder, "actor": agent.actor, "critic": agent.critic}
+    structure = structure_record(agent)
+    return {
+        "arch": arch,
+        "key_sha": {n: _key_sha(net) for n, net in nets.items()},
+        "keys": structure["keys"],
+        "weight_sha": {n: _weight_sha(net) for n, net in nets.items()},
+        "meta": structure["meta"],
         "outputs": capture_outputs(agent),
     }
 
 
-def _fixture_path(arch: str, fixture_dir: str) -> str:
+def fixture_path(arch: str, fixture_dir: str) -> str:
     return os.path.join(fixture_dir, f"{arch}.pt")
 
 
-def manifest_path(fixture_dir: str = FIXTURE_DIR) -> str:
-    return os.path.join(fixture_dir, "manifest.json")
-
-
-def load_manifest(fixture_dir: str = FIXTURE_DIR) -> dict:
-    with open(manifest_path(fixture_dir)) as f:
+def load_structure() -> dict:
+    with open(STRUCTURE_PATH) as f:
         return json.load(f)
 
 
-def runtime_matches_manifest(manifest: dict) -> bool:
-    """Weight/numerical goldens are only meaningful on the environment that
-    captured them (LAPACK/BLAS-dependent init and kernels)."""
-    return (
-        manifest["torch"] == torch.__version__
-        and manifest["platform"] == platform.platform()
-    )
-
-
-def check_arch(arch: str, fixture_dir: str = FIXTURE_DIR) -> list:
-    """Recompute the fixture and return a list of mismatch descriptions
+def compare_arch(golden: dict, current: dict) -> list:
+    """Mismatch descriptions between two capture_arch fingerprints
     (empty = bit-identical)."""
-    golden = torch.load(_fixture_path(arch, fixture_dir), weights_only=True)
-    current = capture_arch(arch)
     problems = []
-    for net in ("encoder", "actor", "critic"):
+    for net in NETS:
         if golden["key_sha"][net] != current["key_sha"][net]:
             gk = set(golden["keys"][net])
             ck = set(current["keys"][net])
@@ -238,57 +240,50 @@ def check_arch(arch: str, fixture_dir: str = FIXTURE_DIR) -> list:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument(
-        "--check",
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument(
+        "--write-structure",
         action="store_true",
-        help="compare against existing fixtures instead of writing them",
+        help=f"rewrite the committed structural fixture ({STRUCTURE_PATH})",
+    )
+    mode.add_argument(
+        "--fixture-dir",
+        help="capture full fingerprints (weights + outputs) into this directory",
     )
     parser.add_argument(
         "--arch",
         action="append",
         help="limit to specific architecture(s); default: all registered",
     )
-    parser.add_argument("--fixture-dir", default=FIXTURE_DIR)
     args = parser.parse_args()
+
+    if args.write_structure:
+        if args.arch:
+            parser.error("--write-structure always covers every architecture")
+        structure = {
+            arch: structure_record(build_agent(arch))
+            for arch in available_architectures()
+        }
+        with open(STRUCTURE_PATH, "w") as f:
+            json.dump(structure, f, indent=1, sort_keys=True)
+            f.write("\n")
+        print(f"wrote {len(structure)} architectures to {STRUCTURE_PATH}")
+        return 0
 
     if ppo.device.type != "cpu":
         print(
-            f"Goldens must be captured/checked on CPU (ppo.device={ppo.device}); "
+            f"Goldens must be captured on CPU (ppo.device={ppo.device}); "
             'set CUDA_VISIBLE_DEVICES="".'
         )
         return 2
     torch.set_num_threads(1)
 
     archs = args.arch or available_architectures()
-
-    if args.check:
-        manifest = load_manifest(args.fixture_dir)
-        if not runtime_matches_manifest(manifest):
-            print(
-                "Runtime does not match fixture manifest "
-                f"(torch {manifest['torch']} vs {torch.__version__}, "
-                f"platform {manifest['platform']} vs {platform.platform()}); "
-                "weight/numerical comparisons would be meaningless here."
-            )
-            return 2
-        failed = 0
-        for arch in archs:
-            problems = check_arch(arch, args.fixture_dir)
-            if problems:
-                failed += 1
-                print(f"FAIL {arch}")
-                for p in problems:
-                    print(f"     {p}")
-            else:
-                print(f"ok   {arch}")
-        print(f"\n{len(archs) - failed}/{len(archs)} architectures bit-identical")
-        return 1 if failed else 0
-
     os.makedirs(args.fixture_dir, exist_ok=True)
     for arch in archs:
-        torch.save(capture_arch(arch), _fixture_path(arch, args.fixture_dir))
+        torch.save(capture_arch(arch), fixture_path(arch, args.fixture_dir))
         print(f"captured {arch}")
-    with open(manifest_path(args.fixture_dir), "w") as f:
+    with open(os.path.join(args.fixture_dir, "manifest.json"), "w") as f:
         json.dump(
             {
                 "seed": SEED,

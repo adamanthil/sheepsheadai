@@ -9,19 +9,29 @@ optimizer updates, or spawn worker pools.
 
 ## Two tiers
 
-- **Portable tests** (everything except the arch goldens) hold on every
+- **Portable tests** (everything in this directory) hold on every
   platform. Numerical tests either compare two in-process computations
   (equivalence suites) or assert hand-derived values with `pytest.approx`
-  tolerances — never stored float hashes.
-- **Machine-local bit-exact gates** (`test_arch_golden.py` numerical
-  checks only): weight-init and forward-pass byte-identity against
-  fixtures captured by `sheepshead/analysis/capture_arch_goldens.py`.
-  These skip whenever torch or the platform differ from the fixture
-  manifest. **A torch upgrade silences them without failing anything** —
-  re-capture on the dev machine afterwards to restore the gate:
+  tolerances — never stored float hashes. The architecture goldens here
+  are structural only (`fixtures/arch_structure.json`: state_dict keys,
+  parameter counts, aux flags).
+- **Commit-against-commit bit-exact gate**
+  (`sheepshead/devtools/check_goldens.py`): weight-init, forward-output
+  and ISMCTS search fingerprints, which depend on the BLAS/LAPACK torch
+  links (on macOS the OS's Accelerate framework, so an OS update moves
+  them). Never committed; the driver captures them at a baseline commit
+  and at the working tree, on the same machine and in the same
+  environment, and requires bit identity. CI's `goldens` job runs it
+  against the commit before each push; locally it defaults to the
+  upstream branch:
 
-      uv run python -m sheepshead.analysis.capture_arch_goldens
-      uv run python -m sheepshead.analysis.capture_arch_goldens --check
+      uv run python -m sheepshead.devtools.check_goldens
+
+  A commit that changes outputs on purpose declares it in its message's
+  trailer block, naming the affected architectures (`search` for the
+  ISMCTS fixture, `all` for everything); only that commit is exempted:
+
+      Changes-Network-Outputs: perceiver-recall (re-init pointer_V)
 
   The probe states are observed through
   `sheepshead.agent.observation.observation_for`, so legacy architectures
@@ -47,7 +57,8 @@ share lives here, under a public name.
 | `test_leaster_scoring.py` | Leaster scoring |
 | `test_architectures.py` / `test_bilinear_pointer.py` | Registry architectures: shapes, forward smoke, param groups; the bilinear play pointer |
 | `test_recall_architecture.py` | `perceiver-recall` and the observation contract: recall keys, `observation_for` merge rule, loud failures |
-| `test_arch_golden.py` | Registry consistency (portable) + bit-exact goldens (machine-local) + legacy checkpoint shim |
+| `test_arch_golden.py` | Registry consistency + structural goldens + legacy checkpoint shim |
+| `test_check_goldens.py` | Planning logic of the bit-exact gate: watched paths, trailer parsing, comparison segments |
 | `test_search_encode_path.py` | Encoder split and the opt-in compiled encoder |
 | `test_oracle_critic.py` / `test_oracle_aux_heads.py` / `test_oracle_init_guard.py` | Privileged-critic mode: oracle encoding, dual GAE, aux heads, deal-seeded games, `--oracle-init` guard |
 | `test_pretrain_oracle.py` | Oracle pretraining: spawn-pool dataset + supervised fit (slow) |
@@ -79,8 +90,11 @@ share lives here, under a public name.
   tests in `test_ppo_event_storage.py`. The naive builders are the
   written spec of the layout — keep them obvious, not clever.
 - **Event record fields or label defaults** — `test_ppo_event_storage.py`.
-- **An architecture** — re-capture goldens (commands above); registry
-  consistency tests parametrize automatically. A new architecture must
+- **An architecture** — rewrite the structural fixture
+  (`uv run python -m sheepshead.analysis.capture_arch_goldens --write-structure`);
+  registry consistency tests parametrize automatically. If existing
+  architectures' outputs change on purpose, add the
+  `Changes-Network-Outputs:` trailer (above) to that commit. A new architecture must
   also declare `legacy_picker_memory` honestly: `test_recall_architecture`
   pins what each kind is fed.
 - **The observation dict** — `test_game_rules` pins the exact key set;

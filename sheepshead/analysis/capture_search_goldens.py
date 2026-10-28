@@ -8,17 +8,20 @@ batch size 1 vs 32, seat-policy grounding, terminal-depth rollout), plus a
 pool-level fixture of the lockstep world-build log-weights.
 
 Every quantity is compared bit-exactly (torch.equal on arrays, exact repr on
-scalars/dicts) — the gate for the ISMCTS maintainability refactor: capture
-once at the pre-refactor commit, then run --check after every step. RNG draw
+scalars/dicts), so a refactor can be checked against its pre-refactor
+commit after every step. RNG draw
 order and torch op order are part of the pinned behavior, so any accidental
 reorder fails the check even when the result is statistically equivalent.
 
-Usage:
-    uv run python -m sheepshead.analysis.capture_search_goldens            # write
-    uv run python -m sheepshead.analysis.capture_search_goldens --check    # compare
+Same-machine/same-torch only (like capture_arch_goldens), so nothing is
+committed: ``sheepshead.devtools.check_goldens`` captures at a baseline commit
+and at the working tree and compares the two. That driver runs this module's
+CLI at *older* commits, so ``--fixture-dir DIR`` (writing
+``search_golden.pt``) and the capture dict layout must stay stable.
 
-Same-machine/same-torch only (like capture_arch_goldens); the manifest stamps
-the environment and --check refuses to compare across a mismatch.
+Usage:
+    uv run python -m sheepshead.analysis.capture_search_goldens --fixture-dir DIR
+    uv run python -m sheepshead.devtools.check_goldens     # the bit-exact gate
 """
 
 import argparse
@@ -43,12 +46,6 @@ from sheepshead.training.training_utils import set_all_seeds
 SEED = 20260810
 ARCH = "perceiver-shared-v2"
 POOL_WORLDS = 16
-FIXTURE_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "tests",
-    "fixtures",
-    "search_golden",
-)
 
 # One search per (node, arm). Small iteration budgets keep a full run ~1-2 min
 # while still exercising every code path the refactor touches.
@@ -261,26 +258,8 @@ def _replay_record(pool_entry) -> dict:
     }
 
 
-def _fixture_path(fixture_dir: str) -> str:
+def fixture_path(fixture_dir: str) -> str:
     return os.path.join(fixture_dir, "search_golden.pt")
-
-
-def manifest_path(fixture_dir: str = FIXTURE_DIR) -> str:
-    return os.path.join(fixture_dir, "manifest.json")
-
-
-def load_manifest(fixture_dir: str = FIXTURE_DIR) -> dict:
-    with open(manifest_path(fixture_dir)) as f:
-        return json.load(f)
-
-
-def runtime_matches_manifest(manifest: dict) -> bool:
-    """Bit-identity goldens are only meaningful on the environment that
-    captured them (BLAS kernels differ across platforms/torch builds)."""
-    return (
-        manifest["torch"] == torch.__version__
-        and manifest["platform"] == platform.platform()
-    )
 
 
 def _compare_record(name, golden, current, problems):
@@ -299,11 +278,9 @@ def _compare_record(name, golden, current, problems):
         problems.append(f"  current: {current['scalars']}")
 
 
-def check(fixture_dir: str = FIXTURE_DIR) -> list:
-    """Recompute everything and return a list of mismatch descriptions
+def compare(golden: dict, current: dict) -> list:
+    """Mismatch descriptions between two capture() results
     (empty = bit-identical)."""
-    golden = torch.load(_fixture_path(fixture_dir), weights_only=True)
-    current = capture()
     problems: list = []
     g_searches, c_searches = golden["searches"], current["searches"]
     for name in sorted(set(g_searches) | set(c_searches)):
@@ -354,43 +331,23 @@ def check(fixture_dir: str = FIXTURE_DIR) -> list:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
-        "--check",
-        action="store_true",
-        help="compare against the existing fixture instead of writing it",
+        "--fixture-dir",
+        required=True,
+        help="capture the search fingerprint into this directory",
     )
-    parser.add_argument("--fixture-dir", default=FIXTURE_DIR)
     args = parser.parse_args()
 
     if ppo.device.type != "cpu":
         print(
-            f"Goldens must be captured/checked on CPU (ppo.device={ppo.device}); "
+            f"Goldens must be captured on CPU (ppo.device={ppo.device}); "
             'set CUDA_VISIBLE_DEVICES="".'
         )
         return 2
     torch.set_num_threads(1)
 
-    if args.check:
-        manifest = load_manifest(args.fixture_dir)
-        if not runtime_matches_manifest(manifest):
-            print(
-                "Runtime does not match fixture manifest "
-                f"(torch {manifest['torch']} vs {torch.__version__}, "
-                f"platform {manifest['platform']} vs {platform.platform()}); "
-                "bit-identity comparison would be meaningless here."
-            )
-            return 2
-        problems = check(args.fixture_dir)
-        if problems:
-            print("FAIL search goldens")
-            for p in problems:
-                print(f"     {p}")
-            return 1
-        print("ok   search goldens bit-identical")
-        return 0
-
     os.makedirs(args.fixture_dir, exist_ok=True)
-    torch.save(capture(), _fixture_path(args.fixture_dir))
-    with open(manifest_path(args.fixture_dir), "w") as f:
+    torch.save(capture(), fixture_path(args.fixture_dir))
+    with open(os.path.join(args.fixture_dir, "manifest.json"), "w") as f:
         json.dump(
             {
                 "seed": SEED,

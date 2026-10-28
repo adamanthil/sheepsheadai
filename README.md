@@ -291,7 +291,7 @@ lives under `runs/<run-name>/`.
 ```bash
 uv sync --extra dev                            # torch, the sheepshead package, test tools
 uv run pytest sheepshead/tests -m "not slow"   # ~15 s sanity check
-uv run python -m sheepshead.analysis.capture_arch_goldens --check   # encoder goldens
+uv run python -m sheepshead.devtools.check_goldens   # bit-exact vs upstream
 uv run training-program --smoke --run-name _smoke                    # every phase, ~5 min
 ```
 
@@ -569,9 +569,8 @@ release, iter11 P1, the production 30M); the convention battery; and a
 one-time exploitability audit (`analysis/exploitability_audit.py`: 50k
 episodes of best-response PPO against the frozen release, gated on a
 3,000-deal duplicate edge → `final/exploit/gate_result.json`). `report.md`
-is regenerated with everything above. Golden capture for the release
-(`capture_arch_goldens`) and the export are manual steps. To serve the
-model, point the API's `SHEEPSHEAD_MODEL_PATH` at `release.pt`.
+is regenerated with everything above. The export is a manual step. To
+serve the model, point the API's `SHEEPSHEAD_MODEL_PATH` at `release.pt`.
 
 ### Validating the final phases on an existing lineage
 
