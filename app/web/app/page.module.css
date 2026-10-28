@@ -89,9 +89,13 @@
 
 /* The newcomer's way in, directly under the lede it follows from. */
 .howTo {
-  align-self: flex-start;
-  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
   margin-top: -6px;
+}
+.howToBtn {
+  text-decoration: none;
 }
 
 .error {

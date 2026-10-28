@@ -34,7 +34,7 @@ export default function HowToPlayDialog() {
       <div className={styles.sheet}>
         <header className={styles.header}>
           <div>
-            <div className={ds.overline}>The rules in two minutes</div>
+            <div className={ds.overline}>The rules in three minutes</div>
             <h2 id="how-to-play-title" className={styles.title}>
               How to play
             </h2>

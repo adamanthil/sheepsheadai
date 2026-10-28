@@ -240,12 +240,15 @@ export default function HomePage() {
             friends, strangers, and a deep‑learning AI.
           </p>
 
-          <Link
-            href="/how-to-play"
-            className={`${ds.btn} ${ds.btnGhost} ${styles.howTo}`}
-          >
-            How to play →
-          </Link>
+          <div className={styles.howTo}>
+            <Link
+              href="/how-to-play"
+              className={`${ds.btn} ${ds.btnGhost} ${styles.howToBtn}`}
+            >
+              How to play →
+            </Link>
+            <span className={styles.createHint}>about 3 minutes</span>
+          </div>
 
           {error && <div className={styles.error}>{error}</div>}
 
