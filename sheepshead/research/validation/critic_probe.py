@@ -37,12 +37,11 @@ from sheepshead.agent.observation import (
     observation_for,
 )
 from sheepshead.agent.ppo import load_agent
-from sheepshead.game import ACTIONS, Game
+from sheepshead.game import ACTIONS, Game, get_partner_selection_mode
 from sheepshead.rewards import (
     RETURN_SCALE,
     TRICK_POINT_RATIO,
 )
-from sheepshead.training.training_utils import get_partner_selection_mode
 
 DEV = ppo.device
 

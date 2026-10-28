@@ -65,6 +65,7 @@ import torch
 
 from sheepshead.agent.architectures.registry import available_architectures
 from sheepshead.agent.ppo import DETERMINISTIC_AUX_SCALE, PPOAgent, load_agent
+from sheepshead.eval.health_probe import greedy_health_probe
 from sheepshead.game import ACTIONS
 from sheepshead.training.config import (
     BiddingHyperparams,
@@ -87,7 +88,6 @@ from sheepshead.training.league_worker import league_worker_init, publish_weight
 from sheepshead.training.leaster_watchdog import LeasterWatchdog
 from sheepshead.training.training_utils import (
     ensure_csv_columns,
-    greedy_health_probe,
     set_all_seeds,
     truncate_csv_rows_past_episode,
 )

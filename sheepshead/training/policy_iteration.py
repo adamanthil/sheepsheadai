@@ -63,6 +63,7 @@ import torch.nn.functional as F
 
 from sheepshead.agent import ppo as ppo_module
 from sheepshead.agent.ppo import load_agent
+from sheepshead.eval.health_probe import greedy_health_probe
 from sheepshead.game import ACTIONS, TRUMP
 from sheepshead.rewards import RETURN_SCALE
 from sheepshead.training.corpus_rows import (
@@ -98,7 +99,6 @@ from sheepshead.training.search_advantage import (
     targets_for_table,
     tilt_scale,
 )
-from sheepshead.training.training_utils import greedy_health_probe
 
 # Partition codes for the per-row policy-loss channel (0 = no policy loss).
 # targeted  = searched play rows with a Stage-2 target (CE toward it);

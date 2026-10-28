@@ -32,8 +32,8 @@ from sheepshead.agent.observation import (
     observation_for,
 )
 from sheepshead.agent.ppo import PPOAgent, load_agent
-from sheepshead.game import ACTIONS, Game
-from sheepshead.training.training_utils import get_partner_selection_mode, set_all_seeds
+from sheepshead.game import ACTIONS, Game, get_partner_selection_mode
+from sheepshead.training.training_utils import set_all_seeds
 
 
 def _load(model: str) -> PPOAgent:

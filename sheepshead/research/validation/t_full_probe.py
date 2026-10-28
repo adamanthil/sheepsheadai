@@ -26,14 +26,14 @@ import torch
 from sheepshead.agent import ppo
 from sheepshead.agent.observation import last_trick_observation_for
 from sheepshead.agent.ppo import load_agent
-from sheepshead.game import Game
+from sheepshead.game import Game, get_partner_selection_mode
 from sheepshead.research.validation.critic_probe import (
     encode_decide,
     r2,
     train_head,
 )
 from sheepshead.rewards import RETURN_SCALE
-from sheepshead.training.training_utils import get_partner_selection_mode, set_all_seeds
+from sheepshead.training.training_utils import set_all_seeds
 
 DEV = ppo.device
 

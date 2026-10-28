@@ -52,7 +52,7 @@ import torch
 from sheepshead.agent import ppo
 from sheepshead.agent.observation import observation_for
 from sheepshead.agent.ppo import load_agent
-from sheepshead.game import ACTION_IDS, ACTIONS, TRUMP, Game
+from sheepshead.game import ACTION_IDS, ACTIONS, TRUMP, Game, get_partner_selection_mode
 
 # Reuse the validated paired-rollout scaffolding.
 from sheepshead.research.counterfactual_trump_leads import (
@@ -61,7 +61,6 @@ from sheepshead.research.counterfactual_trump_leads import (
     restore_memory,
     snapshot_memory,
 )
-from sheepshead.training.training_utils import get_partner_selection_mode
 
 DEV = ppo.device
 

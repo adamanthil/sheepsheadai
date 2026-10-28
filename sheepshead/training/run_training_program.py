@@ -658,7 +658,7 @@ class Program:
             with open(path) as f:
                 return json.load(f)
         from sheepshead.agent.ppo import load_agent
-        from sheepshead.training.training_utils import greedy_health_probe
+        from sheepshead.eval.health_probe import greedy_health_probe
 
         cfg = self.cfg.league
         agent = load_agent(ckpt)

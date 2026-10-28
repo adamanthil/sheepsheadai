@@ -151,6 +151,11 @@ def get_partner_mode_name(partner_mode: int) -> str:
     return "Jack-of-Diamonds" if partner_mode == PARTNER_BY_JD else "Called-Ace"
 
 
+# The alternating training/eval schedule: even episodes play called-ace.
+def get_partner_selection_mode(episode: int) -> int:
+    return PARTNER_BY_CALLED_ACE if (episode % 2 == 0) else PARTNER_BY_JD
+
+
 def get_card_suit(card):
     suit = CARD_SUIT.get(card)
     # Fallback preserves the original `card[-1]` for non-deck tokens (e.g. UNDER).

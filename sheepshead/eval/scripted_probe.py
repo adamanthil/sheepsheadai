@@ -37,8 +37,8 @@ import argparse
 import json
 import time
 
+from sheepshead.eval.paired import paired_edge
 from sheepshead.scripted_agent import ScriptedAgent
-from sheepshead.training.training_utils import paired_edge
 
 PROBE_SEED = 31  # frozen: pairs new probes with the recorded placement numbers
 

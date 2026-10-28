@@ -62,6 +62,7 @@ from sheepshead.eval.bootstrap import (
     bootstrap_interval,
 )
 from sheepshead.eval.conventions import lead_options
+from sheepshead.eval.paired import paired_edge
 from sheepshead.eval.panels import panel_files
 from sheepshead.eval.rigorous_eval import (
     DecisionProbe,
@@ -76,7 +77,6 @@ from sheepshead.game import (
     PARTNER_BY_JD,
     TRUMP_SET,
 )
-from sheepshead.training.training_utils import paired_edge
 
 # Frozen experiment constants (pre-registered in notebooks/Extended_League_202607.md)
 FIELD_SEED = 20260619  # rigorous_eval.run_gauntlet's frozen field-assignment seed
@@ -329,7 +329,7 @@ def h2h(
     gen_ckpt: str, prev_ckpt: str, n_deals: int = 2000, seed: int = H2H_SEED
 ) -> Dict:
     """CRN paired edge of this generation over the previous one, measured in
-    the previous generation's field (training_utils.paired_edge). The frozen
+    the previous generation's field (eval.paired.paired_edge). The frozen
     seed keeps the deal set constant across generations.
 
     SUPERSEDED for the extended-league stop rule by h2h_duplicate (amendment
@@ -445,7 +445,7 @@ def h2h_duplicate(
     entirely of the previous checkpoint (rigorous_eval gauntlet with a
     one-member panel), both partner modes. The anchor's score in its own
     field is 0 by symmetry, so the candidate's score/hand IS the paired
-    edge — at ~3.5x less deal noise than training_utils.paired_edge at
+    edge — at ~3.5x less deal noise than eval.paired.paired_edge at
     equal deals (se ~0.015 combined vs ~0.055). Pipeline and seed (42)
     match the 2026-07-19 hypothesis-battery runs exactly, so gens 1-2 of
     the perceiver-shared-v2 continuation carry those recorded values.

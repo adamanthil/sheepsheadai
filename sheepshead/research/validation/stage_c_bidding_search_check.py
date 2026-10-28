@@ -33,14 +33,13 @@ from sheepshead.agent.observation import (
     observation_for,
 )
 from sheepshead.agent.ppo import load_agent
-from sheepshead.game import DECK, Game
+from sheepshead.game import DECK, Game, get_partner_selection_mode
 from sheepshead.search.ismcts import (
     ISMCTSConfig,
     ISMCTSTeacher,
     infer_head,
     is_private_decision,
 )
-from sheepshead.training.training_utils import get_partner_selection_mode
 
 CKPT = "models/pfsp-swish-30m.pt"
 

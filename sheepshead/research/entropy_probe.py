@@ -55,8 +55,7 @@ from sheepshead.agent.observation import (
     observation_for,
 )
 from sheepshead.agent.ppo import SOFTBAND_HNORM
-from sheepshead.game import Game
-from sheepshead.training.training_utils import get_partner_selection_mode
+from sheepshead.game import Game, get_partner_selection_mode
 
 PROBE_SEED = 20260728
 

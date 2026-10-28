@@ -21,13 +21,13 @@ import os
 import time
 
 from sheepshead.agent.ppo import load_agent
+from sheepshead.eval.health_probe import greedy_health_probe
 from sheepshead.training.train_ppo import (
     GREEDY_CSV_HEADER,
     aux_summary,
     episode_of,
     greedy_csv_row,
 )
-from sheepshead.training.training_utils import greedy_health_probe
 
 
 def main() -> None:

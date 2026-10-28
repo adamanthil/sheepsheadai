@@ -49,6 +49,7 @@ from sheepshead.game import (
     Game,
     get_callable_cards,
     get_card_suit,
+    get_partner_selection_mode,
 )
 from sheepshead.research.counterfactual_trump_leads import (
     best_in_class,
@@ -56,7 +57,6 @@ from sheepshead.research.counterfactual_trump_leads import (
     restore_memory,
     snapshot_memory,
 )
-from sheepshead.training.training_utils import get_partner_selection_mode
 
 DEV = ppo.device
 

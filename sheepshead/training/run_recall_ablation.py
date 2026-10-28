@@ -282,8 +282,8 @@ def _convention_task(arch: str, seed: int, stage: int, out: str) -> str:
     import torch
 
     from sheepshead.agent.ppo import load_agent
+    from sheepshead.eval.health_probe import greedy_health_probe
     from sheepshead.training.run_training_program import CONVENTION_SEEDS
-    from sheepshead.training.training_utils import greedy_health_probe
 
     torch.set_num_threads(1)
     t0 = time.time()

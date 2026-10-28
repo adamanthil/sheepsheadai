@@ -8,13 +8,13 @@ import torch
 
 from sheepshead.agent.oracle import team_aux_labels
 from sheepshead.agent.ppo import PPOAgent, load_agent
-from sheepshead.game import ACTIONS, PARTNER_BY_CALLED_ACE, TRUMP, Game
-from sheepshead.rewards import compute_seen_trump_mask
-from sheepshead.tests.ppo_test_helpers import play_episodes, seed_all
-from sheepshead.training.training_utils import (
+from sheepshead.eval.health_probe import (
     greedy_health_probe,
     seen_trump_recall_cards,
 )
+from sheepshead.game import ACTIONS, PARTNER_BY_CALLED_ACE, TRUMP, Game
+from sheepshead.rewards import compute_seen_trump_mask
+from sheepshead.tests.ppo_test_helpers import play_episodes, seed_all
 
 SEED = 20260725
 ARCH = "perceiver-shared-v2"

@@ -678,7 +678,7 @@ def test_seat_policies_population_grounding():
 def test_greedy_health_probe_side_effect_free():
     """The greedy health probe must restore the global random state and the
     agent's recurrent memories, and return rates in [0, 100]."""
-    from sheepshead.training.training_utils import greedy_health_probe
+    from sheepshead.eval.health_probe import greedy_health_probe
 
     _seed()
     a = fresh_agent()

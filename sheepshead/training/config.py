@@ -78,7 +78,7 @@ class LeagueHyperparams:
     # Greedy self-play health gates (collapse guard; percent units except the
     # play-head logit spread). Stochastic training-time rates masked the run-2
     # collapse for 586k episodes: a flattened policy still *samples* ~30% PICK
-    # while its argmax is PASS. The greedy probe (training_utils.greedy_health_probe)
+    # while its argmax is PASS. The greedy probe (eval.health_probe.greedy_health_probe)
     # plays argmax self-play and warns when any rate crosses these gates.
     greedy_gate_min_pick: float = 15.0
     # 20% ALONE (of partner decisions) can still be clean play; much above

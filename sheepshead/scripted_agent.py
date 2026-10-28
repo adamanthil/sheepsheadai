@@ -8,7 +8,7 @@ RL family tree's blind spots. Used as:
   * a sanity floor / smoke test (any trained checkpoint that loses to it is
     broken in a way self-relative metrics cannot reveal);
   * a decorrelated opponent for ad-hoc paired probes (via
-    ``training_utils.paired_edge``).
+    ``eval.paired.paired_edge``).
 
 It is deliberately kept OUT of the frozen PANEL-A reference field so the
 anchored strength scale never changes; if a panel wants it later, define a
