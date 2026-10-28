@@ -677,7 +677,9 @@ class FitReport:
         return json.dumps(self.__dict__, indent=2)
 
 
-def _batches(idx: torch.Tensor, batch_rows: int, shuffle: bool, rng: random.Random):
+def index_batches(
+    idx: torch.Tensor, batch_rows: int, shuffle: bool, rng: random.Random
+):
     order = idx.tolist()
     if shuffle:
         rng.shuffle(order)
@@ -730,7 +732,7 @@ def evaluate_rows(
     )
     residual_sq, noise_list = [], []
     with torch.no_grad():
-        for b in _batches(q_idx, batch_rows, False, random.Random(0)):
+        for b in index_batches(q_idx, batch_rows, False, random.Random(0)):
             enc = table.encoded(b)
             enc = EncodedRows(
                 features=enc.features.to(device),
@@ -837,7 +839,7 @@ def fit_advantage_model(
     for epoch in range(1, epochs + 1):
         model.train()
         tot, n = 0.0, 0
-        for b in _batches(q_train, batch_rows, True, rng):
+        for b in index_batches(q_train, batch_rows, True, rng):
             enc = table.encoded(b)
             enc = EncodedRows(
                 features=enc.features.to(device),
@@ -1063,7 +1065,7 @@ def cross_fit_predictions(
         )
         model.eval()
         with torch.no_grad():
-            for b in _batches(pred_idx, 2048, False, random.Random(0)):
+            for b in index_batches(pred_idx, 2048, False, random.Random(0)):
                 a_b, su2_b = predict_rows(model, table, b)
                 a_oof[b] = a_b
                 if su2_b is not None:
@@ -1622,7 +1624,7 @@ def targets_for_table(
     model.eval()
     out_t, out_z, out_g, out_v, out_a, out_m, out_s = [], [], [], [], [], [], []
     with torch.no_grad():
-        for b in _batches(
+        for b in index_batches(
             torch.arange(len(table)), batch_rows, False, random.Random(0)
         ):
             legal = table.masks[b].bool()

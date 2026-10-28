@@ -36,6 +36,12 @@ from sheepshead.training.reward_shaping import RETURN_SCALE
 
 HAND_SLOTS = 8  # the encoder's fixed hand width
 
+# Layout of a policy-iteration target stage's output directory: written by
+# sheepshead.training.policy_iteration, read by
+# sheepshead.analysis.target_diagnostics.
+TARGETED_SUBDIR = "targeted"
+OOF_FILE = "oof_predictions.pt"
+
 # Annotates a freshly stored event record with fields from its source corpus
 # event (the trainer's distill channels, the recovery's row references).
 RecordAnnotator = Callable[[dict, dict], None]

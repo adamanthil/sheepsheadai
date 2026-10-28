@@ -64,7 +64,12 @@ import torch.nn.functional as F
 from sheepshead.agent import ppo as ppo_module
 from sheepshead.agent.ppo import load_agent
 from sheepshead.game import ACTIONS, TRUMP
-from sheepshead.training.corpus_rows import load_shard, shard_paths
+from sheepshead.training.corpus_rows import (
+    OOF_FILE,
+    TARGETED_SUBDIR,
+    load_shard,
+    shard_paths,
+)
 from sheepshead.training.reward_shaping import RETURN_SCALE
 from sheepshead.training.search_advantage import (
     CAPACITIES,
@@ -94,9 +99,6 @@ from sheepshead.training.search_advantage import (
     tilt_scale,
 )
 from sheepshead.training.training_utils import greedy_health_probe
-
-TARGETED_SUBDIR = "targeted"
-OOF_FILE = "oof_predictions.pt"
 
 # Partition codes for the per-row policy-loss channel (0 = no policy loss).
 # targeted  = searched play rows with a Stage-2 target (CE toward it);

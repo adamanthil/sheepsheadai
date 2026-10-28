@@ -72,8 +72,8 @@ from sheepshead.agent.oracle import OracleCriticEncoder, OracleValueNetwork
 from sheepshead.game import UNDER_CARD_ID
 from sheepshead.training.pretrain_oracle import (
     STRATA_ORDER,
-    _batches,
-    _masked_mse,
+    batch_indices,
+    masked_mse,
     stratum_report,
 )
 
@@ -388,14 +388,14 @@ def train_arm(name, seed, train, val, args, dev) -> tuple:
     for epoch in range(args.max_epochs):
         net.train()
         t_epoch = time.time()
-        for batch_idx in _batches(list(range(len(train))), args.batch_size, rng):
+        for batch_idx in batch_indices(list(range(len(train))), args.batch_size, rng):
             eps = [train[i] for i in batch_idx]
             _sync(dev)
             t0 = time.perf_counter()
             seqs, vals, trunk, target, mask = fwd(net, eps, dev)
             m_loss, p_loss = net.aux_losses(trunk, seqs, mask)
             loss = (
-                _masked_mse(vals, target, mask)
+                masked_mse(vals, target, mask)
                 + args.aux_partner_coeff * m_loss
                 + args.aux_points_coeff * p_loss
             )

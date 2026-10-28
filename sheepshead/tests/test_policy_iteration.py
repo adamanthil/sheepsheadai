@@ -13,6 +13,8 @@ import torch
 from sheepshead.tests.distill_test_helpers import fresh_agent, generate_game
 from sheepshead.training import policy_iteration as tpi
 from sheepshead.training.corpus_rows import (
+    OOF_FILE,
+    TARGETED_SUBDIR,
     encode_rows,
     iter_row_batches,
     load_shard,
@@ -1111,7 +1113,7 @@ def test_cross_fit_and_distill_holdout_through_the_stages(tmp_path):
     fit = json.loads((out_dir / "fit_report.json").read_text())
     assert fit["cross_fit"]["folds"] == 2 and fit["cross_fit"]["epochs"] >= 1
     assert np.isfinite(fit["cross_fit"]["sigma_u2"])
-    assert (out_dir / tpi.OOF_FILE).exists()
+    assert (out_dir / OOF_FILE).exists()
     report = json.loads((out_dir / "target_report.json").read_text())
     assert report["cross_fit"] == 2
     assert report["model_diagnostics"]["a_model_out_of_fold"] is True
@@ -1166,7 +1168,7 @@ def test_cross_fit_and_distill_holdout_through_the_stages(tmp_path):
             "0.25",
         ]
     )
-    assert rc == 0 and not (out_dir / tpi.OOF_FILE).exists()
+    assert rc == 0 and not (out_dir / OOF_FILE).exists()
     # ... and without them a head-variance target refuses to run: an
     # in-sample head has seen the residuals it would be judged by.
     with pytest.raises(SystemExit, match="out-of-fold head variances"):
@@ -1176,7 +1178,7 @@ def test_cross_fit_and_distill_holdout_through_the_stages(tmp_path):
 def _stored_gammas(out_dir) -> torch.Tensor:
     """pi_gamma of every targeted row, in shard / episode / event order."""
     out = []
-    for path in sorted((out_dir / tpi.TARGETED_SUBDIR).glob("corpus_*.pt")):
+    for path in sorted((out_dir / TARGETED_SUBDIR).glob("corpus_*.pt")):
         shard = torch.load(path, weights_only=False)
         for episode in shard["episodes"]:
             out.extend(float(ev["pi_gamma"]) for ev in episode if "pi_gamma" in ev)

@@ -223,7 +223,7 @@ def cmd_generate(args) -> int:
 # --------------------------------------------------------------------------- #
 # pretrain
 # --------------------------------------------------------------------------- #
-def _batches(indices: list[int], batch_size: int, rng: random.Random | None):
+def batch_indices(indices: list[int], batch_size: int, rng: random.Random | None):
     idx = list(indices)
     if rng is not None:
         rng.shuffle(idx)
@@ -231,7 +231,7 @@ def _batches(indices: list[int], batch_size: int, rng: random.Random | None):
         yield idx[i : i + batch_size]
 
 
-def _masked_mse(vals, target, mask) -> torch.Tensor:
+def masked_mse(vals, target, mask) -> torch.Tensor:
     if not bool(mask.any()):
         return vals.new_zeros(())
     return ((vals - target) ** 2)[mask].mean()
@@ -311,12 +311,12 @@ def cmd_pretrain(args) -> int:
     for epoch in range(args.max_epochs):
         t0 = time.time()
         net.train()
-        for batch_idx in _batches(list(range(len(train))), args.batch_size, rng):
+        for batch_idx in batch_indices(list(range(len(train))), args.batch_size, rng):
             eps = [train[i] for i in batch_idx]
             seqs, vals, trunk, target, mask = batch_forward(eps)
             m_loss, p_loss = net.aux_losses(trunk, seqs, mask)
             loss = (
-                _masked_mse(vals, target, mask)
+                masked_mse(vals, target, mask)
                 + args.aux_partner_coeff * m_loss
                 + args.aux_points_coeff * p_loss
             )
@@ -327,7 +327,9 @@ def cmd_pretrain(args) -> int:
         net.eval()
         with torch.no_grad():
             se, n = 0.0, 0
-            for batch_idx in _batches(list(range(len(val))), args.batch_size, None):
+            for batch_idx in batch_indices(
+                list(range(len(val))), args.batch_size, None
+            ):
                 eps = [val[i] for i in batch_idx]
                 _, vals, _, target, mask = batch_forward(eps)
                 if bool(mask.any()):

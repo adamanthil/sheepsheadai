@@ -25,8 +25,12 @@ import sys
 
 import torch
 
-from sheepshead.training.corpus_rows import load_shard, shard_paths
-from sheepshead.training.policy_iteration import OOF_FILE, TARGETED_SUBDIR
+from sheepshead.training.corpus_rows import (
+    OOF_FILE,
+    TARGETED_SUBDIR,
+    load_shard,
+    shard_paths,
+)
 from sheepshead.training.reward_shaping import RETURN_SCALE
 from sheepshead.training.search_advantage import (
     RowTable,

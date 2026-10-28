@@ -65,10 +65,10 @@ from sheepshead.analysis.called_suit_overtrump import load_rows
 from sheepshead.training.reward_shaping import RETURN_SCALE
 from sheepshead.training.search_advantage import (
     AdvantageModel,
-    _batches,
     evaluate_rows,
     fit_advantage_model,
     fold_rows_by_game,
+    index_batches,
     predict_rows,
 )
 
@@ -121,7 +121,7 @@ class Harness:
         pred = torch.nonzero(self.fold == i).squeeze(1)
         model.eval()
         with torch.no_grad():
-            for b in _batches(pred, 2048, False, random.Random(0)):
+            for b in index_batches(pred, 2048, False, random.Random(0)):
                 a_oof[b] = predict_rows(model, self.terms.table, b)[0]
 
     def oversample(self, cell_idx: torch.Tensor, k: int) -> torch.Tensor:

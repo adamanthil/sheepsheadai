@@ -34,7 +34,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from sheepshead.analysis.league_progress_eval import Endpoint, load_endpoint
-from sheepshead.training.run_recall_ablation import (
+from sheepshead.analysis.recall_ablation_study import (
     CONVENTION_STAGES,
     EPISODES,
     LADDER,
