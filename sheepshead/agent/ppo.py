@@ -105,6 +105,16 @@ class UpdateTargets(NamedTuple):
 # update telemetry and analysis/entropy_probe.py.
 SOFTBAND_HNORM = 0.3
 
+# Original loss coefficients of the four DETERMINISTIC aux heads, the
+# reference that DETERMINISTIC_AUX_SCALE multiplies (PPOAgent.__init__).
+DETERMINISTIC_AUX_BASE_COEFFS = {
+    "secret_loss_coeff": 0.1,
+    "points_loss_coeff": 0.2,
+    "seen_trump_mask_loss_coeff": 0.2,
+    "unseen_trump_higher_than_hand_loss_coeff": 0.1,
+}
+DETERMINISTIC_AUX_SCALE = 2.5
+
 
 class _UpdateEpochAccumulator:
     """Mutable scalar accumulator for PPOAgent._run_update_epochs /
@@ -340,13 +350,10 @@ class PPOAgent:
         # the seat has observed, so once learned they contribute no loss; a
         # larger coefficient only shortens the transient in which the trunk
         # is pushed to carry the memory they read. They run at 2.5x their
-        # original values (0.1/0.2/0.2/0.1; Training_Program_Redesign §4.3,
-        # 09-18). Win and return predict outcomes with irreducible
-        # uncertainty and keep theirs.
-        self.secret_loss_coeff = 0.25
-        self.points_loss_coeff = 0.5
-        self.seen_trump_mask_loss_coeff = 0.5
-        self.unseen_trump_higher_than_hand_loss_coeff = 0.25
+        # original values (DETERMINISTIC_AUX_BASE_COEFFS;
+        # Training_Program_Redesign §4.3, 09-18). Win and return predict
+        # outcomes with irreducible uncertainty and keep theirs.
+        self.set_deterministic_aux_scale(DETERMINISTIC_AUX_SCALE)
 
         # Which actor/encoder parameters the optimizer may move; see
         # set_trainable_heads (the bidding-only phase freezes the play path).
@@ -640,6 +647,16 @@ class PPOAgent:
             )
 
         return probs, logits, encoder_out
+
+    def set_deterministic_aux_scale(self, scale: float) -> None:
+        """Set the four DETERMINISTIC aux-head loss coefficients to ``scale``
+        times their original values (DETERMINISTIC_AUX_BASE_COEFFS). Not
+        saved in checkpoints: a trainer applies it at start
+        (``train_ppo --aux-det-scale``). The 1.0x setting reproduces the
+        coefficients the 202609_recall_rc bootstrap trained with
+        (Architecture_Ablation_202610)."""
+        for name, base in DETERMINISTIC_AUX_BASE_COEFFS.items():
+            setattr(self, name, base * float(scale))
 
     def aux_probe(self, encoder_out):
         """The deterministic aux heads' reads (critics.aux_probe) from an

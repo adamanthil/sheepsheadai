@@ -64,7 +64,7 @@ import numpy as np
 import torch
 
 from sheepshead.agent.architectures.registry import available_architectures
-from sheepshead.agent.ppo import PPOAgent, load_agent
+from sheepshead.agent.ppo import DETERMINISTIC_AUX_SCALE, PPOAgent, load_agent
 from sheepshead.game import ACTIONS
 from sheepshead.training.config import (
     BiddingHyperparams,
@@ -899,6 +899,7 @@ def build_training_agent(args) -> tuple[PPOAgent, int]:
         print(f"🆕 Fresh {args.arch} agent ({n:,} parameters)")
     agent.gamma = spec.gamma
     agent.set_trainable_heads(spec.trainable_heads)
+    agent.set_deterministic_aux_scale(args.aux_det_scale)
     if getattr(args, "oracle_init", None):
         warn_if_oracle_overwrite(agent, args.oracle_init, args.resume)
         state_dict = torch.load(args.oracle_init, map_location="cpu", weights_only=True)
@@ -907,7 +908,8 @@ def build_training_agent(args) -> tuple[PPOAgent, int]:
     print(
         f"🏁 Phase {args.phase}: reward {spec.reward_mode}, critic {spec.critic_mode}, "
         f"heads {spec.trainable_heads}, gamma {spec.gamma}, "
-        f"seat rotation {'on' if spec.seat_rotation else 'off'}"
+        f"seat rotation {'on' if spec.seat_rotation else 'off'}, "
+        f"deterministic aux x{args.aux_det_scale:g}"
     )
     return agent, start_episode
 
@@ -971,6 +973,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "generation 1)",
     )
     p.add_argument("--entropy-play-floor", type=float, default=0.28)
+    p.add_argument(
+        "--aux-det-scale",
+        type=float,
+        default=DETERMINISTIC_AUX_SCALE,
+        help="loss-coefficient multiplier of the four deterministic aux heads "
+        "over their original values (1.0 = the 202609_recall_rc bootstrap's "
+        "coefficients; Architecture_Ablation_202610)",
+    )
     p.add_argument(
         "--leaster-watchdog",
         action=argparse.BooleanOptionalAction,

@@ -29,7 +29,11 @@ from sheepshead.agent.observation import (
     needs_picker_memory,
     observation_for,
 )
-from sheepshead.agent.ppo import PPOAgent, load_agent
+from sheepshead.agent.ppo import (
+    DETERMINISTIC_AUX_BASE_COEFFS,
+    PPOAgent,
+    load_agent,
+)
 from sheepshead.agent.token_layout import (
     BASE_TOKEN_COUNT,
     MEMORY_TOKEN,
@@ -38,6 +42,7 @@ from sheepshead.agent.token_layout import (
 from sheepshead.game import ACTIONS, Game
 from sheepshead.scripted_agent import ScriptedAgent
 from sheepshead.tests.ppo_test_helpers import seed_all
+from sheepshead.training.train_ppo import build_arg_parser
 
 
 def _picker_states(agent: PPOAgent, seed: int = 5) -> list:
@@ -136,6 +141,29 @@ class TestObservationContract:
             if not spec.legacy_picker_memory
         }
         assert recall == {"perceiver-recall"}
+
+
+class TestDeterministicAuxScale:
+    def test_default_is_the_baked_2_5x(self):
+        agent = PPOAgent(len(ACTIONS), arch="perceiver-recall")
+        for name, base in DETERMINISTIC_AUX_BASE_COEFFS.items():
+            assert getattr(agent, name) == pytest.approx(2.5 * base), name
+
+    def test_scale_one_restores_the_original_coefficients(self):
+        agent = PPOAgent(len(ACTIONS), arch="perceiver-recall")
+        agent.set_deterministic_aux_scale(1.0)
+        assert agent.secret_loss_coeff == pytest.approx(0.1)
+        assert agent.points_loss_coeff == pytest.approx(0.2)
+        assert agent.seen_trump_mask_loss_coeff == pytest.approx(0.2)
+        assert agent.unseen_trump_higher_than_hand_loss_coeff == pytest.approx(0.1)
+        assert agent.win_loss_coeff == pytest.approx(0.05)
+        assert agent.return_loss_coeff == pytest.approx(0.1)
+
+    def test_trainer_flag_defaults_to_the_baked_scale(self):
+        base = ["--phase", "bootstrap", "--run-name", "x", "--until", "1"]
+        assert build_arg_parser().parse_args(base).aux_det_scale == 2.5
+        args = build_arg_parser().parse_args(base + ["--aux-det-scale", "1.0"])
+        assert args.aux_det_scale == 1.0
 
 
 class TestRecallEncoder:
