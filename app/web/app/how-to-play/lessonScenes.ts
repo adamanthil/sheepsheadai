@@ -417,7 +417,7 @@ export const CHAPTERS: Chapter[] = [
       },
       {
         caption:
-          "Trump runs from the Queen of Clubs down to the 7 of Diamonds. The other 18 cards are fail: three suits where the 10 outranks the King.",
+          "Trump runs from the Queen of Clubs down to the 7 of Diamonds. The other 18 cards are fail. In all suits the 10 outranks the King.",
         scene: (narrow) => trumpAndFail(narrow),
       },
     ],
