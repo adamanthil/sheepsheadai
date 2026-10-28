@@ -56,12 +56,6 @@ export default function PlayingCard({
   const sym = suitSymbol(suit);
   const classNames = [
     styles.pc,
-    // Below ~36px the floored corner fonts (PlayingCard.module.css) would make
-    // the two corner blocks outgrow the card; .tiny drops the floors so the
-    // whole face scales down instead — speck-sized corners, real-card shape.
-    // Only reachable through the numeric w prop — CSS-sized cards never go
-    // this small.
-    w != null && w < 36 ? styles.tiny : "",
     isRedSuit(suit) ? styles.red : "",
     playable ? styles.playable : "",
     dim ? styles.dim : "",

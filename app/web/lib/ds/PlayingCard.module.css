@@ -1,9 +1,23 @@
 /* Playing card (classic style, broadsheet theme). Sized off --pc-w, which the
    w prop sets inline; when the prop is omitted the card follows whatever
    --pc-w it inherits, falling back to 64px. --pcw is the resolved value all
-   the internal rules derive from. */
+   the internal rules derive from. The card is also a size container, so the
+   face can switch to smaller proportions on narrow cards (see the end). */
+
+/* Registered so --pcw resolves to a px length on the card itself and its
+   face inherits that length. Unregistered, it would inherit as raw text and
+   a container-relative --pc-w (the table's cqw/cqh sizes, the lesson's)
+   would be re-evaluated inside the card's face against the card's own
+   container, shrinking the corners and pips to nearly nothing. */
+@property --pcw {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 64px;
+}
+
 .pc {
   --pcw: var(--pc-w, 64px);
+  container-type: inline-size;
   position: relative;
   width: var(--pcw);
   height: calc(var(--pcw) * 1.45);
@@ -73,20 +87,6 @@
   transform: translateY(-0.05em);
 }
 
-/* Tiny cards (numeric w < 36): the legibility floors would make the corners
-   outgrow the card, so drop them and scale the whole face to fit — a
-   speck-sized but faithful miniature. The fractions are the largest that keep
-   two corner blocks plus the center pip inside the 1.45 aspect down to w=24. */
-.tiny .corner {
-  font-size: calc(var(--pcw) * 0.2);
-}
-.tiny .suitSm {
-  font-size: calc(var(--pcw) * 0.14);
-}
-.tiny .center {
-  font-size: calc(var(--pcw) * 0.45);
-}
-
 .playable {
   box-shadow:
     0 0 0 2px var(--accent-2),
@@ -133,4 +133,38 @@
 }
 .insetLabel {
   font-size: calc(var(--pcw) * 0.18);
+}
+
+/* Narrow cards: the px floors above stack two corner blocks and the center
+   pip taller than the card below ~62px wide, pushing the bottom corner out
+   through the clipped edge. Container widths are the content box, 2px under
+   the card's width. Drop the floors and scale the face to the card
+   instead — corners stay as large as fits. */
+@container (width < 60px) {
+  .corner {
+    font-size: calc(var(--pcw) * 0.22);
+    padding: calc(var(--pcw) * 0.05);
+  }
+  .suitSm {
+    font-size: calc(var(--pcw) * 0.15);
+  }
+  .center {
+    font-size: calc(var(--pcw) * 0.42);
+  }
+}
+
+/* Tiny cards (the masthead's): a speck-sized but faithful miniature. These
+   fractions are the largest that keep two corner blocks plus the center pip
+   inside the 1.45 aspect down to w=24. */
+@container (width < 34px) {
+  .corner {
+    font-size: calc(var(--pcw) * 0.2);
+    padding: calc(var(--pcw) * 0.06);
+  }
+  .suitSm {
+    font-size: calc(var(--pcw) * 0.14);
+  }
+  .center {
+    font-size: calc(var(--pcw) * 0.45);
+  }
 }
