@@ -217,3 +217,11 @@ completes first (≈ 1.6 days in).
   checkpoints, greedy health). Eval path checked on the release cell
   (12-deal panel read to scratch; the 400k convention read is real and
   kept).
+- **2026-10-28 01:12** — LAUNCHED at `f211f73` from the detached
+  worktree via `nohup caffeinate -is zsh runs/arch_ablation_202610/launch.sh`
+  (train → eval --jobs 8 → report; launcher output
+  `runs/arch_ablation_202610/launch.out`, final marker
+  `ABLATION COMPLETE`). First cell onehot-recall s42. The worktree's
+  `.venv` was built with `uv sync --frozen --extra dev`; its training
+  suite passed (505) before launch, and the aux-only commit `df815c5`
+  passed the recall/golden tests on its own.
