@@ -15,8 +15,18 @@ import os
 
 import pytest
 
-from server.config import get_settings
+from server.config import Settings, get_settings
 from server.services.ai_sampling import SamplingSpec
+
+
+@pytest.fixture(autouse=True)
+def _no_dotenv(monkeypatch):
+    """Settings come only from each test's environment, never from the
+    developer's .env (which CI doesn't have)."""
+    monkeypatch.setitem(Settings.model_config, "env_file", None)
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
 
 
 @pytest.fixture
