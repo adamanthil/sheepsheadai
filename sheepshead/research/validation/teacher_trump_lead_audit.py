@@ -43,12 +43,12 @@ from sheepshead.agent.observation import (
 )
 from sheepshead.agent.ppo import load_agent
 from sheepshead.game import ACTIONS, TRUMP, Game, get_partner_selection_mode
+from sheepshead.rl.training_utils import set_all_seeds
 from sheepshead.search.ismcts import (
     ISMCTSConfig,
     ISMCTSTeacher,
     is_private_decision,
 )
-from sheepshead.training.training_utils import set_all_seeds
 
 
 def _trump_mass(p, valid) -> float:

@@ -196,7 +196,7 @@ def collect_rollout_events(agent, episodes: int, seed: int) -> None:
     under-reporting coverage audit is worse than a layering exception."""
     from types import SimpleNamespace
 
-    from sheepshead.training import pfsp_runtime
+    from sheepshead.rl import pfsp_runtime
 
     opponents = [
         SimpleNamespace(agent=agent, metadata=SimpleNamespace(agent_id="self"))
@@ -353,7 +353,7 @@ def main() -> int:
 
     ppo_module.device = device
     from sheepshead.agent.ppo import PPOAgent
-    from sheepshead.training.training_utils import set_all_seeds
+    from sheepshead.rl.training_utils import set_all_seeds
 
     print(f"torch {torch.__version__}  device={device}  arch={args.arch}")
     print(f"threads={torch.get_num_threads()}")

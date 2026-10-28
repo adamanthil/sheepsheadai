@@ -67,15 +67,21 @@ from sheepshead.agent.architectures.registry import available_architectures
 from sheepshead.agent.ppo import DETERMINISTIC_AUX_SCALE, PPOAgent, load_agent
 from sheepshead.eval.health_probe import greedy_health_probe
 from sheepshead.game import ACTIONS
+from sheepshead.rl.entropy_controller import (
+    EntropyControllerConfig,
+    EntropyTargetController,
+)
+from sheepshead.rl.leaster_watchdog import LeasterWatchdog
+from sheepshead.rl.training_utils import (
+    ensure_csv_columns,
+    set_all_seeds,
+    truncate_csv_rows_past_episode,
+)
 from sheepshead.training.config import (
     BiddingHyperparams,
     BootstrapHyperparams,
     LeagueConfig,
     LeagueHyperparams,
-)
-from sheepshead.training.entropy_controller import (
-    EntropyControllerConfig,
-    EntropyTargetController,
 )
 from sheepshead.training.league import ROLE_PAST_MAIN, SELF_PLAY, League
 from sheepshead.training.league_streams import (
@@ -85,12 +91,6 @@ from sheepshead.training.league_streams import (
     sequential_stream,
 )
 from sheepshead.training.league_worker import league_worker_init, publish_weights
-from sheepshead.training.leaster_watchdog import LeasterWatchdog
-from sheepshead.training.training_utils import (
-    ensure_csv_columns,
-    set_all_seeds,
-    truncate_csv_rows_past_episode,
-)
 
 PHASES = ("bootstrap", "league", "bidding")
 

@@ -12,13 +12,13 @@ import random
 import numpy as np
 import pytest
 
-from sheepshead.search.ismcts import minmax_unit
-from sheepshead.training.pfsp_runtime import (
+from sheepshead.rl.pfsp_runtime import (
     CommitteeSummary,
     build_ce_search_target,
     summarize_committee,
     tilt_summary_to_target,
 )
+from sheepshead.search.ismcts import minmax_unit
 
 SHRINK: dict = dict(shrink_nu=4.0, shrink_s2_global=6.95e-4)
 GUMBEL: dict = dict(gumbel_c_visit=50.0, gumbel_c_scale=0.1)

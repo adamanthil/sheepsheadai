@@ -5,15 +5,20 @@ Deep learning AI for the Sheepshead card game.
 ## Repository layout
 
 ```
-sheepshead/         installable RL core (uv sync installs it editable)
+sheepshead/         installable RL core (uv sync installs it editable);
+                    layers bottom to top, each importing only below it:
   game.py           game engine (rules, deals, scoring)
+  rewards.py        reward math (trick/terminal rewards, seen-trump features)
   scripted_agent.py rules baseline
   agent/            ppo, encoder, oracle, architectures registry
   search/           ISMCTS teacher (search / ExIt)
-  training/         the PPO trainer, oracle pretraining, corpus + policy
-                    iteration, and the program orchestrator
+  rl/               training building blocks: episode runtime, corpus
+                    plumbing, search-advantage model, entropy controller
   eval/             maintained instruments (rigorous_eval, panels, h2h,
-                    probes) and model-artifact fetching
+                    health probe) and model-artifact fetching
+  training/         the PPO trainer, league, oracle pretraining, corpus +
+                    policy iteration, the program orchestrator, configs
+                  leaves (may import any layer; nothing imports them):
   research/         journal experiments; validation/ = ISMCTS-era gates
   devtools/         golden gate, benchmarks
   tests/            training/research test suite (kept out of the wheel)
@@ -361,7 +366,7 @@ uv run train-ppo --phase bootstrap --arch perceiver-recall \
     --num-workers 8 --seed 42
 ```
 
-Intermediate trick rewards plus a leaster bonus (`reward_shaping.py`), the
+Intermediate trick rewards plus a leaster bonus (`rewards.py`), the
 limited critic, an empty population (every seat is the training agent), the
 leaster watchdog against the all-PASS attractor. Artifacts under
 `runs/rc_202609/bootstrap/`: `checkpoints/checkpoint_<episode>.pt`,

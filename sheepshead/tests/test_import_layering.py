@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
-"""The sheepshead package's import layering, checked on the source.
+"""The import layering of the sheepshead package and the app, checked on
+the source.
 
-Layers, bottom to top:
+Each package is one layer and imports only from its own layer or below:
 
-  core       game, rewards, scripted_agent, agent.*
-  search     ismcts (imports only core)
-  eval       maintained measurement instruments and model artifacts
-  training   library modules (configs, corpus formats, the episode
-             runtime, ...) usable by eval, and the part ON TOP of the
-             instruments: the PPO trainer and league roster
-             (``TRAINING_STACK``) plus every training module that imports
-             them or eval, directly or transitively (the orchestrators).
-  research, devtools
-             leaves: they may import any layer; nothing imports them.
+  0 core       game, rewards, scripted_agent
+  1 agent      networks, PPO, observation, deploy sampling
+  2 search     the ISMCTS teacher
+  3 rl         RL building blocks: episode runtime, corpus plumbing, the
+               search-advantage model, entropy controller, watchdog
+  4 eval       maintained instruments and model artifacts
+  5 training   trainers, league, drivers, the program orchestrator
+
+``research`` and ``devtools`` are leaves: they may import any ranked layer
+and nothing imports them. The app (app/) imports only core and agent.
 
 Every import counts, including function-local ones: a lazy import hides a
 dependency from a casual reader, not from this test.
@@ -22,7 +23,10 @@ import ast
 from pathlib import Path
 
 PACKAGE = Path(__file__).resolve().parents[1]
-TRAINING_STACK = ("train_ppo", "league")
+APP = PACKAGE.parent / "app"
+RANKS = {"core": 0, "agent": 1, "search": 2, "rl": 3, "eval": 4, "training": 5}
+LEAVES = ("research", "devtools")
+APP_MAX_RANK = RANKS["agent"]
 
 
 def _module_name(path: Path) -> str:
@@ -35,8 +39,15 @@ def _module_name(path: Path) -> str:
 def _layer(module: str) -> str:
     parts = module.split(".")
     if len(parts) > 2 or (len(parts) == 2 and (PACKAGE / parts[1]).is_dir()):
-        return "core" if parts[1] == "agent" else parts[1]
+        return parts[1]
     return "core"
+
+
+MODULES = {
+    _module_name(p): p
+    for p in PACKAGE.rglob("*.py")
+    if "tests" not in p.relative_to(PACKAGE).parts
+}
 
 
 def _imports(path: Path) -> set[str]:
@@ -59,57 +70,42 @@ def _imports(path: Path) -> set[str]:
     return found
 
 
-MODULES = {
-    _module_name(p): p
-    for p in PACKAGE.rglob("*.py")
-    if "tests" not in p.relative_to(PACKAGE).parts
-}
 GRAPH = {name: _imports(path) for name, path in MODULES.items()}
 
 
-def _training_on_top() -> set[str]:
-    on_top = {f"sheepshead.training.{name}" for name in TRAINING_STACK}
-    grew = True
-    while grew:
-        grew = False
-        for module, deps in GRAPH.items():
-            if _layer(module) != "training" or module in on_top:
-                continue
-            if any(d in on_top or _layer(d) == "eval" for d in deps):
-                on_top.add(module)
-                grew = True
-    return on_top
+def test_every_package_has_a_layer():
+    unranked = sorted({_layer(m) for m in MODULES} - set(RANKS) - set(LEAVES))
+    assert unranked == [], f"rank these packages in RANKS or LEAVES: {unranked}"
 
 
-def _violations(importers: tuple[str, ...], forbidden) -> list[str]:
-    return sorted(
+def test_ranked_layers_import_only_downward():
+    upward = sorted(
         f"{module} imports {dep}"
         for module, deps in GRAPH.items()
-        if _layer(module) in importers
+        if _layer(module) in RANKS
         for dep in deps
-        if forbidden(dep)
+        if _layer(dep) not in RANKS or RANKS[_layer(dep)] > RANKS[_layer(module)]
     )
+    assert upward == []
 
 
-def test_core_imports_only_core():
-    assert _violations(("core",), lambda d: _layer(d) != "core") == []
+def test_leaves_import_no_other_leaf():
+    crossing = sorted(
+        f"{module} imports {dep}"
+        for module, deps in GRAPH.items()
+        if _layer(module) in LEAVES
+        for dep in deps
+        if _layer(dep) in LEAVES and _layer(dep) != _layer(module)
+    )
+    assert crossing == []
 
 
-def test_instruments_stay_below_the_training_stack():
-    on_top = _training_on_top()
-    assert _violations(("eval",), lambda d: d in on_top) == []
-
-
-def test_nothing_imports_the_leaves():
-    importers = ("core", "search", "eval", "training")
-    leaves = ("research", "devtools")
-    assert _violations(importers, lambda d: _layer(d) in leaves) == []
-
-
-def test_stack_closure_reaches_the_orchestrators():
-    # Guards the closure itself: if it stopped propagating, the rule above
-    # would pass vacuously.
-    on_top = _training_on_top()
-    for name in ("run_training_program", "policy_iteration", "exploitability_audit"):
-        assert f"sheepshead.training.{name}" in on_top
-    assert "sheepshead.training.pfsp_runtime" not in on_top
+def test_app_imports_only_core_and_agent():
+    too_high = sorted(
+        f"{path.relative_to(APP)} imports {dep}"
+        for path in APP.rglob("*.py")
+        if "node_modules" not in path.parts
+        for dep in _imports(path)
+        if RANKS.get(_layer(dep), len(RANKS)) > APP_MAX_RANK
+    )
+    assert too_high == []

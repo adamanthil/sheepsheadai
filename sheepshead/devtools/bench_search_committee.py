@@ -104,11 +104,11 @@ def run_committee(teacher, game, seat, forced, replicates, d_rollout, seed_offse
 def setup(opts: dict, announce: bool = True):
     """Load the agent and replay to the node every client searches."""
     from sheepshead.agent.ppo import PPOAgent
+    from sheepshead.rl.training_utils import set_all_seeds
     from sheepshead.search.ismcts import (
         ISMCTSConfig,
         ISMCTSTeacher,
     )
-    from sheepshead.training.training_utils import set_all_seeds
 
     set_all_seeds(42)
     agent = PPOAgent(

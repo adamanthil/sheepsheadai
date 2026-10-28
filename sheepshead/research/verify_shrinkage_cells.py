@@ -135,7 +135,7 @@ def _worker_init(ckpt, iters):
 
 def _target_row(game, player, valid, forced_public, deal_seed, node_idx, cell):
     """One committee draw -> production target -> per-class mass ledger."""
-    from sheepshead.training.pfsp_runtime import build_ce_search_target
+    from sheepshead.rl.pfsp_runtime import build_ce_search_target
 
     teacher, cfg = _W["teacher"], _W["search_cfg"]
     rngs = [

@@ -38,7 +38,7 @@ from sheepshead.agent.architectures.registry import available_architectures, get
 from sheepshead.agent.encoder import CardEmbeddingConfig, CardReasoningEncoder
 from sheepshead.agent.ppo import PPOAgent
 from sheepshead.game import ACTIONS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
-from sheepshead.training import pfsp_runtime
+from sheepshead.rl import pfsp_runtime
 
 # Builds, plays, and updates every registered architecture (~30s+).
 pytestmark = pytest.mark.slow

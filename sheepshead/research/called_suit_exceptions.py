@@ -153,7 +153,7 @@ def _cell_pass(game, player) -> bool:
 
 
 def _committee_row(game, player, valid, forced_public, deal_seed, classes):
-    from sheepshead.training.pfsp_runtime import build_ce_search_target
+    from sheepshead.rl.pfsp_runtime import build_ce_search_target
 
     teacher, cfg = _W["teacher"], _W["search_cfg"]
     rngs = [

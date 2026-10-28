@@ -17,7 +17,7 @@ notebooks/CE_Teacher_Design_202608.md §4 (inner-loop gains)."""
 import math
 from types import SimpleNamespace
 
-from sheepshead.training.entropy_controller import (
+from sheepshead.rl.entropy_controller import (
     HEADS,
     EntropyControllerConfig,
     EntropyTargetController,

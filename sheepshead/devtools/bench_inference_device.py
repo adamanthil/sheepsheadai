@@ -238,7 +238,7 @@ def main() -> int:
 
     ppo_module.device = torch.device("cpu")  # build on CPU, move per device below
     from sheepshead.agent.ppo import PPOAgent
-    from sheepshead.training.training_utils import set_all_seeds
+    from sheepshead.rl.training_utils import set_all_seeds
 
     set_all_seeds(args.seed)
     agent = PPOAgent(action_size=len(ACTION_IDS), arch=args.arch)

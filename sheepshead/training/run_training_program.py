@@ -56,7 +56,7 @@ from sheepshead.eval.league_progress_eval import (
     h2h_duplicate,
     load_endpoint,
 )
-from sheepshead.training.entropy_controller import EntropyTargetController
+from sheepshead.rl.entropy_controller import EntropyTargetController
 from sheepshead.training.program_config import ProgramConfig
 from sheepshead.training.stop_rules import (
     HandoffRuleConfig,

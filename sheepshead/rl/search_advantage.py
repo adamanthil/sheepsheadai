@@ -50,7 +50,7 @@ import torch.nn.functional as F
 
 from sheepshead.agent import ppo as ppo_module
 from sheepshead.agent.ppo import PPOAgent
-from sheepshead.training.corpus_rows import (
+from sheepshead.rl.corpus_rows import (
     EncodedRows,
     encode_rows,
     iter_row_batches,

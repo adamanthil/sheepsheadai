@@ -158,7 +158,7 @@ class TestPhaseWiring:
         run_phase(agent, league, ratings, args, 0, 2, self.ckpt_dir)
         sidecar = os.path.join(self.ckpt_dir, "entropy_controller.json")
         assert os.path.exists(sidecar)
-        from sheepshead.training.entropy_controller import EntropyTargetController
+        from sheepshead.rl.entropy_controller import EntropyTargetController
 
         ctrl = EntropyTargetController.load(sidecar)
         assert ctrl.targets["play"] is None  # pending until the first update

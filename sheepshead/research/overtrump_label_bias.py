@@ -34,8 +34,11 @@ from typing import Any
 
 from sheepshead.game import ACTIONS, DECK, TRUMP_POWER, get_card_suit, get_trick_winner
 from sheepshead.rewards import RETURN_SCALE
-from sheepshead.training.corpus_rows import load_shard, shard_paths
-from sheepshead.training.search_advantage import RowTable
+from sheepshead.rl.corpus_rows import (
+    load_shard,
+    shard_paths,
+)
+from sheepshead.rl.search_advantage import RowTable
 
 PLAY_COL = {ACTIONS.index(f"PLAY {c}"): c for c in DECK}  # column -> card
 

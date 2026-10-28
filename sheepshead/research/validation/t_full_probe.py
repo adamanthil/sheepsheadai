@@ -33,7 +33,7 @@ from sheepshead.research.validation.critic_probe import (
     train_head,
 )
 from sheepshead.rewards import RETURN_SCALE
-from sheepshead.training.training_utils import set_all_seeds
+from sheepshead.rl.training_utils import set_all_seeds
 
 DEV = ppo.device
 

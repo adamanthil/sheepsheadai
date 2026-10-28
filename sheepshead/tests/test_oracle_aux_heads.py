@@ -116,7 +116,7 @@ def test_team_aux_labels_shapes_and_mask():
 def test_game_seed_reproduces_deal():
     from types import SimpleNamespace
 
-    from sheepshead.training.pfsp_runtime import play_population_game
+    from sheepshead.rl.pfsp_runtime import play_population_game
 
     agent = _agent()
     opp = [

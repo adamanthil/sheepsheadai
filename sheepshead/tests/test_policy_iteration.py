@@ -10,9 +10,7 @@ import numpy as np
 import pytest
 import torch
 
-from sheepshead.tests.distill_test_helpers import fresh_agent, generate_game
-from sheepshead.training import policy_iteration as tpi
-from sheepshead.training.corpus_rows import (
+from sheepshead.rl.corpus_rows import (
     OOF_FILE,
     TARGETED_SUBDIR,
     encode_rows,
@@ -20,8 +18,7 @@ from sheepshead.training.corpus_rows import (
     load_shard,
     store_corpus_episodes,
 )
-from sheepshead.training.distill_corpus import ROW_SCHEMA_VERSION
-from sheepshead.training.search_advantage import (
+from sheepshead.rl.search_advantage import (
     AdvantageModel,
     RowTable,
     apply_noise_model,
@@ -40,6 +37,9 @@ from sheepshead.training.search_advantage import (
     split_rows_by_game,
     tilt_scale,
 )
+from sheepshead.tests.distill_test_helpers import fresh_agent, generate_game
+from sheepshead.training import policy_iteration as tpi
+from sheepshead.training.distill_corpus import ROW_SCHEMA_VERSION
 
 
 def _corpus(agent, game_indices):
@@ -405,7 +405,7 @@ def test_heteroscedastic_head_and_nll():
     """§20.8: the variance head yields positive per-row sigma_u^2, the NLL
     reduces to the weighted MSE ordering when variances are equal, and a row
     with larger learned variance contributes less squared-error pressure."""
-    from sheepshead.training.search_advantage import gaussian_nll_rows
+    from sheepshead.rl.search_advantage import gaussian_nll_rows
 
     agent = fresh_agent()
     shard = _corpus(agent, [3])
@@ -800,7 +800,7 @@ def test_noise_pool_by_class_targets_the_class_mean():
     by NOISE_POOL_DF), so a quiet class no longer inherits the loud one's
     noise; corpus pooling (the 2026-10-07 recipe) gives every card the
     same target. A single-class table makes the two agree."""
-    from sheepshead.training.search_advantage import NOISE_POOL_DF
+    from sheepshead.rl.search_advantage import NOISE_POOL_DF
 
     nan = float("nan")
     t = _noise_table(
@@ -845,7 +845,7 @@ def test_global_eta_tilt_and_ce_weight_modes():
     every row (v_post and kappa ignored): the same a_hat gets the same z
     whatever its posterior SE. ce_weights: precision = capped, mean-1
     1 / v_post; uniform = ones."""
-    from sheepshead.training.search_advantage import ce_weights
+    from sheepshead.rl.search_advantage import ce_weights
 
     prior = torch.tensor([[0.5, 0.3, 0.2, 0.0]] * 2)
     legal = torch.tensor([[True, True, True, False]] * 2)
@@ -942,7 +942,7 @@ def test_model_push_diagnostics_value_the_target_split_honestly():
 
 
 def test_nll_accepts_per_action_noise():
-    from sheepshead.training.search_advantage import gaussian_nll_rows
+    from sheepshead.rl.search_advantage import gaussian_nll_rows
 
     pred = torch.tensor([[0.1, -0.1, 0.0]])
     adv = torch.tensor([[0.2, -0.2, 0.0]])
@@ -991,7 +991,7 @@ def test_fixed_epochs_runs_every_epoch_and_keeps_the_last():
 def test_cross_fit_predicts_every_row_from_a_model_that_never_saw_its_game(
     monkeypatch,
 ):
-    from sheepshead.training import search_advantage as sa
+    from sheepshead.rl import search_advantage as sa
 
     agent = fresh_agent()
     shard = _corpus(agent, [3, 4, 5, 6])

@@ -85,7 +85,7 @@ importance weighting; plays as hard void constraints).
 
 ## Stage B — SO-ISMCTS engine
 
-**`stage_b_ismcts_check.py`** — Validate the search engine (`ismcts.py`) on the
+**`stage_b_ismcts_check.py`** — Validate the search engine (`search/ismcts.py`) on the
 leak states. Findings (Stage B notes): use **SIR** — sample worlds from the
 belief pool rather than weighting tree visit counts (keeps the visit budget from
 collapsing to the mid-game ESS); **FPU + min-max-Q normalization** are needed for

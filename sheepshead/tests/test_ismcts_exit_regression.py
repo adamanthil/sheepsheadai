@@ -703,7 +703,7 @@ def test_greedy_health_probe_side_effect_free():
 def test_make_game_summary_roles():
     """make_game_summary must classify every seat and expose the public fields the
     training driver reads, matching the live game state."""
-    from sheepshead.training.pfsp_runtime import make_game_summary
+    from sheepshead.rl.pfsp_runtime import make_game_summary
 
     rng = random.Random(SEED)
     for _ in range(20):

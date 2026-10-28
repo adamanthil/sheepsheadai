@@ -16,7 +16,7 @@ LEASTER_FINAL_REWARD_BONUS = 0.08
 TRICK_POINT_RATIO = 360.0
 
 # Episode-return scale shared across trainers: PPO trains the value head on
-# final_score / RETURN_SCALE (~[-1, 1]), and ismcts.py bootstraps terminal
+# final_score / RETURN_SCALE (~[-1, 1]), and search/ismcts.py bootstraps terminal
 # scores by the same factor. Single source of truth (was duplicated inline).
 RETURN_SCALE = 12.0
 

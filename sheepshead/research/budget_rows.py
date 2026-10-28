@@ -43,12 +43,7 @@ import torch
 
 from sheepshead.game import ACTIONS, DECK, PARTNER_BY_CALLED_ACE, TRUMP_POWER, Game
 from sheepshead.rewards import RETURN_SCALE
-from sheepshead.search.ismcts import (
-    ISMCTSConfig,
-    ISMCTSTeacher,
-)
-from sheepshead.training import distill_corpus as dc
-from sheepshead.training.search_advantage import (
+from sheepshead.rl.search_advantage import (
     NOISE_POOL_DF,
     AdvantageModel,
     RowTable,
@@ -58,6 +53,11 @@ from sheepshead.training.search_advantage import (
     build_tilt_target,
     predict_rows,
 )
+from sheepshead.search.ismcts import (
+    ISMCTSConfig,
+    ISMCTSTeacher,
+)
+from sheepshead.training import distill_corpus as dc
 
 DEFAULT_ITER = "runs/202609_recall_rc/pi/iter3"
 NOISE_SHRINK_NU = 4.0

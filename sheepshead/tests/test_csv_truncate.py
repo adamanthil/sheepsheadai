@@ -3,7 +3,7 @@
 
 import csv
 
-from sheepshead.training.training_utils import truncate_csv_rows_past_episode
+from sheepshead.rl.training_utils import truncate_csv_rows_past_episode
 
 
 def write_csv(path, header, rows):

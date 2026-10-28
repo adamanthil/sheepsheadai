@@ -119,7 +119,7 @@ class _Stub:
         # on (the battery's aux keys, §5.4); before it, they miss every bar.
         self.aux_ready_from = aux_ready_from
         os.makedirs(program.league_ckpt_dir, exist_ok=True)
-        from sheepshead.training.entropy_controller import EntropyTargetController
+        from sheepshead.rl.entropy_controller import EntropyTargetController
 
         ctrl = EntropyTargetController(targets={"play": 0.7})
         ctrl.alphas = {"pick": 0.05, "partner": 0.05, "bury": 0.04, "play": 0.015}
@@ -179,7 +179,7 @@ def test_league_loop_steps_once_then_hands_off_from_a_settled_boundary(
     ]
     assert actions == ["continue", "continue", "entropy_step", "handoff"]
     # The step edited the real sidecar (retain 0.75 toward the 0.28 floor).
-    from sheepshead.training.entropy_controller import EntropyTargetController
+    from sheepshead.rl.entropy_controller import EntropyTargetController
 
     ctrl = EntropyTargetController.load(
         os.path.join(p.league_ckpt_dir, "entropy_controller.json")

@@ -58,7 +58,7 @@ share lives here, under a public name.
 | `test_architectures.py` / `test_bilinear_pointer.py` | Registry architectures: shapes, forward smoke, param groups; the bilinear play pointer |
 | `test_recall_architecture.py` | `perceiver-recall` and the observation contract: recall keys, `observation_for` merge rule, loud failures |
 | `test_arch_golden.py` | Registry consistency + structural goldens + legacy checkpoint shim |
-| `test_import_layering.py` | Package import layering: core below everything, instruments below the training stack, nothing imports the research and devtools leaves |
+| `test_import_layering.py` | Package import layering: each package imports only its own rank or below (core < agent < search < rl < eval < training), research/devtools are leaves, the app imports only core and agent |
 | `test_check_goldens.py` | Planning logic of the bit-exact gate: watched paths, trailer parsing, comparison segments |
 | `test_search_encode_path.py` | Encoder split and the opt-in compiled encoder |
 | `test_oracle_critic.py` / `test_oracle_aux_heads.py` / `test_oracle_init_guard.py` | Privileged-critic mode: oracle encoding, dual GAE, aux heads, deal-seeded games, `--oracle-init` guard |

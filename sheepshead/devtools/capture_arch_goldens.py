@@ -48,7 +48,7 @@ from sheepshead.agent.architectures.registry import available_architectures
 from sheepshead.agent.observation import observation_for
 from sheepshead.agent.ppo import PPOAgent
 from sheepshead.game import ACTIONS, Game
-from sheepshead.training.training_utils import set_all_seeds
+from sheepshead.rl.training_utils import set_all_seeds
 
 SEED = 42
 STRUCTURE_PATH = os.path.join(

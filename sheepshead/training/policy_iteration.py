@@ -66,13 +66,13 @@ from sheepshead.agent.ppo import load_agent
 from sheepshead.eval.health_probe import greedy_health_probe
 from sheepshead.game import ACTIONS, TRUMP
 from sheepshead.rewards import RETURN_SCALE
-from sheepshead.training.corpus_rows import (
+from sheepshead.rl.corpus_rows import (
     OOF_FILE,
     TARGETED_SUBDIR,
     load_shard,
     shard_paths,
 )
-from sheepshead.training.search_advantage import (
+from sheepshead.rl.search_advantage import (
     CAPACITIES,
     CE_WEIGHTS,
     MODEL_VARIANCES,

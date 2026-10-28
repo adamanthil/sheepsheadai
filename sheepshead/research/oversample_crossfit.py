@@ -63,7 +63,7 @@ from sheepshead.research.blend_variance_probe import (
 )
 from sheepshead.research.called_suit_overtrump import load_rows
 from sheepshead.rewards import RETURN_SCALE
-from sheepshead.training.search_advantage import (
+from sheepshead.rl.search_advantage import (
     AdvantageModel,
     evaluate_rows,
     fit_advantage_model,

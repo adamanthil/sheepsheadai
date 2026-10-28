@@ -138,7 +138,7 @@ def node_class(game, player, head: str) -> str:
     ``{regime}|{play_cell}`` for play decisions."""
     if head != "play":
         return head
-    from sheepshead.training.pfsp_runtime import play_cell
+    from sheepshead.rl.pfsp_runtime import play_cell
 
     regime = "leaster" if game.is_leaster else ("alone" if game.alone_called else "std")
     return f"{regime}|{play_cell(game, player)}"
@@ -283,7 +283,7 @@ def _search_node(
     (target_list | None, info | None, summary | None, telemetry_extras);
     the first three are all None when the committee produced no usable
     root statistics."""
-    from sheepshead.training.pfsp_runtime import (
+    from sheepshead.rl.pfsp_runtime import (
         summarize_committee,
         tilt_summary_to_target,
     )
@@ -604,7 +604,7 @@ def flushed_games(out_dir: str, prior: dict) -> set[int]:
     """The game indices the prior invocation's flushed shards hold: what a
     resume must not replay. Shard entries list their games; manifests from
     before that are read from the shards' own ``games`` metadata."""
-    from sheepshead.training.corpus_rows import load_shard
+    from sheepshead.rl.corpus_rows import load_shard
 
     done: set[int] = set()
     for entry in prior["shards"]:

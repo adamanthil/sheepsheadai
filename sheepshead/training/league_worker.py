@@ -15,8 +15,11 @@ import torch
 from sheepshead.agent.compiled_encoder import sync_routed_encoder
 from sheepshead.agent.ppo import PPOAgent, load_agent
 from sheepshead.game import ACTIONS
+from sheepshead.rl.pfsp_runtime import (
+    make_game_summary,
+    play_population_game,
+)
 from sheepshead.training.league import SELF_PLAY
-from sheepshead.training.pfsp_runtime import make_game_summary, play_population_game
 
 
 class OpponentAdapter:

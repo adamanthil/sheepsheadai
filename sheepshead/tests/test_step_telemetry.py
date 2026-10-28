@@ -8,8 +8,8 @@ import torch
 
 from sheepshead.agent.ppo import PPOAgent
 from sheepshead.game import ACTIONS
+from sheepshead.rl.training_utils import ensure_csv_columns
 from sheepshead.tests.ppo_test_helpers import play_episodes, seed_all
-from sheepshead.training.training_utils import ensure_csv_columns
 
 SEED = 20260724
 ARCH = "perceiver-shared-v2"

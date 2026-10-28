@@ -14,7 +14,7 @@ import torch
 
 from sheepshead.agent.ppo import PPOAgent
 from sheepshead.game import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
-from sheepshead.training import pfsp_runtime
+from sheepshead.rl import pfsp_runtime
 
 
 def seed_all(seed: int) -> None:

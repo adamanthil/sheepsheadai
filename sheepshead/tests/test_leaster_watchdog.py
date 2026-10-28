@@ -6,7 +6,7 @@ wiring."""
 from collections import deque
 from types import SimpleNamespace
 
-from sheepshead.training.leaster_watchdog import LeasterWatchdog
+from sheepshead.rl.leaster_watchdog import LeasterWatchdog
 from sheepshead.training.train_ppo import build_arg_parser
 
 

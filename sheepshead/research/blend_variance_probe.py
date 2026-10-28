@@ -56,8 +56,11 @@ from sklearn.isotonic import IsotonicRegression
 
 from sheepshead.game import ACTIONS, TRUMP_POWER
 from sheepshead.rewards import RETURN_SCALE
-from sheepshead.training.corpus_rows import load_shard, shard_paths
-from sheepshead.training.search_advantage import (
+from sheepshead.rl.corpus_rows import (
+    load_shard,
+    shard_paths,
+)
+from sheepshead.rl.search_advantage import (
     SIGMA_U2_FLOOR,
     RowTable,
     apply_noise_model,

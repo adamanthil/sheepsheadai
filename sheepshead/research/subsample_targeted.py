@@ -37,7 +37,7 @@ from collections import Counter
 
 import torch
 
-from sheepshead.training.corpus_rows import load_shard
+from sheepshead.rl.corpus_rows import load_shard
 
 EPISODES_PER_GAME = 5
 

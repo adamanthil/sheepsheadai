@@ -26,12 +26,12 @@ import sys
 import numpy as np
 
 from sheepshead.agent.ppo import load_agent
-from sheepshead.training import train_distill
-from sheepshead.training.corpus_rows import (
+from sheepshead.rl.corpus_rows import (
     iter_row_batches,
     replayed_policy_rows,
     store_corpus_episodes,
 )
+from sheepshead.training import train_distill
 
 CELLS = ("std|t0-defender-lead", "std|t1-defender-lead")
 

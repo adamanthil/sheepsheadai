@@ -10,6 +10,10 @@ from dataclasses import dataclass
 
 from sheepshead.agent.ppo import PPOAgent
 from sheepshead.game import get_partner_selection_mode
+from sheepshead.rl.pfsp_runtime import (
+    make_game_summary,
+    play_population_game,
+)
 from sheepshead.training.league import SELF_PLAY, League
 from sheepshead.training.league_worker import (
     OpponentAdapter,
@@ -17,7 +21,6 @@ from sheepshead.training.league_worker import (
     league_worker_play,
     publish_weights,
 )
-from sheepshead.training.pfsp_runtime import make_game_summary, play_population_game
 
 # parallel_stream's dispatch-window sizing formula (jobs to submit per
 # pool.imap window, sized off the expected transitions/game).

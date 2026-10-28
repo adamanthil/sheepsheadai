@@ -193,9 +193,9 @@ def _collect_episodes(agent, n_episodes, collect_oracle):
 
     import torch
 
+    from sheepshead.rl.pfsp_runtime import play_population_game
     from sheepshead.training.league import SELF_PLAY
     from sheepshead.training.league_worker import OpponentAdapter
-    from sheepshead.training.pfsp_runtime import play_population_game
 
     random.seed(7)
     torch.manual_seed(7)

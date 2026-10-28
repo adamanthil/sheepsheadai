@@ -48,8 +48,8 @@ import json
 
 import numpy as np
 
+from sheepshead.rl.pfsp_runtime import build_ce_search_target
 from sheepshead.training.config import CommitteeConfig
-from sheepshead.training.pfsp_runtime import build_ce_search_target
 
 BUDGET = "1024/1"  # the teacher budget's replicate tables
 GUMBEL_C_VISIT = 50.0

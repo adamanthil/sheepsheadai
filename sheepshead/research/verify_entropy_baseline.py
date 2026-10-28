@@ -107,7 +107,7 @@ def _kl(p, q) -> float:
 
 
 def _node_row(game, player, valid, forced_public, deal_seed, node_idx, pi):
-    from sheepshead.training.pfsp_runtime import build_ce_search_target
+    from sheepshead.rl.pfsp_runtime import build_ce_search_target
 
     teacher, cfg = _W["teacher"], _W["search_cfg"]
     rngs = [

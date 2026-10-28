@@ -13,10 +13,10 @@ import torch
 from sheepshead.agent.ppo import PPOAgent
 from sheepshead.game import ACTIONS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
 from sheepshead.rewards import RETURN_SCALE
+from sheepshead.rl.pfsp_runtime import play_population_game
 from sheepshead.tests.ppo_test_helpers import seed_all
 from sheepshead.training.league import SELF_PLAY
 from sheepshead.training.league_worker import OpponentAdapter
-from sheepshead.training.pfsp_runtime import play_population_game
 from sheepshead.training.train_ppo import store_events_by_seat
 
 SEED = 20260726

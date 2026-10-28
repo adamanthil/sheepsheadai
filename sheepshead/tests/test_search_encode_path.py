@@ -29,7 +29,7 @@ from sheepshead.agent.compiled_encoder import (
 from sheepshead.agent.observation import observation_for
 from sheepshead.agent.ppo import PPOAgent
 from sheepshead.game import ACTION_IDS, Game
-from sheepshead.training.training_utils import set_all_seeds
+from sheepshead.rl.training_utils import set_all_seeds
 
 #: Padding cannot change a row's value mathematically -- the encoder is
 #: row-independent -- but a padded batch is a differently shaped GEMM and so

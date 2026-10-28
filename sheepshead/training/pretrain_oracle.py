@@ -110,7 +110,7 @@ def _worker_init(init_args):
 
 
 def _worker_episodes(task) -> list[dict]:
-    from sheepshead.training.pfsp_runtime import play_population_game
+    from sheepshead.rl.pfsp_runtime import play_population_game
 
     start, count, seed_base = task
     agent, frozen = _W["agent"], _W["frozen"]
