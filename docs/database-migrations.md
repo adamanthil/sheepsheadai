@@ -65,7 +65,7 @@ Run it as part of your deploy step, **before** the new server code starts.
 
 ## Editing committed migrations (when you really must)
 
-Once a committed migration is on `master` or has been applied anywhere
+Once a committed migration is on `main` or has been applied anywhere
 downstream, **don't edit it** — write a new migration instead. Editing changes
 the hash, and any DB that already ran the old version will refuse the new one
 (or worse, ignore it silently).
