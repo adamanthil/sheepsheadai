@@ -350,16 +350,16 @@ re-run directly, which is the point on a different box:
 # A1/A2 — op coverage + host syncs (load-independent; --attribute names the
 # source line behind each sync). Run the accelerator pass with the fallback
 # enabled so gaps enumerate, then again without it: completing is the proof.
-uv run python -m sheepshead.analysis.device_op_audit --device cpu
+uv run python -m sheepshead.devtools.device_op_audit --device cpu
 PYTORCH_ENABLE_MPS_FALLBACK=1 \
-  uv run python -m sheepshead.analysis.device_op_audit --device mps --attribute
-uv run python -m sheepshead.analysis.device_op_audit --device mps
+  uv run python -m sheepshead.devtools.device_op_audit --device mps --attribute
+uv run python -m sheepshead.devtools.device_op_audit --device mps
 
 # A4 — per-device batch sweep + the aggregate-throughput table that actually
 # decides the shared-accelerator question. --threads 1 (default) matches a
 # league worker; benchmarking with default threads on a busy box is what
 # produced the discarded first pass.
-uv run python -m sheepshead.analysis.bench_inference_device
+uv run python -m sheepshead.devtools.bench_inference_device
 ```
 
 `bench_inference_device` splits each measurement into **marshal** (host-side
@@ -478,7 +478,7 @@ compound rather than average out.
 ## B4. How to reproduce
 
 ```
-uv run python -m sheepshead.analysis.bench_inference_device
+uv run python -m sheepshead.devtools.bench_inference_device
 ```
 
 The link half of this addendum is no longer reproducible from the tree:

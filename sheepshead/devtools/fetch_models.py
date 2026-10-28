@@ -8,11 +8,11 @@ and size. This tool downloads the selected artifacts into ``models/``
 is never used. Stdlib only, so it runs before ``uv sync`` has anything to
 offer. See notebooks/Model_Artifacts_Plan_202610.md.
 
-    uv run python -m sheepshead.analysis.fetch_models                # everything
-    uv run python -m sheepshead.analysis.fetch_models --role panel-a --role panel-b
-    uv run python -m sheepshead.analysis.fetch_models --key recall-rc-theta6
-    uv run python -m sheepshead.analysis.fetch_models --check        # verify only, no network
-    uv run python -m sheepshead.analysis.fetch_models --lint         # manifest shape (CI)
+    uv run python -m sheepshead.devtools.fetch_models                # everything
+    uv run python -m sheepshead.devtools.fetch_models --role panel-a --role panel-b
+    uv run python -m sheepshead.devtools.fetch_models --key recall-rc-theta6
+    uv run python -m sheepshead.devtools.fetch_models --check        # verify only, no network
+    uv run python -m sheepshead.devtools.fetch_models --lint         # manifest shape (CI)
 """
 
 from __future__ import annotations
@@ -68,7 +68,7 @@ def verify(key: str, manifest: dict[str, Any], models_dir: Path = MODELS_DIR) ->
     if not path.exists():
         raise ArtifactError(
             f"{key}: {path} is missing; run "
-            f"`uv run python -m sheepshead.analysis.fetch_models --key {key}`"
+            f"`uv run python -m sheepshead.devtools.fetch_models --key {key}`"
         )
     digest = sha256_file(path)
     if digest != entry["sha256"]:

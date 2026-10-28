@@ -91,7 +91,7 @@ share lives here, under a public name.
   written spec of the layout — keep them obvious, not clever.
 - **Event record fields or label defaults** — `test_ppo_event_storage.py`.
 - **An architecture** — rewrite the structural fixture
-  (`uv run python -m sheepshead.analysis.capture_arch_goldens --write-structure`);
+  (`uv run python -m sheepshead.devtools.capture_arch_goldens --write-structure`);
   registry consistency tests parametrize automatically. If existing
   architectures' outputs change on purpose, add the
   `Changes-Network-Outputs:` trailer (above) to that commit. A new architecture must

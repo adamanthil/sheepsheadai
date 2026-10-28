@@ -4,7 +4,7 @@ trigger it, how the Changes-Network-Outputs trailer is read, and which
 (before, after) pairs each unit is compared over. The capture/compare half
 needs git worktrees and full captures and is exercised by CI's goldens job."""
 
-from sheepshead.analysis.capture_search_goldens import ARCH as SEARCH_ARCH
+from sheepshead.devtools.capture_search_goldens import ARCH as SEARCH_ARCH
 from sheepshead.devtools.check_goldens import (
     SEARCH_UNIT,
     MarkedCommit,
@@ -34,8 +34,8 @@ class TestIsWatched:
         assert not is_watched("notebooks/notes.md")
 
     def test_capture_scripts_are(self):
-        assert is_watched("sheepshead/analysis/capture_arch_goldens.py")
-        assert is_watched("sheepshead/analysis/capture_search_goldens.py")
+        assert is_watched("sheepshead/devtools/capture_arch_goldens.py")
+        assert is_watched("sheepshead/devtools/capture_search_goldens.py")
 
 
 class TestParseTrailer:

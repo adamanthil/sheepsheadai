@@ -20,7 +20,7 @@ CLI at *older* commits, so ``--fixture-dir DIR`` (writing
 ``search_golden.pt``) and the capture dict layout must stay stable.
 
 Usage:
-    uv run python -m sheepshead.analysis.capture_search_goldens --fixture-dir DIR
+    uv run python -m sheepshead.devtools.capture_search_goldens --fixture-dir DIR
     uv run python -m sheepshead.devtools.check_goldens     # the bit-exact gate
 """
 

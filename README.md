@@ -12,6 +12,7 @@ sheepshead/         installable RL core (uv sync installs it editable)
   training/         the PPO trainer, oracle pretraining, corpus + policy
                     iteration, and the program orchestrator
   analysis/         measurement instruments (rigorous_eval, probes, panels)
+  devtools/         golden gate, model-artifact fetching, benchmarks
   validation/       historical one-off gate checks
   tests/            training/research test suite (kept out of the wheel)
 app/                the hosted product: server/ (FastAPI), web/ (Next.js),
@@ -107,7 +108,7 @@ Fetch the model checkpoints. They are GitHub Release assets pinned by
 sha256 in `models/manifest.json` and land under `models/` (gitignored):
 
 ```bash
-uv run python -m sheepshead.analysis.fetch_models
+uv run python -m sheepshead.devtools.fetch_models
 ```
 
 Start the backend (pass the path to your trained model checkpoint):
@@ -302,7 +303,7 @@ checkpoints are read from paths, and the orchestrator skips a reference
 read with a log line when the file is absent. The distributed checkpoints —
 the 30M-episode production model, the `202609_recall_rc` release and every
 PANEL-A/PANEL-B member — are GitHub Release assets pinned in
-`models/manifest.json`; `uv run python -m sheepshead.analysis.fetch_models`
+`models/manifest.json`; `uv run python -m sheepshead.devtools.fetch_models`
 puts them under `models/`. Point `final.references` at
 `models/pfsp-swish-30m.pt` to compare a fresh run against the 30M.
 

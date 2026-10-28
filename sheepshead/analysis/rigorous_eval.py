@@ -92,8 +92,8 @@ from sheepshead.agent.observation import (
     observation_for,
 )
 from sheepshead.agent.ppo import PPOAgent, load_agent
-from sheepshead.analysis.fetch_models import verify_managed
 from sheepshead.analysis.panels import panel_files
+from sheepshead.devtools.fetch_models import verify_managed
 from sheepshead.game import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
 
 NUM_SEATS = 5

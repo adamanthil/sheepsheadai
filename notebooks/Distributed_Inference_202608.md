@@ -888,11 +888,11 @@ the local comparison, which is the one that decided the program:
 
 ```
 # the incumbent
-uv run python -m sheepshead.analysis.bench_search_committee \
+uv run python -m sheepshead.devtools.bench_search_committee \
     --checkpoint <weights> --clients 8 --repeats 3
 
 # the winner: 1.36x
-uv run python -m sheepshead.analysis.bench_search_committee \
+uv run python -m sheepshead.devtools.bench_search_committee \
     --checkpoint <weights> --clients 8 --repeats 3 --device mps --compile
 ```
 
@@ -933,7 +933,7 @@ tests for a configuration nobody runs. The record is this notebook plus git.
 | now at | why it survives |
 |---|---|
 | `sheepshead/agent/compiled_encoder.py` | the 1.36×. Was `sheepshead/inference/compiled.py` |
-| `sheepshead/analysis/bench_search_committee.py` | the harness that produced every number in §5.4–§5.6, local legs only |
+| `sheepshead/devtools/bench_search_committee.py` | the harness that produced every number in §5.4–§5.6, local legs only |
 | `sheepshead/tests/test_search_encode_path.py` | the encoder split and the compiled wrapper's padding |
 | `CardReasoningEncoder.marshal_batch` / `encode_tensors` | built for the server, now load-bearing for compilation: the Python half stays eager, the tensor half compiles |
 | `sheepshead/ismcts.py` `masked_actor_probs` | shared by the network round and the replay path |

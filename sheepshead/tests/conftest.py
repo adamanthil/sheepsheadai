@@ -9,7 +9,7 @@ Conventions:
     (registered in pyproject.toml); ``-m "not slow"`` gives a fast local run.
   * Shared game-driving helpers live in ``sheepshead.tests.game_test_utils``.
   * The structural architecture fixture is ``fixtures/arch_structure.json``
-    (``sheepshead.analysis.capture_arch_goldens --write-structure``); bit
+    (``sheepshead.devtools.capture_arch_goldens --write-structure``); bit
     identity is checked commit-against-commit by
     ``sheepshead.devtools.check_goldens``.
 """

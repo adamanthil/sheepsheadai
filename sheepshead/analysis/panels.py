@@ -2,7 +2,7 @@
 
 Membership lives in ``models/manifest.json`` (``panels``): artifact keys in
 frozen order, each pinned by sha256 and fetched into ``models/`` by
-``sheepshead.analysis.fetch_models``. Do not edit a panel's membership
+``sheepshead.devtools.fetch_models``. Do not edit a panel's membership
 without an explicit pre-registration update — every recorded panel number
 depends on its exact anchor set; a new field is a new panel name.
 
@@ -23,7 +23,7 @@ Run panel commands from the repository root.
 
 from pathlib import Path
 
-from sheepshead.analysis.fetch_models import load_manifest
+from sheepshead.devtools.fetch_models import load_manifest
 
 
 def panel_files(name: str) -> list[str]:

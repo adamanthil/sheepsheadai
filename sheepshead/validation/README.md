@@ -20,7 +20,7 @@ uv run python -m sheepshead.validation.t_full_probe --games 3000
 
 **Model arg:** several scripts default `-m` to
 `pfsp_checkpoints_swish/pfsp_swish_checkpoint_30000000.pt`, which has been moved.
-Point `-m` at an available checkpoint, e.g. `models/pfsp-swish-30m.pt` (fetched by `sheepshead.analysis.fetch_models`)
+Point `-m` at an available checkpoint, e.g. `models/pfsp-swish-30m.pt` (fetched by `sheepshead.devtools.fetch_models`)
 or `runs/reference_pfsp_ppo/pfsp_checkpoints_swish/pfsp_swish_checkpoint_9995000.pt`.
 The Stage C scripts already default to `models/pfsp-swish-30m.pt`.
 

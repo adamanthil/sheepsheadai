@@ -42,7 +42,7 @@ a two-step: upload a release, commit the manifest.
   model — its deployment sampling. There is no second copy of any of
   it: the box reads the manifest with `jq` (CD plan §5), so there is no
   `model.env` and no consistency checker between two files.
-  `sheepshead.analysis.fetch_models` downloads and verifies into
+  `sheepshead.devtools.fetch_models` downloads and verifies into
   `models/` (gitignored) and also validates the manifest's shape in CI.
 * **A3 — Release assets are made deletion-resistant three ways.**
   (1) Enable the repository's **immutable releases** setting
@@ -157,14 +157,14 @@ Full hashes go in the manifest at implementation time (recompute with
   by design.
 * `panels` is the frozen membership, in order. `panels.py` reads it.
 
-## 4. The fetch tool: `sheepshead/analysis/fetch_models.py`
+## 4. The fetch tool: `sheepshead/devtools/fetch_models.py`
 
 ```
-uv run python -m sheepshead.analysis.fetch_models               # everything in the manifest
-uv run python -m sheepshead.analysis.fetch_models --role panel-a --role panel-b
-uv run python -m sheepshead.analysis.fetch_models --key recall-rc-theta6
-uv run python -m sheepshead.analysis.fetch_models --check        # verify local cache, no network
-uv run python -m sheepshead.analysis.fetch_models --lint         # manifest shape only (CI)
+uv run python -m sheepshead.devtools.fetch_models               # everything in the manifest
+uv run python -m sheepshead.devtools.fetch_models --role panel-a --role panel-b
+uv run python -m sheepshead.devtools.fetch_models --key recall-rc-theta6
+uv run python -m sheepshead.devtools.fetch_models --check        # verify local cache, no network
+uv run python -m sheepshead.devtools.fetch_models --lint         # manifest shape only (CI)
 ```
 
 Spec: stdlib only (`urllib.request`, `hashlib`, `json`; no new
@@ -239,8 +239,8 @@ gh release create artifact/recall-rc-theta6 recall-rc-theta6.pt \
     --notes "202609_recall_rc release (theta_6); +0.046 vs v2 release, +0.092 vs 30M"
 
 # Then fill models/manifest.json (shasum -a 256 each file) and prove it:
-uv run python -m sheepshead.analysis.fetch_models --lint
-rm -rf models/*.pt && uv run python -m sheepshead.analysis.fetch_models   # round-trip from GitHub
+uv run python -m sheepshead.devtools.fetch_models --lint
+rm -rf models/*.pt && uv run python -m sheepshead.devtools.fetch_models   # round-trip from GitHub
 ```
 
 ### 6.2 A later model
@@ -254,7 +254,7 @@ plan is live, pushing that commit deploys it.
 ```bash
 git clone https://github.com/adamanthil/sheepsheadai && cd sheepsheadai
 uv sync --frozen --extra dev
-uv run python -m sheepshead.analysis.fetch_models --role panel-a --role panel-b
+uv run python -m sheepshead.devtools.fetch_models --role panel-a --role panel-b
 uv run python -m sheepshead.analysis.rigorous_eval ... --panel PANEL-A
 ```
 

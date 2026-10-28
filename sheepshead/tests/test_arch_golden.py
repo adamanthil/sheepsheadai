@@ -21,7 +21,7 @@ from sheepshead.agent.architectures.registry import (
 )
 from sheepshead.agent.observation import observation_for
 from sheepshead.agent.ppo import PPOAgent
-from sheepshead.analysis.capture_arch_goldens import (
+from sheepshead.devtools.capture_arch_goldens import (
     build_agent,
     load_structure,
     structure_record,
@@ -29,7 +29,7 @@ from sheepshead.analysis.capture_arch_goldens import (
 from sheepshead.game import ACTIONS, Game
 
 _STRUCTURE = load_structure()
-_REWRITE = "uv run python -m sheepshead.analysis.capture_arch_goldens --write-structure"
+_REWRITE = "uv run python -m sheepshead.devtools.capture_arch_goldens --write-structure"
 
 
 class TestRegistryConsistency:

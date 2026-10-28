@@ -22,11 +22,11 @@ the shelved two-machine alternative.
 
 Usage:
 
-    uv run python -m sheepshead.analysis.bench_search_committee \\
+    uv run python -m sheepshead.devtools.bench_search_committee \\
         --checkpoint runs/league_ce_teacher11/_league_worker_weights_v24.pt \\
         --clients 8 --repeats 3
 
-    uv run python -m sheepshead.analysis.bench_search_committee \\
+    uv run python -m sheepshead.devtools.bench_search_committee \\
         --checkpoint <weights> --clients 8 --repeats 3 --device mps --compile
 """
 

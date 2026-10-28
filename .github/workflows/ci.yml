@@ -80,7 +80,7 @@ jobs:
       - run: uv sync --extra dev
       # The model manifest's shape (hashes, the one deploy entry and its
       # sampling, panel membership); no download.
-      - run: uv run python -m sheepshead.analysis.fetch_models --lint
+      - run: uv run python -m sheepshead.devtools.fetch_models --lint
       - run: uv run pytest sheepshead/tests -q
 
   # Weight-init, forward-output and ISMCTS bit identity of this push (or PR)

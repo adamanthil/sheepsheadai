@@ -26,10 +26,10 @@ load -- which makes this tool usable on a busy box. For wall-clock, which is
 not, see bench_inference_device.
 
 Usage:
-    uv run python -m sheepshead.analysis.device_op_audit --device cpu
+    uv run python -m sheepshead.devtools.device_op_audit --device cpu
     PYTORCH_ENABLE_MPS_FALLBACK=1 \
-        uv run python -m sheepshead.analysis.device_op_audit --device mps
-    uv run python -m sheepshead.analysis.device_op_audit --device mps --attribute
+        uv run python -m sheepshead.devtools.device_op_audit --device mps
+    uv run python -m sheepshead.devtools.device_op_audit --device mps --attribute
 
 Run the MPS pass with PYTORCH_ENABLE_MPS_FALLBACK=1 so that an uncovered op
 enumerates in the report instead of aborting the run at the first one; then

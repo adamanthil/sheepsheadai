@@ -26,10 +26,10 @@ workers share one accelerator. Compare the aggregate -- (worker count) /
 workers run concurrently while N MPS workers serialize on one GPU.
 
 Usage:
-    uv run python -m sheepshead.analysis.bench_inference_device
-    uv run python -m sheepshead.analysis.bench_inference_device \
+    uv run python -m sheepshead.devtools.bench_inference_device
+    uv run python -m sheepshead.devtools.bench_inference_device \
         --devices cpu mps --batch-sizes 1 32 96 160 320 480 1024
-    uv run python -m sheepshead.analysis.bench_inference_device --with-actor
+    uv run python -m sheepshead.devtools.bench_inference_device --with-actor
 
 Results from the 2026-08-18 pass, and the aggregate-throughput argument built
 on them, are in notebooks/Throughput_Profiling_Notes.md (addendum section A4).
@@ -42,7 +42,7 @@ import time
 import numpy as np
 import torch
 
-from sheepshead.analysis.capture_arch_goldens import collect_probe_states
+from sheepshead.devtools.capture_arch_goldens import collect_probe_states
 from sheepshead.game import ACTION_IDS
 
 DEFAULT_BATCH_SIZES = (1, 32, 96, 160, 320, 480, 1024)

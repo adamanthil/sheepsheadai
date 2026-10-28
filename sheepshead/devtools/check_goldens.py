@@ -34,6 +34,10 @@ A baseline that cannot run there (a breaking upgrade) is re-run in its own
 locked environment (``uv run --frozen`` inside its worktree); the report says
 which environment each capture used.
 
+A source that has no capture script at the paths below -- it predates the
+scripts, or their move into ``sheepshead.devtools`` -- contributes nothing:
+its units are reported as absent, like an architecture registered later.
+
 Baseline
 --------
 ``--baseline REF`` (default: the upstream branch, else origin/main). A ref
@@ -60,7 +64,7 @@ from dataclasses import dataclass
 import torch
 
 from sheepshead.agent.architectures.registry import available_architectures
-from sheepshead.analysis import capture_arch_goldens, capture_search_goldens
+from sheepshead.devtools import capture_arch_goldens, capture_search_goldens
 
 TRAILER = "Changes-Network-Outputs"
 SEARCH_UNIT = "search"
@@ -68,8 +72,8 @@ ALL_UNITS = "all"
 # The uncommitted side of the comparison when the working tree is dirty.
 WORKING_TREE = "working tree"
 
-ARCH_SCRIPT = "sheepshead/analysis/capture_arch_goldens.py"
-SEARCH_SCRIPT = "sheepshead/analysis/capture_search_goldens.py"
+ARCH_SCRIPT = "sheepshead/devtools/capture_arch_goldens.py"
+SEARCH_SCRIPT = "sheepshead/devtools/capture_search_goldens.py"
 
 # Run inside the source's interpreter: proves it imports, that the package
 # really comes from the source checkout, and lists what is registered there.
@@ -230,13 +234,22 @@ def _environments(src: str, allow_own: bool):
 def capture_source(
     src: str, label: str, units: set[str], out_dir: str, allow_own: bool
 ) -> Capture:
+    # A source without a capture script (it predates the script, or the
+    # script's move into devtools) has nothing to compare: its units count
+    # as absent, exactly like an architecture registered after it.
+    has_arch = os.path.exists(os.path.join(src, ARCH_SCRIPT))
+    search = SEARCH_UNIT in units and os.path.exists(os.path.join(src, SEARCH_SCRIPT))
+    missing = [
+        p for p, ok in ((ARCH_SCRIPT, has_arch), (SEARCH_SCRIPT, search)) if not ok
+    ]
+    if missing:
+        print(f"  {label} has no {', '.join(missing)}; those units count as absent")
+    if not (has_arch or search):
+        return Capture(label, out_dir, "nothing to capture", set())
     failures = []
     for env_label, python, env in _environments(src, allow_own):
         try:
-            archs = sorted(units & set(_probe(python, src, env)))
-            search = SEARCH_UNIT in units and os.path.exists(
-                os.path.join(src, SEARCH_SCRIPT)
-            )
+            archs = sorted(units & set(_probe(python, src, env))) if has_arch else []
             what = f"{len(archs)} architectures" + (" + search" if search else "")
             print(f"  capturing {label}: {what} ({env_label})", flush=True)
             if archs:
@@ -246,7 +259,7 @@ def capture_source(
                     [
                         *python,
                         "-m",
-                        "sheepshead.analysis.capture_arch_goldens",
+                        "sheepshead.devtools.capture_arch_goldens",
                         "--fixture-dir",
                         os.path.join(out_dir, "arch"),
                         *arch_args,
@@ -260,7 +273,7 @@ def capture_source(
                     [
                         *python,
                         "-m",
-                        "sheepshead.analysis.capture_search_goldens",
+                        "sheepshead.devtools.capture_search_goldens",
                         "--fixture-dir",
                         os.path.join(out_dir, "search"),
                     ],
@@ -378,12 +391,11 @@ def main() -> int:
 
         print()
         for capture in captures.values():
-            print(
-                f"  {capture.label:<12} {capture.env}, torch {_torch_version(capture)}"
-            )
+            torch_note = f", torch {_torch_version(capture)}" if capture.units else ""
+            print(f"  {capture.label:<12} {capture.env}{torch_note}")
         print()
 
-        failed = 0
+        compared = failed = 0
         for unit in units:
             span = exempt_span(unit, marked)
             if span is not None:
@@ -396,8 +408,9 @@ def main() -> int:
                 pair = f"{a.label} -> {b.label}"
                 missing = [c.label for c in (a, b) if unit not in c.units]
                 if missing:
-                    print(f"new     {unit:<32} {pair}  (absent at {missing[0]})")
+                    print(f"absent  {unit:<32} {pair}  (absent at {missing[0]})")
                     continue
+                compared += 1
                 problems = compare_unit(unit, a, b)
                 if problems:
                     failed += 1
@@ -409,7 +422,10 @@ def main() -> int:
         if failed:
             print(f"\n{failed} comparison(s) not bit-identical.{FAILURE_HINT}")
             return 1
-        print("\nall comparisons bit-identical")
+        if compared == 0:
+            print("\nnothing compared: no unit is present on both sides")
+        else:
+            print(f"\nall {compared} comparisons bit-identical")
         return 0
     except CaptureFailed as e:
         print(f"\nerror: {e}")

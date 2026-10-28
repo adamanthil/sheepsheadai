@@ -28,8 +28,8 @@ commits, so its interface (``--fixture-dir DIR [--arch NAME]...``, one
 stable.
 
 Usage:
-    uv run python -m sheepshead.analysis.capture_arch_goldens --write-structure
-    uv run python -m sheepshead.analysis.capture_arch_goldens --fixture-dir DIR
+    uv run python -m sheepshead.devtools.capture_arch_goldens --write-structure
+    uv run python -m sheepshead.devtools.capture_arch_goldens --fixture-dir DIR
     uv run python -m sheepshead.devtools.check_goldens     # the bit-exact gate
 """
 
