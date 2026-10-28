@@ -1,5 +1,11 @@
 # Blind/Bury Observation Ablation — 2026-08-30
 
+> **Paths:** module paths and commands in this journal predate the current
+> package layout (2026-10 restructure: `analysis` → `eval`/`research`,
+> `validation` → `research/validation`, `ismcts` → `search`, the training
+> library → `rl`, `reward_shaping` → `rewards`). The README's layout
+> section maps each module to its current home.
+
 Status: **MEASURED. The tokens are load-bearing at zero fine-tuning — the
 drop is NOT free, and the v2 lineage leans on them ~6× harder than prod 30M.**
 

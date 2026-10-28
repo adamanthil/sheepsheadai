@@ -28,7 +28,7 @@ default branch is renamed from `master` before any CD work — §9 step
 
 1. **Nothing a live game depends on restarts unless it actually
    changed.** Live games hold all state in the one api process and in
-   WebSockets through Caddy; research commits (`sheepshead/analysis/`,
+   WebSockets through Caddy; research commits (`sheepshead/research/`,
    `training/`, notebooks) must not kill either. Mechanism: per-service
    image tags hashed from the contents of an explicit path list, only
    our own images are pulled, third-party images are pinned, and docker
@@ -79,12 +79,14 @@ default branch is renamed from `master` before any CD work — §9 step
   research commits that must not restart games. [rev] The server's
   direct `sheepshead` imports today are `game`, `agent.ppo`,
   `agent.observation`, `agent.sampling`, `agent.convention_wrapper`,
-  `agent` (the package) and `training.reward_shaping`;
-  `training/training_utils.py` arrives via `agent/ppo.py`. The guard
-  computes the closure, so this list is informational.
+  `agent` (the package) and `rewards`. [2026-10 restructure] The
+  package layering test (`sheepshead/tests/test_import_layering.py`)
+  now enforces that the app imports only the core and agent layers, so
+  the closure cannot reach training code. The guard still computes the
+  closure, so this list is informational.
 * **D4 — No `.dockerignore` narrowing of the image contents.** It would
   have to be kept in sync with `api-paths.txt` by hand; the dead
-  `analysis/` code in the image is harmless. Accepted consequence: two
+  research and training code in the image is harmless. Accepted consequence: two
   images with the same api tag can differ in unreachable code.
 * **D5 — Model artifacts: see the Model Artifacts plan** (formerly D5,
   D10–D12 here). [audit] This plan relies on exactly three of its
@@ -244,8 +246,7 @@ uv.lock
 sheepshead/__init__.py
 sheepshead/game.py
 sheepshead/agent
-sheepshead/training/reward_shaping.py
-sheepshead/training/training_utils.py
+sheepshead/rewards.py
 ```
 
 (`app/server` covers `app/server/Dockerfile`. `sheepshead/agent`
@@ -630,7 +631,7 @@ labels (deploy.sh already checks the model label).
 
 | Commit touches                          | api (games!) | web | caddy | postgres | migrate |
 |-----------------------------------------|--------------|-----|-------|----------|---------|
-| `sheepshead/analysis|training|validation` (excl. the two files), notebooks, docs, manifest panel entries | — | — | — | — | runs, no-op |
+| `sheepshead/` outside the api closure (`search`, `rl`, `eval`, `training`, `research`, `devtools`), notebooks, docs, manifest panel entries | — | — | — | — | runs, no-op |
 | `app/web/**` only                        | —            | ✓   | —     | —        | runs, no-op |
 | `api-paths.txt` closure (server py + tests, engine, agent, lockfile) | ✓ | — | — | — | runs, no-op |
 | `app/db/**`                              | —            | —   | —     | —        | applies |

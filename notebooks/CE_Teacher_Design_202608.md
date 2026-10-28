@@ -201,7 +201,7 @@ alpha sign flips logged.
   CE-distill term + teacher_epochs loop, CE/KL telemetry.
 - ExIt-era remnants in the same block (Stage-C distill/PG-mask paths)
   go with it. (train_pfsp_exit.py itself no longer exists post-reorg;
-  sheepshead/validation/exit_validation.py is an evaluation harness,
+  sheepshead/research/validation/exit_validation.py is an evaluation harness,
   untouched by this plan.)
 
 `entropy_controller.py`: v1 log-space controller replaced by v2 (§4).
@@ -307,7 +307,7 @@ optimizer_steps_total).
 
 ### 10.1 Shrinkage calibration gate (§1.2), run 2026-08-16
 
-Instrument: `sheepshead/analysis/calibrate_shrinkage.py` on the archived
+Instrument: `sheepshead/research/calibrate_shrinkage.py` on the archived
 §12.8 deflead gating study (144 nodes × 6 replicates at 1024/1), fed
 through the PRODUCTION target builder (uniform priors / equal visits —
 w and tilt direction are invariant to both).
@@ -382,7 +382,7 @@ w and tilt direction are invariant to both).
 
 ### 10.3 Fresh-draw cell verification (§1.2 criteria (a)/(b)), run 2026-08-16
 
-Instrument: `analysis/verify_shrinkage_cells.py` (a7a0744) — live lockstep
+Instrument: `research/verify_shrinkage_cells.py` (a7a0744) — live lockstep
 committees (R=3 @ 1024/1, production target builder, trainer defaults) at
 36 fat/nopoint EV-wash defender leads (tricks 0-2) + 36 t0 called-suit
 defender leads, sampled from greedy self-play of the clean 8M seed.
@@ -650,7 +650,7 @@ partner 0.10-0.13 vs 0.067, BOTH alphas pinned at the -0.05 clamp
 (one sign flip each) — pre-registered expectation #4's investigate
 condition. Run left in flight (guards quiet, outcomes healthy, clamp
 bounds the fight); offline instrument built to identify the channel:
-analysis/verify_entropy_baseline.py compares, at emission-eligible
+research/verify_entropy_baseline.py compares, at emission-eligible
 nodes, pi (student), p_raw (pooled expert prior = target baseline),
 the production target, and a target rebuilt with base_prior=pi (the
 candidate structural fix; optional arg added to
@@ -1868,7 +1868,7 @@ runs/distill_sweep2_202608): arms d (lambda_end=lambda_ret=2) and
 e (=4), ONE epoch each (the sweep's dose finding), same corpus /
 seed 0 split / probes; then cert battery (n=1000 x 4 + dup h2h)
 on both; then head-routed h2h — theta_k BIDDING + arm_c_ep1 PLAY
-vs theta_k anchor (sheepshead/analysis/head_routed_h2h.py; both
+vs theta_k anchor (sheepshead/eval/head_routed_h2h.py; both
 sub-agents advance recurrent streams on the identical realized
 trajectory — PPO act() folds only the encoded state into memory,
 never the chosen action, so the chimera cannot desync; same
@@ -2556,7 +2556,7 @@ reserve.
   (and `all`); writes the targeted corpus (`pi_target` per row) so the
   projection is reproducible and inspectable; PG-off CE + retention
   KL + value/aux/oracle loop; probes and checkpoints per epoch.
-- `analysis/interpolate_checkpoints.py`: the §17.16 WiSE-FT lerp as a
+- `research/interpolate_checkpoints.py`: the §17.16 WiSE-FT lerp as a
   reusable CLI.
 - Tests: summary-vs-legacy equivalence; schema-2 rows; recovery
   round-trip on a scripted-committee corpus (q̄ up to offset, gap,
@@ -2966,7 +2966,7 @@ Variants (each ~10 min to screen, ~1 h to cert):
       per-step noise; realization up modestly.
   P5  Best two combined, if two help independently.
 
-Realization instrument: analysis/lead_row_realization.py (policy vs
+Realization instrument: research/lead_row_realization.py (policy vs
 target called-suit mass and argmax at t0/t1 defender leads on the
 train and held-out games of the distill split; realized fraction of
 the target mass shift relative to theta_k).
@@ -3009,7 +3009,7 @@ architecture that loads the 8M checkpoint bit-identically at init
 
 §20.9 ARM 5 — the bilinear-pointer actor (2026-09-02). Operator
 approved the architecture. `perceiver-shared-v2-bp` = v2 + (U h).(V t)
-in the play pointer, U zero-init; `analysis/migrate_arch_checkpoint.py`
+in the play pointer, U zero-init; `research/migrate_arch_checkpoint.py`
 re-saves the 8M seed under it and verifies max action-probability
 divergence 0 on real self-play (commit 6101c8d; the registry test
 gates the fixture's key hashes; numeric fields to be recaptured on the
@@ -3439,7 +3439,7 @@ DIAGNOSIS (pipeline_stall.py, same night; operator-requested):
 (1) Matched-volume CONTROL — iter11/targeted (corpus q) subsampled post
     hoc to the iteration-2 composition (first 2000 games; searched
     follow rows kept at 0.5: 12,526 of 25,083 demoted to no-loss, all
-    9,408 lead rows kept; analysis/subsample_targeted.py, 12730ba),
+    9,408 lead rows kept; research/subsample_targeted.py, 12730ba),
     P1 distill from theta_k_bp, cert vs the seed:
 
         corpus q, full (iter11 ep7)          +0.0258  se 0.0073   holdout KL -28%
@@ -5241,7 +5241,7 @@ candidate selection [31]; head routing at deploy [§20.14 step 6].
     corpora   runs/distill_corpus_iter2d_256_202609 (D), runs/rc_validate_v2/pi/iter1/corpus (schedule)
     certs     runs/policy_iteration_202609/cert_results.jsonl; runs/rc_validate_v2/pi/iter1/{cert.json,cert_ep7/cert.json}
     code      sheepshead/training/{distill_corpus,policy_iteration,run_training_program,program_config}.py,
-              sheepshead/analysis/head_routed_h2h.py (routed reads), league_progress_eval.py (sharded h2h)
+              sheepshead/eval/head_routed_h2h.py (routed reads), league_progress_eval.py (sharded h2h)
 
 ### 21.5 Open
 
@@ -5606,7 +5606,7 @@ Baseline cert under the old 1% bar: `pi/iter1/cert_bar1pct_failed.json`
 (t0 defender trump lead 1.7%, bar now 4%, cap now 10). Artifacts:
 `pi/iter1_ablations/<arm>/` with `ablations.log` as the ledger.
 
-Research path now running: `analysis/search_bias_calibration.py`
+Research path now running: `research/search_bias_calibration.py`
 (`5ad851e`) — fresh self-play with committee acting, sampled play nodes
 searched by the production committee (256; t0 leads 1024, t1 leads 512)
 AND a 2048-iteration committee from the same state; per class b^2 =

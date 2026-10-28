@@ -1,5 +1,11 @@
 # Repository Reorganization Plan — July 2026
 
+> **Paths:** module paths and commands in this journal predate the current
+> package layout (2026-10 restructure: `analysis` → `eval`/`research`,
+> `validation` → `research/validation`, `ismcts` → `search`, the training
+> library → `rl`, `reward_shaping` → `rewards`). The README's layout
+> section maps each module to its current home.
+
 **Status: EXECUTED 2026-07-11** on branch `repo-reorg` (commit series
 starting at `91a15bb`), after the 400k extension batch finished and its ext2
 panels were read and recorded (stage-0 closed 2026-07-11, commit `45cdd7e`).

@@ -1,5 +1,11 @@
 # League Repro Run Review & Fix Plan (July 2026)
 
+> **Paths:** module paths and commands in this journal predate the current
+> package layout (2026-10 restructure: `analysis` → `eval`/`research`,
+> `validation` → `research/validation`, `ismcts` → `search`, the training
+> library → `rl`, `reward_shaping` → `rewards`). The README's layout
+> section maps each module to its current home.
+
 > **Note (2026-07-11):** file paths in this notebook predate the 2026-07 repo reorganization (core modules now live in `sheepshead/`, the hosted product under `app/`). Kept as-is for the historical record.
 
 Review of the first long league run (`train_league_ppo.py`, log

@@ -1,5 +1,11 @@
 # Convention Optimality — Experiment Log (July 2026)
 
+> **Paths:** module paths and commands in this journal predate the current
+> package layout (2026-10 restructure: `analysis` → `eval`/`research`,
+> `validation` → `research/validation`, `ismcts` → `search`, the training
+> library → `rl`, `reward_shaping` → `rewards`). The README's layout
+> section maps each module to its current home.
+
 **Status (2026-07-15, corrected same day): E1, E1-b, E2 rung 2, E3 rung 2,
 E5 all DONE — see Results. Headline: both conventions are genuinely good on
 average AND largely internalized by the 30M model. C2's residual deviations

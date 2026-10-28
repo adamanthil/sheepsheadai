@@ -1,5 +1,11 @@
 # Search Readout Comparison: counts vs top@Q vs RM vs Gumbel (July 2026)
 
+> **Paths:** module paths and commands in this journal predate the current
+> package layout (2026-10 restructure: `analysis` → `eval`/`research`,
+> `validation` → `research/validation`, `ismcts` → `search`, the training
+> library → `rl`, `reward_shaping` → `rewards`). The README's layout
+> section maps each module to its current home.
+
 **Status (2026-07-22 evening): COMPLETE — both cells landed; VERDICT: ADOPT
 `pi_gumbel` as the contingency-lane distill target, with node-selective
 application (partner-lead targeting or |Q-gap| gating) as a REQUIRED

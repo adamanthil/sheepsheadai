@@ -342,7 +342,7 @@ self.recrack_head = nn.Linear(d_model, 2)   # RECRACK / NO RECRACK
 
 ## Part 4 — Checkpoint surgery (function-preserving)
 
-Write `sheepshead/analysis/surgery_blitz_crack.py`: loads an old
+Write `sheepshead/research/surgery_blitz_crack.py`: loads an old
 checkpoint, emits a new-architecture checkpoint computing the **identical
 function on rules-off inputs**. The literature basis is OpenAI Five's
 surgery and Net2Net (§R): preserve trained weights, initialize every new
@@ -372,9 +372,12 @@ entries paired with wherever the scalar fields actually sit.
 
 Verification gates (all must pass before Part 5):
 
-1. `uv run python -m sheepshead.analysis.capture_arch_goldens --check`
-   — capture goldens on master BEFORE starting, check after surgery (this
-   is the standing rule for any arch/ppo structural change).
+1. `uv run python -m sheepshead.devtools.check_goldens` — weight-init
+   and forward-output bit identity against the upstream baseline (this
+   is the standing rule for any arch/ppo structural change; CI runs it on
+   every push). The surgery changes outputs on purpose for the arms it
+   touches, so its commit declares them with a `Changes-Network-Outputs:`
+   trailer; everything else must stay bit-identical.
 2. Rules-off forward equality: for a batch of recorded rules-off
    observations, old-model and surgered-model logits & values agree to
    0 ULP (exact equality — zero columns × zero features is exact).

@@ -1,5 +1,11 @@
 # Search Teacher Design (2026-08)
 
+> **Paths:** module paths and commands in this journal predate the current
+> package layout (2026-10 restructure: `analysis` → `eval`/`research`,
+> `validation` → `research/validation`, `ismcts` → `search`, the training
+> library → `rl`, `reward_shaping` → `rewards`). The README's layout
+> section maps each module to its current home.
+
 Successor to the Stage-C exit plan's teacher lane, redesigned on the
 August evidence base. Companion runbooks: Learning_System_Redesign_202607
 (the league run this teacher will graft onto), Convention_Optimality_202607

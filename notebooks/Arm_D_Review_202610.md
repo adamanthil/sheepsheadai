@@ -903,7 +903,7 @@ standing item (a) is now built:
   - `a_model_out_of_fold`: false means model-only is biased up.
   The log prints the summary and per-class lines in game points. It is
   diagnostic only; nothing downstream reads it.
-- **Post hoc:** `python -m sheepshead.analysis.target_diagnostics
+- **Post hoc:** `python -m sheepshead.research.target_diagnostics
   --iter-dir <pi/iterN>` recomputes it for an iteration whose Stage 2
   predates the change (iteration 1 above). It needs cross-fit OOF
   predictions.
@@ -1064,7 +1064,7 @@ everything. Stage 2 writes it to `<iter-dir>/target_report.json` under
 regenerate any iteration):
 
 ```
-uv run python -m sheepshead.analysis.target_diagnostics \
+uv run python -m sheepshead.research.target_diagnostics \
     --iter-dir runs/202609_recall_rc/pi/iter1 --json /tmp/iter1_diag.json
 ```
 
@@ -1624,7 +1624,7 @@ runs on the new default. Paths in §9 that name the class candidate now
 point to the archive.
 
 **Reproducing §9.** Every table comes from a committed module, run as
-`uv run python -m sheepshead.analysis.<module> …` from the repo root.
+`uv run python -m sheepshead.research.<module> …` from the repo root.
 P = `runs/202609_recall_rc/overtrump_probe` (where the cached
 artifacts live; the session's first-pass scripts are kept there too,
 but nothing needs them).
@@ -1720,7 +1720,7 @@ theta4`). Outputs: `scan_theta4_summary.txt`,
 ### 9.10 Hindsight referee (2026-10-20): the labels are right on average, weak where the policy still over-trumps
 
 An estimator outside the search family (§9.8 "next steps"; CE_Teacher
-§22.6 "oracle referee"), `sheepshead/analysis/overtrump_referee.py`.
+§22.6 "oracle referee"), `sheepshead/research/overtrump_referee.py`.
 Each §9.2 node is replayed on its frozen trajectory, the state and every
 seat's recurrent memory are snapshotted, each legal card is played, and
 θ₄ plays all five seats to the end of the actual deal. The node seat's
@@ -1997,7 +1997,7 @@ here.)
 
 Operator's framing: a test of the impact of §9.12 option 1, **not a
 candidate recipe** (too idiosyncratic to adopt). Built with
-`sheepshead/analysis/overtrump_label_bias.py` on iteration 4's own
+`sheepshead/research/overtrump_label_bias.py` on iteration 4's own
 corpus and row table (θ₃ encoding), so the only difference from the
 iteration-4 class candidate d4 = `pi/iter4/distill_epoch10.pt` is the
 label shift.
@@ -2085,7 +2085,7 @@ Artifacts: `pi/iter4_ablations/t0_label_bias/` (`label_bias.json`,
 
 The operator challenged the §9.10/§9.12 "strategy fusion" candidate
 ("per world the search knows where the schmear can later be cashed"),
-and the challenge is right. In this engine (`sheepshead/ismcts.py`,
+and the challenge is right. In this engine (`sheepshead/search/ismcts.py`,
 SO-ISMCTS):
 
 - Tree nodes are statistics-only and keyed by the OBSERVER'S OWN ACTION

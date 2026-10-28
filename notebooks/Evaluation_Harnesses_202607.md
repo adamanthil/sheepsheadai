@@ -14,14 +14,14 @@ every number recorded so far.
 
 | instrument | question it answers | script | frozen constant |
 |---|---|---|---|
-| PANEL-A anchored gauntlet | how strong is this checkpoint, on the reference scale? | `sheepshead/analysis/rigorous_eval.py` | `--seed 42`, PANEL-A (sha256s below) |
-| Scripted paired probe | where does it sit on the static, lineage-free scale? | `sheepshead/analysis/scripted_probe.py` | seed `31` |
-| Trump-lead incidence probe | is the diagnosed defender trump-lead hole still open? | `sheepshead/analysis/trump_lead_probe.py` | `PROBE_SEED = 20260702` |
+| PANEL-A anchored gauntlet | how strong is this checkpoint, on the reference scale? | `sheepshead/eval/rigorous_eval.py` | `--seed 42`, PANEL-A (sha256s below) |
+| Scripted paired probe | where does it sit on the static, lineage-free scale? | `sheepshead/eval/scripted_probe.py` | seed `31` |
+| Trump-lead incidence probe | is the diagnosed defender trump-lead hole still open? | `sheepshead/eval/trump_lead_probe.py` | `PROBE_SEED = 20260702` |
 | In-training telemetry | is the *live run* healthy / making absolute progress? | written by `sheepshead/training/train_league_ppo.py` | `ANCHOR_EVAL_SEED = 20260701` |
 
 ---
 
-## 1. PANEL-A anchored gauntlet (`sheepshead/analysis/rigorous_eval.py`)
+## 1. PANEL-A anchored gauntlet (`sheepshead/eval/rigorous_eval.py`)
 
 **Use for:** any strength claim about a checkpoint, and all
 checkpoint-vs-checkpoint comparisons between strong agents. Each candidate
@@ -39,7 +39,7 @@ and all candidates see identical deals, so candidate deltas are paired.
 | selfplay common ancestor (floor) | `runs/reference_selfplay_ppo/checkpoints/swish_checkpoint_100000.pt` | `7f5426b68d3ebc6b` |
 
 ```bash
-PYTHONPATH=. .venv/bin/python -m sheepshead.analysis.rigorous_eval \
+PYTHONPATH=. .venv/bin/python -m sheepshead.eval.rigorous_eval \
   --candidates <ckpt1.pt> <ckpt2.pt> ... \
   --anchors final_pfsp_swish_ppo.pt \
             runs/reference_pfsp_ppo/pfsp_checkpoints_swish/pfsp_swish_checkpoint_15000000.pt \
@@ -65,7 +65,7 @@ PYTHONPATH=. .venv/bin/python -m sheepshead.analysis.rigorous_eval \
 * Legacy checkpoints (pre-`value_trunk`) print a critic-compat note on
   load; harmless here — greedy play uses the actor only.
 
-## 2. Scripted paired probe (`sheepshead/analysis/scripted_probe.py`)
+## 2. Scripted paired probe (`sheepshead/eval/scripted_probe.py`)
 
 **Use for:** absolute placement on a static scale that cannot drift,
 sanity-flooring a young run, and cross-run/cross-year comparability. Hero
@@ -74,9 +74,9 @@ all-scripted field; the paired delta is the edge (positive = hero better).
 One call covers both partner modes (alternating by deal) and all seats.
 
 ```bash
-PYTHONPATH=. .venv/bin/python -m sheepshead.analysis.scripted_probe --ckpt <ckpt.pt> --deals 500
-PYTHONPATH=. .venv/bin/python -m sheepshead.analysis.scripted_probe --ckpt a.pt b.pt --out-json out.json
-PYTHONPATH=. .venv/bin/python -m sheepshead.analysis.scripted_probe --self-check   # instrument check: edge must be exactly 0
+PYTHONPATH=. .venv/bin/python -m sheepshead.eval.scripted_probe --ckpt <ckpt.pt> --deals 500
+PYTHONPATH=. .venv/bin/python -m sheepshead.eval.scripted_probe --ckpt a.pt b.pt --out-json out.json
+PYTHONPATH=. .venv/bin/python -m sheepshead.eval.scripted_probe --self-check   # instrument check: edge must be exactly 0
 ```
 
 * **Keep the default seed 31** — pairs with the recorded placements:
@@ -88,7 +88,7 @@ PYTHONPATH=. .venv/bin/python -m sheepshead.analysis.scripted_probe --self-check
   exploit probes (§3) in a field that can't share the RL lineage's blind
   spots.
 
-## 3. Trump-lead incidence probe (`sheepshead/analysis/trump_lead_probe.py`)
+## 3. Trump-lead incidence probe (`sheepshead/eval/trump_lead_probe.py`)
 
 **Use for:** regression-testing the one *diagnosed* behavioral hole — a
 defender leading trump on trick 0–1 with a fail lead legal (cost −0.19
@@ -98,8 +98,8 @@ probe's resolution). Hero sits in all 5 seats per CRN deal in a scripted
 field; games abandon after trick 1, so it's fast (~3 min for 2000 deals).
 
 ```bash
-PYTHONPATH=. .venv/bin/python -m sheepshead.analysis.trump_lead_probe --ckpt <ckpt.pt> --deals 2000 --out-json out.json
-PYTHONPATH=. .venv/bin/python -m sheepshead.analysis.trump_lead_probe --scripted   # self-check: rate must be 0
+PYTHONPATH=. .venv/bin/python -m sheepshead.eval.trump_lead_probe --ckpt <ckpt.pt> --deals 2000 --out-json out.json
+PYTHONPATH=. .venv/bin/python -m sheepshead.eval.trump_lead_probe --scripted   # self-check: rate must be 0
 ```
 
 * Frozen `PROBE_SEED = 20260702` (the default — don't override).
@@ -171,7 +171,7 @@ nohup uv run python -m sheepshead.training.train_selfplay_ppo --arch <A> --seed 
   (absolute yardstick, saturated-negative early). `train_wall_s` excludes
   eval time; `transitions_done`/`updates_done` give the sample axis.
 * **Endpoints:** each run's `final_<arch>.pt` through §1 PANEL-A (both
-  modes), §2 scripted probe, §3 trump-lead probe. `sheepshead/analysis/` tools are
+  modes), §2 scripted probe, §3 trump-lead probe. `sheepshead/research/` tools are
   arch-aware via `ppo.load_agent` (checkpoints record their `arch`;
   pre-registry checkpoints = `full`). Saved-model names carry the arch, not
   the activation — the relu option is gone, SiLU everywhere (old
@@ -197,7 +197,7 @@ leagues work for play but exploiter warm-starts must stay same-arch.
 
 ## 6. Gotchas that have already bitten
 
-* **`PYTHONPATH=.`** is required for everything under `sheepshead/analysis/`.
+* Run tools as modules from the repo root (`uv run python -m sheepshead.<pkg>.<tool>`); the editable install makes `PYTHONPATH=.` unnecessary since the July reorg.
 * All harnesses play **greedy/deterministic**; results say nothing about
   the sampled policy's entropy.
 * **Zero-sum invariant:** any score-based tool can smoke-test itself by

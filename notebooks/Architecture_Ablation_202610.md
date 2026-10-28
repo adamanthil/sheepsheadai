@@ -20,7 +20,7 @@ self-play learning — speed, 400k-episode skill, and convention learning?
 | driver | `python -m sheepshead.training.run_recall_ablation {train,eval,status}` |
 | run code | detached worktree `/Volumes/Nargothrond/dev/sheepsheadai-ablation-202610` (own `.venv`; `runs/`, `models/` symlinked to the main checkout) at the commit in §5 |
 | outputs | `runs/arch_ablation_202610/<arch>_s<seed>/` (checkpoints, `train.log`, `status.json`, `eval/`); driver log `runs/arch_ablation_202610/driver.log` |
-| results | `notebooks/arch_ablation_202610.csv`, `notebooks/arch_ablation_202610_deltas.csv`, `notebooks/figures/arch_ablation_202610_panelA.png` — rebuilt by `python -m sheepshead.analysis.recall_ablation_report` (safe to run any time; unfinished cells are blank) |
+| results | `notebooks/arch_ablation_202610.csv`, `notebooks/arch_ablation_202610_deltas.csv`, `notebooks/figures/arch_ablation_202610_panelA.png` — rebuilt by `python -m sheepshead.research.recall_ablation_report` (safe to run any time; unfinished cells are blank) |
 | progress | `uv run python -m sheepshead.training.run_recall_ablation status` |
 
 Order of work: all training (one run at a time, seed-major: the full
@@ -212,7 +212,7 @@ completes first (≈ 1.6 days in).
   bit-identical on this machine against a pre-change capture, their
   stale macOS-14 manifest left as is); `PPOAgent.set_deterministic_aux_scale`
   + `train_ppo --aux-det-scale`; `training/run_recall_ablation.py`
-  driver; `analysis/recall_ablation_report.py`. Smoke: all six new arms
+  driver; `research/recall_ablation_report.py`. Smoke: all six new arms
   train through the 8-worker bootstrap (600 episodes, updates,
   checkpoints, greedy health). Eval path checked on the release cell
   (12-deal panel read to scratch; the 400k convention read is real and
