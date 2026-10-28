@@ -12,7 +12,7 @@ import random
 import numpy as np
 import pytest
 
-from sheepshead.ismcts import minmax_unit
+from sheepshead.search.ismcts import minmax_unit
 from sheepshead.training.pfsp_runtime import (
     CommitteeSummary,
     build_ce_search_target,

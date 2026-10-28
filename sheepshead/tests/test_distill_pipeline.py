@@ -340,7 +340,10 @@ def test_run_epoch_steps_and_updates_weights():
 def test_generator_end_to_end_real_search(tmp_path):
     """Smoke: the real ISMCTS committee through play_corpus_game at a tiny
     budget (uncertified; schema only)."""
-    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
+    from sheepshead.search.ismcts import (
+        ISMCTSConfig,
+        ISMCTSTeacher,
+    )
 
     agent = fresh_agent()
     args = worker_state(agent, p_base=0.3, p_min=0.0, p_max=0.3)

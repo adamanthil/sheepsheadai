@@ -140,7 +140,7 @@ class CommitteeConfig:
     """The ISMCTS committee that labels corpus rows (CE_Teacher_Design
     §1.2, §20) and the shrinkage noise model built on its replicates. The
     engine physics (PUCT constants, belief pool, batching, leaf/readout
-    choices) live in ``sheepshead.ismcts.ISMCTSConfig``; this owns one
+    choices) live in ``sheepshead.search.ismcts.ISMCTSConfig``; this owns one
     committee's budget and the noise calibration.
 
     Literature: the loop is Expert Iteration (Anthony et al. 2017) on the

@@ -100,7 +100,7 @@ def _device() -> torch.device:
 def _is_private_decision(valid_actions) -> bool:
     """True when the decision is a private bury/under (excluded from the public
     record fed to the ISMCTS teacher's forced replay)."""
-    from sheepshead.ismcts import is_private_action
+    from sheepshead.search.ismcts import is_private_action
 
     return any(is_private_action(a) for a in valid_actions)
 
@@ -539,7 +539,10 @@ def _belief_mc(
 
     Returns ``(BeliefMcBranch_a, BeliefMcBranch_b)`` or ``(None, None)``.
     """
-    from sheepshead.ismcts import pool_ess, pool_probs
+    from sheepshead.search.ismcts import (
+        pool_ess,
+        pool_probs,
+    )
 
     saved = snapshot_memory(agent)
     try:
@@ -1254,7 +1257,10 @@ def main() -> int:
     # the determinizer / belief-weighting). Build it if either is enabled.
     teacher = None
     if args.explore_sweep or not (args.no_search and args.no_belief_mc):
-        from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
+        from sheepshead.search.ismcts import (
+            ISMCTSConfig,
+            ISMCTSTeacher,
+        )
 
         cfg = ISMCTSConfig()
         cfg.iters = {k: args.iters for k in cfg.iters}

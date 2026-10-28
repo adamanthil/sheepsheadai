@@ -78,7 +78,10 @@ def _centered_labels(summary) -> tuple[list[int], np.ndarray, np.ndarray, np.nda
 
 
 def worker_init(init_args: dict) -> None:
-    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
+    from sheepshead.search.ismcts import (
+        ISMCTSConfig,
+        ISMCTSTeacher,
+    )
     from sheepshead.training import distill_corpus as dc
 
     dc.worker_init(init_args)
@@ -95,7 +98,10 @@ def play_game(task: tuple) -> dict:
     import torch
 
     from sheepshead.agent.observation import last_trick_observation_for, observation_for
-    from sheepshead.ismcts import infer_head, is_private_action
+    from sheepshead.search.ismcts import (
+        infer_head,
+        is_private_action,
+    )
     from sheepshead.training import distill_corpus as dc
 
     game_idx, mode = task

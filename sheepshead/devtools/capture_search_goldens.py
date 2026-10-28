@@ -40,7 +40,12 @@ import torch
 from sheepshead.agent import ppo
 from sheepshead.agent.ppo import PPOAgent
 from sheepshead.game import ACTIONS, PARTNER_BY_CALLED_ACE, Game
-from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher, infer_head, is_private_action
+from sheepshead.search.ismcts import (
+    ISMCTSConfig,
+    ISMCTSTeacher,
+    infer_head,
+    is_private_action,
+)
 from sheepshead.training.training_utils import set_all_seeds
 
 SEED = 20260810

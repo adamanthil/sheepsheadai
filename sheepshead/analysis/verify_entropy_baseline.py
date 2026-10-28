@@ -77,7 +77,10 @@ def _worker_init(ckpt, iters, node_prob, teacher_ckpt=None):
 
     torch.set_num_threads(1)
     from sheepshead.agent.ppo import load_agent
-    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
+    from sheepshead.search.ismcts import (
+        ISMCTSConfig,
+        ISMCTSTeacher,
+    )
     from sheepshead.training.config import CommitteeConfig
 
     _W["agent"] = load_agent(ckpt)
@@ -166,7 +169,7 @@ def _node_row(game, player, valid, forced_public, deal_seed, node_idx, pi):
 def _run_deal(deal_seed):
     """Stochastic self-play (training rollout distribution); committee at
     emission-eligible play nodes sampled at node_prob, cap 2 per deal."""
-    from sheepshead.ismcts import is_private_action
+    from sheepshead.search.ismcts import is_private_action
 
     agent = _W["agent"]
     rng = random.Random(deal_seed ^ 0xA5A5A5)

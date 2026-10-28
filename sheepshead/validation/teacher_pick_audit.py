@@ -38,8 +38,11 @@ import numpy as np
 
 from sheepshead.agent.ppo import load_agent
 from sheepshead.game import ACTIONS, Game
-from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 from sheepshead.rewards import estimate_hand_strength_score
+from sheepshead.search.ismcts import (
+    ISMCTSConfig,
+    ISMCTSTeacher,
+)
 from sheepshead.training.training_utils import get_partner_selection_mode, set_all_seeds
 
 PICK_ID = ACTIONS.index("PICK") + 1

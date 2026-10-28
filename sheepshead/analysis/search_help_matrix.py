@@ -73,7 +73,11 @@ from sheepshead.agent.observation import (
 from sheepshead.agent.ppo import load_agent
 from sheepshead.analysis.fail_lead_logit_probe import masked_logits
 from sheepshead.game import ACTION_LOOKUP, PARTNER_BY_CALLED_ACE, Game
-from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher, is_private_action
+from sheepshead.search.ismcts import (
+    ISMCTSConfig,
+    ISMCTSTeacher,
+    is_private_action,
+)
 from sheepshead.training.pfsp_runtime import play_cell
 
 DEVICE = torch.device("cpu")

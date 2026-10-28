@@ -3,7 +3,8 @@
 
 Layers, bottom to top:
 
-  core       game, rewards, scripted_agent, ismcts, agent.*
+  core       game, rewards, scripted_agent, agent.*
+  search     ismcts (imports only core)
   devtools   golden gate, model artifacts, benchmarks
   analysis   measurement instruments (imports devtools.fetch_models)
   training   library modules (reward math, configs, corpus formats, the

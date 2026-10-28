@@ -7,8 +7,9 @@ Deep learning AI for the Sheepshead card game.
 ```
 sheepshead/         installable RL core (uv sync installs it editable)
   game.py           game engine (rules, deals, scoring)
-  scripted_agent.py rules baseline    ismcts.py  search / ExIt teacher
+  scripted_agent.py rules baseline
   agent/            ppo, encoder, oracle, architectures registry
+  search/           ISMCTS teacher (search / ExIt)
   training/         the PPO trainer, oracle pretraining, corpus + policy
                     iteration, and the program orchestrator
   analysis/         measurement instruments (rigorous_eval, probes, panels)

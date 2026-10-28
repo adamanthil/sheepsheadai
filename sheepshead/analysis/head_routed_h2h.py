@@ -41,7 +41,7 @@ from sheepshead.analysis.rigorous_eval import (
     run_gauntlet,
 )
 from sheepshead.game import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD
-from sheepshead.ismcts import infer_head
+from sheepshead.search.ismcts import infer_head
 
 
 def is_lead_decision(state) -> bool:

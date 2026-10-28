@@ -3,7 +3,7 @@ deal driver that stops at the second-bury root."""
 
 from sheepshead.agent.ppo import PPOAgent
 from sheepshead.game import ACTIONS
-from sheepshead.ismcts import is_private_decision
+from sheepshead.search.ismcts import is_private_decision
 
 
 def fresh_agent():

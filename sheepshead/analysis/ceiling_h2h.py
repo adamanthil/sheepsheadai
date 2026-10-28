@@ -161,7 +161,7 @@ def _play_hand_instrumented(mode, deal_seed, hero_seat, deal_idx):
     forced_public = []
     node_rows = []
     node_idx = 0
-    from sheepshead.ismcts import is_private_action
+    from sheepshead.search.ismcts import is_private_action
 
     while not game.is_done():
         for player in game.players:
@@ -228,7 +228,10 @@ def _worker_init(ckpt, torch_threads, iters):
 
     torch.set_num_threads(torch_threads)
     from sheepshead.agent.ppo import load_agent
-    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
+    from sheepshead.search.ismcts import (
+        ISMCTSConfig,
+        ISMCTSTeacher,
+    )
 
     _W["hero"] = load_agent(ckpt)
     _W["anchor"] = load_agent(ckpt)

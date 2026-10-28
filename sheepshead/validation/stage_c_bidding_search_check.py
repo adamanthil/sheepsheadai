@@ -34,7 +34,7 @@ from sheepshead.agent.observation import (
 )
 from sheepshead.agent.ppo import load_agent
 from sheepshead.game import DECK, Game
-from sheepshead.ismcts import (
+from sheepshead.search.ismcts import (
     ISMCTSConfig,
     ISMCTSTeacher,
     infer_head,

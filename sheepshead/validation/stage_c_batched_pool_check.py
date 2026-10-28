@@ -18,7 +18,10 @@ from sheepshead.agent.observation import (
 )
 from sheepshead.agent.ppo import load_agent
 from sheepshead.game import ACTIONS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
-from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
+from sheepshead.search.ismcts import (
+    ISMCTSConfig,
+    ISMCTSTeacher,
+)
 
 CKPT = "models/pfsp-swish-30m.pt"
 

@@ -65,7 +65,10 @@ def time_pure_game(n_games):
 def time_ismcts(n_searches):
     # Imports here so pure-game timing isn't polluted by torch import cost.
     from sheepshead.agent.ppo import load_agent
-    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
+    from sheepshead.search.ismcts import (
+        ISMCTSConfig,
+        ISMCTSTeacher,
+    )
 
     agent = load_agent("models/pfsp-swish-30m.pt")
     cfg = ISMCTSConfig(

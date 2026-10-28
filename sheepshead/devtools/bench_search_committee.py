@@ -52,7 +52,7 @@ TEACHER_D_ROLLOUT = 1
 def find_play_node(agent, max_seeds: int = 200):
     """Replay deterministically to a mid-game PLAY decision with >= 2 legal
     actions -- the node class the CE teacher actually labels."""
-    from sheepshead.ismcts import is_private_action
+    from sheepshead.search.ismcts import is_private_action
 
     for seed in range(max_seeds):
         game = Game(partner_selection_mode=PARTNER_BY_CALLED_ACE, seed=seed)
@@ -104,7 +104,10 @@ def run_committee(teacher, game, seat, forced, replicates, d_rollout, seed_offse
 def setup(opts: dict, announce: bool = True):
     """Load the agent and replay to the node every client searches."""
     from sheepshead.agent.ppo import PPOAgent
-    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
+    from sheepshead.search.ismcts import (
+        ISMCTSConfig,
+        ISMCTSTeacher,
+    )
     from sheepshead.training.training_utils import set_all_seeds
 
     set_all_seeds(42)

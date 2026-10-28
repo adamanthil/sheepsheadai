@@ -47,8 +47,11 @@ import numpy as np
 import torch
 
 from sheepshead.game import ACTIONS, TRUMP_POWER
-from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 from sheepshead.rewards import RETURN_SCALE
+from sheepshead.search.ismcts import (
+    ISMCTSConfig,
+    ISMCTSTeacher,
+)
 from sheepshead.training import distill_corpus as dc
 
 CORPUS_SEED = 20260904  # the corpus's --seed (iteration 2 of 202609_recall_rc)
@@ -161,7 +164,7 @@ def _worker_init(init_args: dict) -> None:
 def _run_task(t: dict) -> dict:
     from sheepshead.agent.observation import last_trick_observation_for, observation_for
     from sheepshead.game import PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
-    from sheepshead.ismcts import is_private_action
+    from sheepshead.search.ismcts import is_private_action
 
     args = dc._W["args"]
     agent = dc._W["agent"]

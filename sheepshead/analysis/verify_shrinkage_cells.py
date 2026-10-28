@@ -119,7 +119,10 @@ def _worker_init(ckpt, iters):
 
     torch.set_num_threads(1)
     from sheepshead.agent.ppo import load_agent
-    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
+    from sheepshead.search.ismcts import (
+        ISMCTSConfig,
+        ISMCTSTeacher,
+    )
     from sheepshead.training.config import CommitteeConfig
 
     _W["agent"] = load_agent(ckpt)
@@ -194,7 +197,7 @@ def _target_row(game, player, valid, forced_public, deal_seed, node_idx, cell):
 def _run_deal(deal_seed):
     """Greedy self-play of one called-ace deal; committee at eligible cells
     (cap 2 per family per deal). Returns node rows."""
-    from sheepshead.ismcts import is_private_action
+    from sheepshead.search.ismcts import is_private_action
 
     agent = _W["agent"]
     game = Game(partner_selection_mode=PARTNER_BY_CALLED_ACE, seed=deal_seed)

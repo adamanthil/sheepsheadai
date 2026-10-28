@@ -25,7 +25,7 @@ import pytest
 import torch
 
 from sheepshead.game import ACTIONS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, Game
-from sheepshead.ismcts import (
+from sheepshead.search.ismcts import (
     ISMCTSConfig,
     ISMCTSTeacher,
     infer_head,
@@ -314,7 +314,11 @@ def _drain_director(real_game, deal, forced_public, observer):
     event trace and the finished world."""
     from collections import deque
 
-    from sheepshead.ismcts import ISMCTSTeacher, PrivateDecision, replay_events
+    from sheepshead.search.ismcts import (
+        ISMCTSTeacher,
+        PrivateDecision,
+        replay_events,
+    )
 
     world = Game(partner_selection_mode=real_game.partner_mode_flag)
     for seat in range(1, 6):
@@ -343,7 +347,7 @@ def test_director_event_trace():
     """The director's event sequence is exactly the public record in order
     (with scheme-B weighted flags) interleaved with one PrivateDecision per
     completed private action, terminating at the root (no raise)."""
-    from sheepshead.ismcts import (
+    from sheepshead.search.ismcts import (
         PrivateDecision,
         PublicAction,
         is_weighted_bidding_action,

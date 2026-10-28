@@ -56,8 +56,12 @@ from sheepshead.agent.observation import (
 )
 from sheepshead.agent.ppo import PPOAgent, load_agent
 from sheepshead.game import ACTIONS, Game
-from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher, is_private_decision
 from sheepshead.rewards import RETURN_SCALE
+from sheepshead.search.ismcts import (
+    ISMCTSConfig,
+    ISMCTSTeacher,
+    is_private_decision,
+)
 from sheepshead.training.training_utils import get_partner_selection_mode, set_all_seeds
 
 T_FULL = 1  # production rollout-depth schedule (config.SearchConfig)

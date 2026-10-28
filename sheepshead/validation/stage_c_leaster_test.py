@@ -31,7 +31,10 @@ from sheepshead.game import (
     Game,
     get_card_suit,
 )
-from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
+from sheepshead.search.ismcts import (
+    ISMCTSConfig,
+    ISMCTSTeacher,
+)
 
 CKPT = "models/pfsp-swish-30m.pt"
 PASS_ID = ACTIONS.index("PASS") + 1

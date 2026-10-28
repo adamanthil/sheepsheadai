@@ -120,7 +120,10 @@ def _worker_init(ckpt, iters, singleton_low_called=False, long_side_fail=False):
 
     torch.set_num_threads(1)
     from sheepshead.agent.ppo import load_agent
-    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
+    from sheepshead.search.ismcts import (
+        ISMCTSConfig,
+        ISMCTSTeacher,
+    )
     from sheepshead.training.config import CommitteeConfig
 
     _W["agent"] = load_agent(ckpt)
@@ -260,7 +263,7 @@ def _committee_row(game, player, valid, forced_public, deal_seed, classes):
 def _run_deal(deal_seed):
     """Greedy self-play to the trick-0 lead; committee if eligible.
     Each deal yields at most one node, so no per-deal caps exist."""
-    from sheepshead.ismcts import is_private_action
+    from sheepshead.search.ismcts import is_private_action
 
     agent = _W["agent"]
     game = Game(partner_selection_mode=PARTNER_BY_CALLED_ACE, seed=deal_seed)

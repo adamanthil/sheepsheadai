@@ -182,7 +182,10 @@ def worker_init(init_args: dict) -> None:
         enable_routed_encoder(32, None, device=routed)
 
     from sheepshead.agent.ppo import load_agent
-    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
+    from sheepshead.search.ismcts import (
+        ISMCTSConfig,
+        ISMCTSTeacher,
+    )
 
     agent = load_agent(init_args["ckpt"])
     agent.stash_action_probs = True
@@ -322,11 +325,14 @@ def play_corpus_game(task: tuple) -> dict:
     node-telemetry rows and per-class counters."""
     import torch
 
-    from sheepshead.ismcts import infer_head, is_private_action
     from sheepshead.rewards import (
         compute_any_unseen_trump_higher_than_hand,
         compute_known_points_rel,
         compute_seen_trump_mask,
+    )
+    from sheepshead.search.ismcts import (
+        infer_head,
+        is_private_action,
     )
 
     # (game_idx, mode[, committee_act]); tests still pass the two-tuple.

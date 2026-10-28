@@ -404,7 +404,10 @@ def main() -> int:
 
     teacher = None
     if not args.no_belief_mc:
-        from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
+        from sheepshead.search.ismcts import (
+            ISMCTSConfig,
+            ISMCTSTeacher,
+        )
 
         cfg = ISMCTSConfig()
         cfg.iters = {k: args.iters for k in cfg.iters}

@@ -14,7 +14,11 @@ import torch
 from sheepshead.agent.observation import last_trick_observation_for, observation_for
 from sheepshead.agent.ppo import PPOAgent
 from sheepshead.game import ACTION_LOOKUP, ACTIONS, PARTNER_BY_CALLED_ACE, Game
-from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher, is_private_action
+from sheepshead.search.ismcts import (
+    ISMCTSConfig,
+    ISMCTSTeacher,
+    is_private_action,
+)
 from sheepshead.tests.ppo_test_helpers import seed_all
 
 SEED = 20260810

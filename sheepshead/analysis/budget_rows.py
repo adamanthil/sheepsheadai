@@ -42,8 +42,11 @@ import numpy as np
 import torch
 
 from sheepshead.game import ACTIONS, DECK, PARTNER_BY_CALLED_ACE, TRUMP_POWER, Game
-from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
 from sheepshead.rewards import RETURN_SCALE
+from sheepshead.search.ismcts import (
+    ISMCTSConfig,
+    ISMCTSTeacher,
+)
 from sheepshead.training import distill_corpus as dc
 from sheepshead.training.search_advantage import (
     NOISE_POOL_DF,

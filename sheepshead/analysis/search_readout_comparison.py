@@ -173,7 +173,10 @@ def analyze_node(agent, spot: dict, args, device) -> Optional[dict]:
         }
 
     # --- three search arms, CRN determinization seed ---
-    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
+    from sheepshead.search.ismcts import (
+        ISMCTSConfig,
+        ISMCTSTeacher,
+    )
 
     rng_seed = 0xC0FFEE ^ (seed << 8) ^ step
     d_rollout = 6 - int(node.trickIndex)  # roll to terminal

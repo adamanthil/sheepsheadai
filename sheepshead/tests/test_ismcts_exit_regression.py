@@ -37,7 +37,10 @@ from sheepshead.game import (
     get_card_points,
     get_card_suit,
 )
-from sheepshead.ismcts import infer_head, is_private_decision
+from sheepshead.search.ismcts import (
+    infer_head,
+    is_private_decision,
+)
 from sheepshead.tests.ismcts_test_helpers import drive_to_second_bury, fresh_agent
 
 # Runs real (tiny-budget) ISMCTS searches and distill updates (~50s).
@@ -285,7 +288,10 @@ def test_determinizer_legality_and_replay():
 
 def test_private_root_replay_matches_completed_private_actions():
     """A second BURY root must replay the first BURY before returning the root."""
-    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
+    from sheepshead.search.ismcts import (
+        ISMCTSConfig,
+        ISMCTSTeacher,
+    )
 
     _seed()
     game = Game(partner_selection_mode=PARTNER_BY_JD)
@@ -322,7 +328,10 @@ def test_private_root_replay_matches_completed_private_actions():
 # 3. Batched pool build == sequential reference (the key Tier-2 guard)
 # ---------------------------------------------------------------------------
 def test_batched_pool_matches_sequential():
-    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
+    from sheepshead.search.ismcts import (
+        ISMCTSConfig,
+        ISMCTSTeacher,
+    )
 
     _seed()
     agent = fresh_agent()
@@ -381,7 +390,11 @@ def test_batched_pool_fallback_on_inconsistency():
     a recorded play illegal — void inference is not exhaustive), _build_worlds_batched
     must fall back to the per-world sequential build and still return a valid pool,
     not abort. Forced here by monkeypatching the lockstep to raise."""
-    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher, ReplayInconsistency
+    from sheepshead.search.ismcts import (
+        ISMCTSConfig,
+        ISMCTSTeacher,
+        ReplayInconsistency,
+    )
 
     _seed()
     agent = fresh_agent()
@@ -440,7 +453,10 @@ ISMCTS_FLOOR = 1.0
 
 
 def test_search_output_contract():
-    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
+    from sheepshead.search.ismcts import (
+        ISMCTSConfig,
+        ISMCTSTeacher,
+    )
 
     _seed()
     agent = fresh_agent()
@@ -481,7 +497,11 @@ def test_search_output_contract():
 
 
 def test_ismcts_backup_discount_uses_agent_gamma():
-    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher, Node
+    from sheepshead.search.ismcts import (
+        ISMCTSConfig,
+        ISMCTSTeacher,
+        Node,
+    )
 
     agent = fresh_agent()
     agent.gamma = 0.5
@@ -554,7 +574,10 @@ def test_seat_policies_population_grounding():
     memories must survive the search untouched (the real game continues after
     it); (3) the lockstep batched pool build must keep matching the sequential
     reference with controllers active."""
-    from sheepshead.ismcts import ISMCTSConfig, ISMCTSTeacher
+    from sheepshead.search.ismcts import (
+        ISMCTSConfig,
+        ISMCTSTeacher,
+    )
 
     _seed()
     agent = fresh_agent()

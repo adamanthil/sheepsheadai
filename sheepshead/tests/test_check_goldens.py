@@ -24,7 +24,7 @@ def _marked(sha, parent, *names):
 class TestIsWatched:
     def test_package_code_is_watched(self):
         assert is_watched("sheepshead/agent/architectures/actors.py")
-        assert is_watched("sheepshead/ismcts.py")
+        assert is_watched("sheepshead/search/ismcts.py")
 
     def test_tests_and_analysis_are_not(self):
         assert not is_watched("sheepshead/tests/test_arch_golden.py")
