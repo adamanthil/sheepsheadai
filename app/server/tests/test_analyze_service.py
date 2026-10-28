@@ -237,7 +237,7 @@ def test_simulate_with_supplied_agent_skips_the_loader(analyze_env, monkeypatch)
     assert supplied.model_dump() == via_loader.model_dump()
 
 
-def test_stochastic_default_uses_the_deployed_sampling(monkeypatch):
+def test_stochastic_default_uses_the_deployed_sampling(analyze_env, monkeypatch):
     """Unchecked 'deterministic' samples the deployed (tuned) policy, reseeded
     from the request seed so a seeded run replays; with no tuned
     temperatures it falls back to the raw policy at T = 1."""
