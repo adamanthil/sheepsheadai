@@ -38,10 +38,14 @@ Why the project exists. Measures the
 counterfactual EV of a *defender* leading trump vs fail on the FIRST trick via
 paired rollouts on the TRUE deal. Finding: the 30M PPO agent leads trump as a
 trick-0 defender in spots where leading fail scores better — a partial-observability
-leak the critic cannot close (the trick-0 critic is blind). Also provides the
-`best_in_class` / `play_out` / `rollout` helpers reused by Stage A.
+leak the critic cannot close (the trick-0 critic is blind).
 
 ## Gate 0 — the trick-0-only determinizer
+
+The Gate 0 and Stage A scripts were deleted after they stopped importing
+(the `best_in_class` helper they shared left `counterfactual_trump_leads`);
+they are in git history before commit "Delete research scripts that no
+longer import". Their findings stand:
 
 **`gate0_determinizer.py`** — Validate that a trick-0 determinized teacher
 (redeal the hidden cards consistent with the observer's info set, roll out under
