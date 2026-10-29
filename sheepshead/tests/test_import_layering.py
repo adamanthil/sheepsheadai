@@ -13,7 +13,8 @@ Each package is one layer and imports only from its own layer or below:
   5 training   trainers, league, drivers, the program orchestrator
 
 ``research`` and ``devtools`` are leaves: they may import any ranked layer
-and nothing imports them. The app (app/) imports only core and agent.
+and nothing imports them. The app (app/) imports only core and agent, and
+nothing in the package imports the app.
 
 Every import counts, including function-local ones: a lazy import hides a
 dependency from a casual reader, not from this test.
@@ -109,3 +110,21 @@ def test_app_imports_only_core_and_agent():
         if RANKS.get(_layer(dep), len(RANKS)) > APP_MAX_RANK
     )
     assert too_high == []
+
+
+def test_package_never_imports_the_app():
+    app_packages = {p.name for p in APP.iterdir() if (p / "__init__.py").exists()}
+    found = sorted(
+        f"{module} imports {name}"
+        for module, path in MODULES.items()
+        for node in ast.walk(ast.parse(path.read_text()))
+        for name in (
+            [a.name for a in node.names]
+            if isinstance(node, ast.Import)
+            else [node.module or ""]
+            if isinstance(node, ast.ImportFrom)
+            else []
+        )
+        if name.split(".")[0] in app_packages
+    )
+    assert found == []
