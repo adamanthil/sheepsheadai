@@ -10,7 +10,7 @@ aces and no void. The scan records the policy's choice and probabilities so
 those cells can be read on the current checkpoint and replayed on /analyze.
 
 The scanner drives the same deterministic simulation path as ``/analyze``
-(``server.services.analyze.simulate_game``), so every ``seed`` /
+(``sheepshead.agent.traced_game.play_traced_game``), so every ``seed`` /
 ``stepIndex`` reproduces on the Analyze page (Partner Mode = JD,
 Deterministic on, the same checkpoint loaded).
 
@@ -30,8 +30,7 @@ import collections
 import json
 import time
 
-from server.api.schemas import AnalyzeSimulateRequest
-from server.services.analyze import simulate_game
+from sheepshead.agent.traced_game import play_traced_game
 from sheepshead.game import TRUMP_SET
 from sheepshead.research.scan_defender_trump_leads import (
     DEFAULT_MODEL,
@@ -46,13 +45,10 @@ def scan(model: str, seed_start: int, num_seeds: int, out: str) -> None:
     t0 = time.time()
     with open(out, "w") as f:
         for seed in range(seed_start, seed_start + num_seeds):
-            resp = simulate_game(
-                AnalyzeSimulateRequest(
-                    seed=seed, partnerMode=PARTNER_MODE_JD, deterministic=True
-                ),
-                agent=agent,
+            traced = play_traced_game(
+                agent, seed=seed, partner_mode=PARTNER_MODE_JD, deterministic=True
             )
-            for ad in resp.trace:
+            for ad in traced.decisions:
                 if not ad.action.startswith("PLAY "):
                     continue
                 v = ad.view
@@ -73,7 +69,7 @@ def scan(model: str, seed_start: int, num_seeds: int, out: str) -> None:
                     continue
                 probs = {
                     p.action[5:]: p.prob
-                    for p in ad.probabilities
+                    for p in ad.inference.probabilities()
                     if p.action.startswith("PLAY ")
                 }
                 best_fail = max(fails, key=lambda c: probs.get(c, 0))
@@ -81,9 +77,9 @@ def scan(model: str, seed_start: int, num_seeds: int, out: str) -> None:
                 rec = {
                     "seed": seed,
                     "partnerMode": PARTNER_MODE_JD,
-                    "stepIndex": ad.stepIndex,
+                    "stepIndex": ad.step_index,
                     "seat": seat,
-                    "seatName": ad.seatName,
+                    "seatName": ad.seat_name,
                     "picker": picker,
                     "picker_rel": ((picker - seat) % 5) + 1,
                     "hand": hand,
@@ -96,7 +92,7 @@ def scan(model: str, seed_start: int, num_seeds: int, out: str) -> None:
                     "p_trump": probs.get(trumps[0], 0),
                     "best_fail": best_fail,
                     "p_best_fail": probs.get(best_fail, 0),
-                    "final": resp.final,
+                    "final": traced.final,
                 }
                 f.write(json.dumps(rec, default=str) + "\n")
             if (seed - seed_start) % 500 == 499:

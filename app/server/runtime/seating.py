@@ -10,13 +10,6 @@ from server.runtime.ai_loop import schedule_ai_turns
 from server.runtime.models import ClientConn, Occupant, Table
 from server.runtime.occupants import allocate_ai_occupant
 
-# Fixed seat-label names for the /analyze simulate trace (server.services.
-# analyze). This list has different content/order than server.runtime.occupants.AI_NAME_POOL
-# (it includes "Andrew" and is always exactly 5 long, one per seat) -- kept
-# as a separate constant rather than unified, since changing it would alter
-# user-visible analyze output.
-ANALYZE_SEAT_NAMES = ["Dan", "Kyle", "Trevor", "John", "Andrew"]
-
 
 def is_ai_occupant(table: Table, occ_id: Optional[str]) -> bool:
     if not occ_id:

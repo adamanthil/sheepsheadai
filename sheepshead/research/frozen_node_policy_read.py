@@ -3,7 +3,7 @@
 states (Arm_D_Review §9.8 primary; the E7 frozen-trajectory design).
 
 A driver checkpoint plays each listed seed deterministically through the
-/analyze path (``server.services.analyze.simulate_game``); its trace fixes
+/analyze path (``sheepshead.agent.traced_game``); its trace fixes
 every action. Each probe checkpoint then replays that identical trajectory
 through the same inference path (``run_inference_step``, all five seats
 observing after each completed trick), so it rebuilds its OWN recurrent
@@ -45,11 +45,13 @@ from typing import Any
 import numpy as np
 import torch
 
-from server.api.schemas import AnalyzeSimulateRequest
-from server.runtime.seating import ANALYZE_SEAT_NAMES
-from server.services.analysis_common import find_actor, run_inference_step, set_seed
-from server.services.analyze import simulate_game
 from sheepshead.agent.observation import last_trick_observation_for
+from sheepshead.agent.traced_game import (
+    find_actor,
+    play_traced_game,
+    run_inference_step,
+    set_seed,
+)
 from sheepshead.game import ACTIONS, CARD_POINTS, TRUMP_POWER, Game
 from sheepshead.research.scan_defender_trump_leads import load_scan_agent
 
@@ -60,11 +62,10 @@ POINT_TRUMPS = ("AD", "10D")
 
 def driver_actions(agent: Any, seed: int, partner_mode: int) -> list[int]:
     """The driver's deterministic /analyze trace for ``seed`` as action ids."""
-    resp = simulate_game(
-        AnalyzeSimulateRequest(seed=seed, partnerMode=partner_mode, deterministic=True),
-        agent=agent,
+    traced = play_traced_game(
+        agent, seed=seed, partner_mode=partner_mode, deterministic=True
     )
-    return [ACTIONS.index(ad.action) + 1 for ad in resp.trace]
+    return [d.action_id for d in traced.decisions]
 
 
 def replay_probe(
@@ -81,9 +82,7 @@ def replay_probe(
         actor = find_actor(game)
         if actor is None:
             raise RuntimeError(f"seed {seed}: no actor at step {step}")
-        inference = run_inference_step(
-            agent, actor, actor.position, list(ANALYZE_SEAT_NAMES), device
-        )
+        inference = run_inference_step(agent, actor, device)
         if action_id not in inference.valid_actions:
             raise RuntimeError(f"seed {seed} step {step}: trace action is illegal")
         if step in steps:

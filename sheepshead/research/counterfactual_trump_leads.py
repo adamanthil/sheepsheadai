@@ -38,8 +38,8 @@ Two groups are aggregated separately:
 
 Fidelity
 --------
-* The deterministic replay + continuation mirrors ``server.services.analyze.
-  simulate_game`` (encode -> argmax -> act with per-seat ``observe`` propagation),
+* The deterministic replay + continuation mirrors ``sheepshead.agent.
+  traced_game.play_traced_game`` (encode -> argmax -> act with per-seat ``observe`` propagation),
   so the deterministic trump branch of a TRUMP-PREF case reproduces ``/analyze``
   for that seed.
 * Both MC branches start from one snapshot (game + per-seat recurrent memory taken
@@ -69,12 +69,11 @@ import torch
 
 # The scanner provides the shared model loader and its case-detection helpers.
 import sheepshead.research.scan_defender_trump_leads as scan
-from server.api.schemas import AnalyzeSimulateRequest
-from server.services.analyze import simulate_game
 from sheepshead.agent.observation import (
     last_trick_observation_for,
     observation_for,
 )
+from sheepshead.agent.traced_game import play_traced_game
 from sheepshead.game import (
     ACTION_IDS,
     ACTION_LOOKUP,
@@ -283,7 +282,7 @@ class CaseResult:
 # ---------------------------------------------------------------------------
 def _play_out(agent, game, device, deterministic: bool) -> None:
     """Continue a positioned game to terminal, with per-seat observation
-    propagation on trick completion (matches simulate_game / play.py)."""
+    propagation on trick completion (matches play_traced_game / play.py)."""
     while not game.is_done():
         actor = None
         for player in game.players:
@@ -388,7 +387,7 @@ def _replay_to_node(
     """Deterministically replay the game to ``target_step`` (the defender lead),
     returning a :class:`NodeCapture`, or None when the node is never reached.
 
-    Mirrors simulate_game's decision loop so the snapshot is the exact ``/analyze``
+    Mirrors play_traced_game's decision loop so the snapshot is the exact ``/analyze``
     state at that node. Returns ``(None, ...)`` if the node isn't reached.
     """
     agent.reset_recurrent_state()
@@ -676,11 +675,11 @@ def _summarize_search(
 # ---------------------------------------------------------------------------
 # Case detection
 # ---------------------------------------------------------------------------
-def _classify_spots(resp, seed: int, partner_mode: int, max_trick: int) -> List[dict]:
+def _classify_spots(traced, seed: int, partner_mode: int, max_trick: int) -> List[dict]:
     """Every defender lead spot on tricks 0..max_trick with both a trump and a
     fail lead available, labelled by which class the policy's argmax chose."""
     spots = []
-    for ad in resp.trace:
+    for ad in traced.decisions:
         if not ad.action.startswith("PLAY "):
             continue
         card = ad.action[5:]
@@ -699,8 +698,8 @@ def _classify_spots(resp, seed: int, partner_mode: int, max_trick: int) -> List[
             or scan.is_secret_partner(view, partner_mode)
         ):
             continue
-        has_trump = any(_card_of(v) in TRUMP_SET for v in ad.validActionIds)
-        has_fail = any(_card_of(v) in FAIL_SET for v in ad.validActionIds)
+        has_trump = any(_card_of(v) in TRUMP_SET for v in ad.inference.valid_actions)
+        has_fail = any(_card_of(v) in FAIL_SET for v in ad.inference.valid_actions)
         if not (has_trump and has_fail):
             continue  # need both classes for a trump-vs-fail comparison
         group = "trump" if card in TRUMP_SET else "fail" if card in FAIL_SET else None
@@ -710,10 +709,10 @@ def _classify_spots(resp, seed: int, partner_mode: int, max_trick: int) -> List[
             {
                 "seed": seed,
                 "partnerMode": partner_mode,
-                "stepIndex": ad.stepIndex,
+                "stepIndex": ad.step_index,
                 "trickIndex": ti,
                 "seat": seat,
-                "seatName": ad.seatName,
+                "seatName": ad.seat_name,
                 "pickerSeat": view.get("picker") or 0,
                 "cardLed": card,
                 "group": group,
@@ -732,14 +731,14 @@ def _find_cases(args) -> tuple[List[dict], List[dict]]:
     trump_spots: List[dict] = []
     fail_spots: List[dict] = []
     for seed in range(args.start_seed, args.start_seed + args.num_seeds):
-        req = AnalyzeSimulateRequest(
+        traced = play_traced_game(
+            agent,
             seed=seed,
-            partnerMode=args.partner_mode,
+            partner_mode=args.partner_mode,
             deterministic=True,
-            maxSteps=args.max_steps,
+            max_steps=args.max_steps,
         )
-        resp = simulate_game(req, agent=agent)
-        for spot in _classify_spots(resp, seed, args.partner_mode, args.max_trick):
+        for spot in _classify_spots(traced, seed, args.partner_mode, args.max_trick):
             (trump_spots if spot["group"] == "trump" else fail_spots).append(spot)
 
     # --control-cap decouples the control count from the TRUMP-PREF yield:
@@ -1276,16 +1275,18 @@ def main() -> int:
             f"Exploration sweep: fracs={fracs} iters={iters_list} on seeds {sweep_seeds}\n"
         )
         for seed in sweep_seeds:
-            req = AnalyzeSimulateRequest(
+            traced = play_traced_game(
+                agent,
                 seed=seed,
-                partnerMode=args.partner_mode,
+                partner_mode=args.partner_mode,
                 deterministic=True,
-                maxSteps=args.max_steps,
+                max_steps=args.max_steps,
             )
-            resp = simulate_game(req, agent=agent)
             spots = [
                 s
-                for s in _classify_spots(resp, seed, args.partner_mode, args.max_trick)
+                for s in _classify_spots(
+                    traced, seed, args.partner_mode, args.max_trick
+                )
                 if s["group"] == "trump"
             ]
             if not spots:

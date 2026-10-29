@@ -51,8 +51,7 @@ import torch
 
 import sheepshead.research.counterfactual_trump_leads as cf
 import sheepshead.research.scan_defender_trump_leads as scan
-from server.api.schemas import AnalyzeSimulateRequest
-from server.services.analyze import simulate_game
+from sheepshead.agent.traced_game import play_traced_game
 from sheepshead.eval.conventions import called_suit_fail
 from sheepshead.research.scan_called_suit_leads import called_suit_already_led
 
@@ -103,12 +102,12 @@ class C2CaseResult:
 # ---------------------------------------------------------------------------
 # Case detection
 # ---------------------------------------------------------------------------
-def _classify_c2_spots(resp, seed: int, max_trick: int) -> tuple[List[dict], int]:
+def _classify_c2_spots(traced, seed: int, max_trick: int) -> tuple[List[dict], int]:
     """C2-eligible defender leads (agree/disagree) and partner-mirror leads in
     one simulated game's trace. Returns (spots, n_skipped_under_call)."""
     spots: List[dict] = []
     skipped_under = 0
-    for ad in resp.trace:
+    for ad in traced.decisions:
         if not ad.action.startswith("PLAY "):
             continue
         card = ad.action[5:]
@@ -133,7 +132,7 @@ def _classify_c2_spots(resp, seed: int, max_trick: int) -> tuple[List[dict], int
             continue
 
         legal_leads = [
-            c for v in ad.validActionIds if (c := cf._card_of(v)) is not None
+            c for v in ad.inference.valid_actions if (c := cf._card_of(v)) is not None
         ]
 
         if scan.is_secret_partner(view, PARTNER_MODE_CALLED_ACE):
@@ -156,10 +155,10 @@ def _classify_c2_spots(resp, seed: int, max_trick: int) -> tuple[List[dict], int
             {
                 "seed": seed,
                 "partnerMode": PARTNER_MODE_CALLED_ACE,
-                "stepIndex": ad.stepIndex,
+                "stepIndex": ad.step_index,
                 "trickIndex": ti,
                 "seat": seat,
-                "seatName": ad.seatName,
+                "seatName": ad.seat_name,
                 "pickerSeat": picker,
                 "calledCard": called,
                 "cardLed": card,
@@ -212,14 +211,14 @@ def _find_cases(args) -> Dict[str, List[dict]]:
     groups: Dict[str, List[dict]] = {"agree": [], "disagree": [], "partner": []}
     skipped_under = 0
     for seed in range(args.start_seed, args.start_seed + args.num_seeds):
-        req = AnalyzeSimulateRequest(
+        traced = play_traced_game(
+            agent,
             seed=seed,
-            partnerMode=PARTNER_MODE_CALLED_ACE,
+            partner_mode=PARTNER_MODE_CALLED_ACE,
             deterministic=True,
-            maxSteps=args.max_steps,
+            max_steps=args.max_steps,
         )
-        resp = simulate_game(req, agent=agent)
-        spots, n_under = _classify_c2_spots(resp, seed, args.max_trick)
+        spots, n_under = _classify_c2_spots(traced, seed, args.max_trick)
         skipped_under += n_under
         for spot in spots:
             groups[spot["group"]].append(spot)

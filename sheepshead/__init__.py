@@ -3,8 +3,10 @@
 Layers, bottom to top (a package imports only from layers below it;
 sheepshead/tests/test_import_layering.py enforces this):
 
-  game, rewards, scripted_agent   the engine, scoring and reward math
-  agent       networks, PPO, observation, deploy sampling
+  core        game, rewards, scripted_agent, views: the engine, scoring,
+              reward math and the per-seat table view
+  agent       networks, PPO, observation, deploy sampling, and the traced
+              game behind /analyze and the research scanners
   search      the ISMCTS teacher
   rl          training building blocks (episode runtime, corpus plumbing,
               search-advantage model, entropy controller, watchdog)

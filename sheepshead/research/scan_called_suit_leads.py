@@ -18,7 +18,7 @@ Under-call hands (picker void in the called suit by rule) break the
 tallied separately.
 
 The scanner drives the same deterministic simulation path as ``/analyze``
-(``server.services.analyze.simulate_game``), so every reported ``seed``
+(``sheepshead.agent.traced_game.play_traced_game``), so every reported ``seed``
 reproduces byte-for-byte on the Analyze page (Partner Mode = Called Ace).
 Called-ace mode only: convention C2 does not exist in JD mode.
 
@@ -38,8 +38,7 @@ from typing import Dict, List, Optional
 
 # The trump-lead scanner provides load_scan_agent + the secret-partner helper.
 import sheepshead.research.scan_defender_trump_leads as scan
-from server.api.schemas import AnalyzeSimulateRequest
-from server.services.analyze import simulate_game
+from sheepshead.agent.traced_game import play_traced_game
 from sheepshead.eval.conventions import called_suit_fail
 from sheepshead.game import ACTION_LOOKUP, FAIL, TRUMP_SET, UNDER_TOKEN
 
@@ -145,12 +144,14 @@ def called_suit_already_led(view: dict) -> bool:
     return False
 
 
-def scan_game(resp, seed: int, stats: CalledSuitScanStats) -> List[CalledSuitLeadNode]:
+def scan_game(
+    traced, seed: int, stats: CalledSuitScanStats
+) -> List[CalledSuitLeadNode]:
     """Find all C2-eligible defender leads in one simulated game's trace."""
     nodes: List[CalledSuitLeadNode] = []
     seats_with_opportunity: set[int] = set()
 
-    is_leaster_game = bool(resp.final and resp.final.get("mode") == "leaster")
+    is_leaster_game = bool(traced.final and traced.final.get("mode") == "leaster")
     if is_leaster_game:
         stats.leasterGames += 1
     else:
@@ -159,7 +160,7 @@ def scan_game(resp, seed: int, stats: CalledSuitScanStats) -> List[CalledSuitLea
     counted_alone = False
     counted_under = False
 
-    for ad in resp.trace:
+    for ad in traced.decisions:
         if not ad.action.startswith("PLAY "):
             continue
         card = ad.action[5:]
@@ -204,7 +205,7 @@ def scan_game(resp, seed: int, stats: CalledSuitScanStats) -> List[CalledSuitLea
         # decision and would trivially inflate adherence.
         legal_leads = [
             ACTION_LOOKUP[vid][5:]
-            for vid in ad.validActionIds
+            for vid in ad.inference.valid_actions
             if ACTION_LOOKUP.get(vid, "").startswith("PLAY ")
         ]
         called_options = sorted(
@@ -237,13 +238,16 @@ def scan_game(resp, seed: int, stats: CalledSuitScanStats) -> List[CalledSuitLea
             stats.byRelPos[rel][1] += int(adhered)
 
         hand = view.get("hand") or []
-        chosen = next((p for p in ad.probabilities if p.actionId == ad.actionId), None)
+        chosen = next(
+            (p for p in ad.inference.probabilities() if p.action_id == ad.action_id),
+            None,
+        )
         # probabilities are sorted by prob desc, so the first called-suit PLAY
         # is the policy's best called-suit lead.
         best_called = next(
             (
                 p
-                for p in ad.probabilities
+                for p in ad.inference.probabilities()
                 if p.action.startswith("PLAY ")
                 and called_suit_fail(p.action[5:], called)
             ),
@@ -254,10 +258,10 @@ def scan_game(resp, seed: int, stats: CalledSuitScanStats) -> List[CalledSuitLea
             CalledSuitLeadNode(
                 seed=seed,
                 partnerMode=PARTNER_MODE_CALLED_ACE,
-                stepIndex=ad.stepIndex,
+                stepIndex=ad.step_index,
                 trickIndex=trick_index,
                 seat=seat,
-                seatName=ad.seatName,
+                seatName=ad.seat_name,
                 pickerSeat=picker,
                 relPosFromPicker=(seat - picker) % 5,
                 calledCard=called,
@@ -274,8 +278,8 @@ def scan_game(resp, seed: int, stats: CalledSuitScanStats) -> List[CalledSuitLea
                 bestCalledCard=best_called.action[5:] if best_called else None,
                 bestCalledProb=best_called.prob if best_called else None,
                 bestCalledLogit=best_called.logit if best_called else None,
-                winProb=ad.winProb,
-                valueEstimate=ad.valueEstimate,
+                winProb=ad.inference.win_prob,
+                valueEstimate=ad.value_estimate,
             )
         )
 
@@ -362,16 +366,16 @@ def main() -> int:
 
     end_seed = args.start_seed + args.num_seeds
     for seed in range(args.start_seed, end_seed):
-        req = AnalyzeSimulateRequest(
+        traced = play_traced_game(
+            agent,
             seed=seed,
-            partnerMode=PARTNER_MODE_CALLED_ACE,
+            partner_mode=PARTNER_MODE_CALLED_ACE,
             deterministic=True,
-            maxSteps=args.max_steps,
+            max_steps=args.max_steps,
         )
-        resp = simulate_game(req, agent=agent)
         stats.seedsScanned += 1
 
-        nodes = scan_game(resp, seed, stats)
+        nodes = scan_game(traced, seed, stats)
         for n in nodes:
             if args.violations_only and n.adhered:
                 continue

@@ -51,8 +51,7 @@ import torch
 
 import sheepshead.research.counterfactual_trump_leads as cf
 import sheepshead.research.scan_defender_trump_leads as scan
-from server.api.schemas import AnalyzeSimulateRequest
-from server.services.analyze import simulate_game
+from sheepshead.agent.traced_game import play_traced_game
 from sheepshead.eval.conventions import called_suit_fail
 from sheepshead.game import TRUMP
 from sheepshead.research.scan_called_suit_leads import called_suit_already_led
@@ -113,9 +112,9 @@ class FatCaseResult:
 # ---------------------------------------------------------------------------
 # Case detection
 # ---------------------------------------------------------------------------
-def _classify_spots(resp, seed: int, max_trick: int) -> List[dict]:
+def _classify_spots(traced, seed: int, max_trick: int) -> List[dict]:
     spots: List[dict] = []
-    for ad in resp.trace:
+    for ad in traced.decisions:
         if not ad.action.startswith("PLAY "):
             continue
         card = ad.action[5:]
@@ -139,7 +138,7 @@ def _classify_spots(resp, seed: int, max_trick: int) -> List[dict]:
         called = view.get("called_card")
         called_led = called_suit_already_led(view) if called else True
         legal_leads = [
-            c for v in ad.validActionIds if (c := cf._card_of(v)) is not None
+            c for v in ad.inference.valid_actions if (c := cf._card_of(v)) is not None
         ]
         classes = {c: _lead_class(c, called, called_led) for c in legal_leads}
         if not any(v == "fat" for v in classes.values()) or not any(
@@ -151,10 +150,10 @@ def _classify_spots(resp, seed: int, max_trick: int) -> List[dict]:
             {
                 "seed": seed,
                 "partnerMode": PARTNER_MODE_CALLED_ACE,
-                "stepIndex": ad.stepIndex,
+                "stepIndex": ad.step_index,
                 "trickIndex": ti,
                 "seat": seat,
-                "seatName": ad.seatName,
+                "seatName": ad.seat_name,
                 "pickerSeat": picker,
                 "calledCard": called,
                 "calledLed": called_led,
@@ -169,14 +168,14 @@ def _find_cases(args) -> Dict[str, List[dict]]:
     agent = scan.load_scan_agent(args.model)
     groups: Dict[str, List[dict]] = {"fat": [], "nopoint": [], "other": []}
     for seed in range(args.start_seed, args.start_seed + args.num_seeds):
-        req = AnalyzeSimulateRequest(
+        traced = play_traced_game(
+            agent,
             seed=seed,
-            partnerMode=PARTNER_MODE_CALLED_ACE,
+            partner_mode=PARTNER_MODE_CALLED_ACE,
             deterministic=True,
-            maxSteps=args.max_steps,
+            max_steps=args.max_steps,
         )
-        resp = simulate_game(req, agent=agent)
-        for spot in _classify_spots(resp, seed, args.max_trick):
+        for spot in _classify_spots(traced, seed, args.max_trick):
             groups[spot["group"]].append(spot)
 
     print(

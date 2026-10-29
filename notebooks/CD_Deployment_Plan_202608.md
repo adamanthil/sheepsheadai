@@ -77,9 +77,9 @@ default branch is renamed from `master` before any CD work — §9 step
   staleness is a loud CI failure. This is the most intricate piece of
   the plan and it earns its keep: most commits in this repository are
   research commits that must not restart games. [rev] The server's
-  direct `sheepshead` imports today are `game`, `agent.ppo`,
+  direct `sheepshead` imports today are `game`, `views`, `agent.ppo`,
   `agent.observation`, `agent.sampling`, `agent.convention_wrapper`,
-  `agent` (the package) and `rewards`. [2026-10 restructure] The
+  `agent.traced_game`, `agent` (the package) and `rewards`. [2026-10 restructure] The
   package layering test (`sheepshead/tests/test_import_layering.py`)
   now enforces that the app imports only the core and agent layers, so
   the closure cannot reach training code. The guard still computes the
@@ -247,6 +247,7 @@ sheepshead/__init__.py
 sheepshead/game.py
 sheepshead/agent
 sheepshead/rewards.py
+sheepshead/views.py
 ```
 
 (`app/server` covers `app/server/Dockerfile`. `sheepshead/agent`

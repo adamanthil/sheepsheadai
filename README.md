@@ -10,7 +10,9 @@ sheepshead/         installable RL core (uv sync installs it editable);
   game.py           game engine (rules, deals, scoring)
   rewards.py        reward math (trick/terminal rewards, seen-trump features)
   scripted_agent.py rules baseline
-  agent/            ppo, encoder, oracle, architectures registry
+  views.py          one seat's table view (the web client's JSON shape)
+  agent/            ppo, encoder, oracle, architectures registry, and
+                    traced_game (the /analyze simulation engine)
   search/           ISMCTS teacher (search / ExIt)
   rl/               training building blocks: episode runtime, corpus
                     plumbing, search-advantage model, entropy controller

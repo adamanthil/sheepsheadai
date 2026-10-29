@@ -48,8 +48,7 @@ import torch
 
 import sheepshead.research.counterfactual_trump_leads as cf
 import sheepshead.research.scan_defender_trump_leads as scan
-from server.api.schemas import AnalyzeSimulateRequest
-from server.services.analyze import simulate_game
+from sheepshead.agent.traced_game import play_traced_game
 from sheepshead.game import TRUMP_SET
 
 DEFAULT_MODEL = scan.DEFAULT_MODEL
@@ -60,12 +59,12 @@ GROUPS = ("agree", "disagree", "defender_mirror")
 # Case detection
 # ---------------------------------------------------------------------------
 def _classify_cp_spots(
-    resp, seed: int, partner_mode: int, max_trick: int
+    traced, seed: int, partner_mode: int, max_trick: int
 ) -> List[dict]:
     """CP-eligible secret-partner leads (agree/disagree) and defender-mirror
     leads in one simulated game's trace."""
     spots: List[dict] = []
-    for ad in resp.trace:
+    for ad in traced.decisions:
         if not ad.action.startswith("PLAY "):
             continue
         card = ad.action[5:]
@@ -84,7 +83,9 @@ def _classify_cp_spots(
             continue  # picker and REVEALED partner are out for both groups
 
         legal = [
-            cf._card_of(v) for v in ad.validActionIds if cf._card_of(v) is not None
+            cf._card_of(v)
+            for v in ad.inference.valid_actions
+            if cf._card_of(v) is not None
         ]
         has_trump = any(c in TRUMP_SET for c in legal)
         has_fail = any(c in cf.FAIL_SET for c in legal)
@@ -103,10 +104,10 @@ def _classify_cp_spots(
             {
                 "seed": seed,
                 "partnerMode": partner_mode,
-                "stepIndex": ad.stepIndex,
+                "stepIndex": ad.step_index,
                 "trickIndex": ti,
                 "seat": seat,
-                "seatName": ad.seatName,
+                "seatName": ad.seat_name,
                 "pickerSeat": picker,
                 "cardLed": card,
                 "group": group,
@@ -119,14 +120,14 @@ def _find_cases(args) -> tuple[Dict[str, List[dict]], Dict[str, int]]:
     agent = scan.load_scan_agent(args.model)
     groups: Dict[str, List[dict]] = {g: [] for g in GROUPS}
     for seed in range(args.start_seed, args.start_seed + args.num_seeds):
-        req = AnalyzeSimulateRequest(
+        traced = play_traced_game(
+            agent,
             seed=seed,
-            partnerMode=args.partner_mode,
+            partner_mode=args.partner_mode,
             deterministic=True,
-            maxSteps=args.max_steps,
+            max_steps=args.max_steps,
         )
-        resp = simulate_game(req, agent=agent)
-        for spot in _classify_cp_spots(resp, seed, args.partner_mode, args.max_trick):
+        for spot in _classify_cp_spots(traced, seed, args.partner_mode, args.max_trick):
             groups[spot["group"]].append(spot)
 
     scanned = {g: len(groups[g]) for g in GROUPS}

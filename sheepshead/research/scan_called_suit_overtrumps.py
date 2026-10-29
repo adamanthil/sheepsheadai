@@ -11,7 +11,7 @@ play the ace, so only another defender can take it. The rate is how often
 the policy's chosen card is an over-trump.
 
 The scanner drives the same deterministic simulation path as ``/analyze``
-(``server.services.analyze.simulate_game``), so every recorded ``seed`` /
+(``sheepshead.agent.traced_game.play_traced_game``), so every recorded ``seed`` /
 ``stepIndex`` reproduces on the Analyze page (Partner Mode = Called Ace,
 Deterministic on, the same checkpoint loaded).
 
@@ -33,8 +33,7 @@ import time
 
 import numpy as np
 
-from server.api.schemas import AnalyzeSimulateRequest
-from server.services.analyze import simulate_game
+from sheepshead.agent.traced_game import play_traced_game
 from sheepshead.game import CARD_POINTS, TRUMP_POWER, get_card_suit, get_trick_winner
 from sheepshead.research.scan_defender_trump_leads import (
     DEFAULT_MODEL,
@@ -52,17 +51,19 @@ def scan(model: str, seed_start: int, num_seeds: int, out: str) -> dict:
     t0 = time.time()
     with open(out, "w") as f:
         for seed in range(seed_start, seed_start + num_seeds):
-            resp = simulate_game(
-                AnalyzeSimulateRequest(
-                    seed=seed, partnerMode=PARTNER_MODE_CALLED_ACE, deterministic=True
-                ),
-                agent=agent,
+            traced = play_traced_game(
+                agent,
+                seed=seed,
+                partner_mode=PARTNER_MODE_CALLED_ACE,
+                deterministic=True,
             )
             games += 1
-            final = resp.final or {}
-            if final.get("mode") == "standard" and not resp.trace[-1].view.get("alone"):
+            final = traced.final or {}
+            if final.get("mode") == "standard" and not traced.decisions[-1].view.get(
+                "alone"
+            ):
                 std_games += 1
-            for ad in resp.trace:
+            for ad in traced.decisions:
                 rec = _decision(ad, final, seed)
                 if rec is not None:
                     f.write(json.dumps(rec, default=str) + "\n")
@@ -102,7 +103,9 @@ def _decision(ad, final: dict, seed: int) -> dict | None:
     if any(c not in TRUMP_POWER and get_card_suit(c) == cs for c in hand):
         return None  # must follow the called suit: no choice
     probs = {
-        p.action[5:]: p.prob for p in ad.probabilities if p.action.startswith("PLAY ")
+        p.action[5:]: p.prob
+        for p in ad.inference.probabilities()
+        if p.action.startswith("PLAY ")
     }
     over = [
         c for c in probs if c in TRUMP_POWER and TRUMP_POWER[c] > TRUMP_POWER[wcard]
@@ -114,9 +117,9 @@ def _decision(ad, final: dict, seed: int) -> dict | None:
     fails = [c for c in hand if c not in TRUMP_POWER]
     return {
         "seed": seed,
-        "stepIndex": ad.stepIndex,
+        "stepIndex": ad.step_index,
         "seat": ad.seat,
-        "seatName": ad.seatName,
+        "seatName": ad.seat_name,
         "trick": ti,
         "winner": wcard,
         "winner_seat": w,

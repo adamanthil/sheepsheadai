@@ -103,20 +103,14 @@ def variant_teacher(agent, v: dict) -> ISMCTSTeacher:
 def trace_actions(seeds: list[int], ckpt: str) -> dict[int, list[tuple[int, int, int]]]:
     """(stepIndex, seat, action id) of each seed's deterministic /analyze
     trace, called-ace mode."""
-    from server.api.schemas import AnalyzeSimulateRequest
-    from server.services.analyze import simulate_game
+    from sheepshead.agent.traced_game import play_traced_game
     from sheepshead.research.scan_defender_trump_leads import load_scan_agent
 
     agent = load_scan_agent(ckpt)
     out = {}
     for s in seeds:
-        resp = simulate_game(
-            AnalyzeSimulateRequest(seed=s, partnerMode=1, deterministic=True),
-            agent=agent,
-        )
-        out[s] = [
-            (ad.stepIndex, ad.seat, ACTIONS.index(ad.action) + 1) for ad in resp.trace
-        ]
+        traced = play_traced_game(agent, seed=s, partner_mode=1, deterministic=True)
+        out[s] = [(d.step_index, d.seat, d.action_id) for d in traced.decisions]
     return out
 
 

@@ -8,12 +8,12 @@ This is contrary to standard human play and is the behavior we want to inspect
 case-by-case in the web ``/analyze`` view.
 
 The scanner drives the *exact* same deterministic simulation path that
-``/analyze`` uses (``server.services.analyze.simulate_game``), so every
-``(seed, partnerMode)`` it reports reproduces byte-for-byte when you type that
-seed + partner mode into the Analyze page. The only deviation from calling the
-service repeatedly is that the model is loaded once and passed in (the analyze
-service reloads it per request), which is safe because ``simulate_game`` resets
-the agent's recurrent state at the start of every game.
+``/analyze`` uses (``sheepshead.agent.traced_game.play_traced_game``), so
+every ``(seed, partnerMode)`` it reports reproduces byte-for-byte when you
+type that seed + partner mode into the Analyze page. The model is loaded
+once and reused (the analyze service reloads it per request), which is safe
+because ``play_traced_game`` resets the agent's recurrent state at the start
+of every game.
 
 Usage (from repo root):
 
@@ -34,10 +34,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import List, Optional
 
-from server.api.schemas import AnalyzeSimulateRequest
-from server.services.ai_loader import load_agent
-from server.services.analyze import simulate_game
-from sheepshead.agent.ppo import PPOAgent
+from sheepshead.agent.ppo import PPOAgent, load_agent
+from sheepshead.agent.traced_game import play_traced_game
 from sheepshead.game import ACTION_LOOKUP, FAIL, TRUMP_SET
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -50,12 +48,8 @@ DEFAULT_MODEL = str(REPO_ROOT / "models/pfsp-swish-30m.pt")
 @functools.cache
 def load_scan_agent(model_path: str) -> PPOAgent:
     """Load ``model_path`` once per process and share it across seeds.
-
-    The hardened ``AnalyzeSimulateRequest`` carries no modelPath (the field let
-    API clients point ``torch.load`` at arbitrary files), so scanners load the
-    agent here and pass it to ``simulate_game(req, agent=...)``. Sharing one
-    agent is safe because ``simulate_game`` resets its recurrent state at the
-    start of every game.
+    Sharing one agent is safe because ``play_traced_game`` resets its
+    recurrent state at the start of every game.
     """
     return load_agent(model_path)
 
@@ -118,18 +112,18 @@ def is_secret_partner(view: dict, partner_mode: int) -> bool:
 
 
 def scan_game(
-    resp, seed: int, partner_mode: int, stats: ScanStats
+    traced, seed: int, partner_mode: int, stats: ScanStats
 ) -> List[DefenderTrumpLeadCase]:
     """Find all defender trump-leads in one simulated game's trace."""
     cases: List[DefenderTrumpLeadCase] = []
 
-    is_leaster_game = bool(resp.final and resp.final.get("mode") == "leaster")
+    is_leaster_game = bool(traced.final and traced.final.get("mode") == "leaster")
     if is_leaster_game:
         stats.leasterGames += 1
     else:
         stats.standardGames += 1
 
-    for ad in resp.trace:
+    for ad in traced.decisions:
         # Must be a card play.
         if not ad.action.startswith("PLAY "):
             continue
@@ -157,7 +151,7 @@ def scan_game(
         fail_options = sorted(
             (
                 ACTION_LOOKUP[vid][5:]
-                for vid in ad.validActionIds
+                for vid in ad.inference.valid_actions
                 if ACTION_LOOKUP.get(vid, "").startswith("PLAY ")
                 and ACTION_LOOKUP[vid][5:] in FAIL_SET
             ),
@@ -174,12 +168,15 @@ def scan_game(
         stats.trumpLeadCases += 1
 
         hand = view.get("hand") or []
-        chosen = next((p for p in ad.probabilities if p.actionId == ad.actionId), None)
+        chosen = next(
+            (p for p in ad.inference.probabilities() if p.action_id == ad.action_id),
+            None,
+        )
         # probabilities are sorted by prob desc, so first fail PLAY is the best.
         best_fail = next(
             (
                 p
-                for p in ad.probabilities
+                for p in ad.inference.probabilities()
                 if p.action.startswith("PLAY ") and p.action[5:] in FAIL_SET
             ),
             None,
@@ -189,10 +186,10 @@ def scan_game(
             DefenderTrumpLeadCase(
                 seed=seed,
                 partnerMode=partner_mode,
-                stepIndex=ad.stepIndex,
+                stepIndex=ad.step_index,
                 trickIndex=int(view.get("current_trick_index", 0)),
                 seat=seat,
-                seatName=ad.seatName,
+                seatName=ad.seat_name,
                 pickerSeat=picker,
                 cardLed=card,
                 failOptions=fail_options,
@@ -204,8 +201,8 @@ def scan_game(
                 bestFailCard=best_fail.action[5:] if best_fail else None,
                 bestFailProb=best_fail.prob if best_fail else None,
                 bestFailLogit=best_fail.logit if best_fail else None,
-                winProb=ad.winProb,
-                valueEstimate=ad.valueEstimate,
+                winProb=ad.inference.win_prob,
+                valueEstimate=ad.value_estimate,
             )
         )
 
@@ -261,16 +258,16 @@ def main() -> int:
     agent = load_scan_agent(args.model)
     end_seed = args.start_seed + args.num_seeds
     for seed in range(args.start_seed, end_seed):
-        req = AnalyzeSimulateRequest(
+        traced = play_traced_game(
+            agent,
             seed=seed,
-            partnerMode=args.partner_mode,
+            partner_mode=args.partner_mode,
             deterministic=True,
-            maxSteps=args.max_steps,
+            max_steps=args.max_steps,
         )
-        resp = simulate_game(req, agent=agent)
         stats.seedsScanned += 1
 
-        cases = scan_game(resp, seed, args.partner_mode, stats)
+        cases = scan_game(traced, seed, args.partner_mode, stats)
         for c in cases:
             all_cases.append(c)
             if not args.quiet:

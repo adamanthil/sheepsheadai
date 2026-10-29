@@ -4,8 +4,8 @@ the source.
 
 Each package is one layer and imports only from its own layer or below:
 
-  0 core       game, rewards, scripted_agent
-  1 agent      networks, PPO, observation, deploy sampling
+  0 core       game, rewards, scripted_agent, views
+  1 agent      networks, PPO, observation, deploy sampling, traced games
   2 search     the ISMCTS teacher
   3 rl         RL building blocks: episode runtime, corpus plumbing, the
                search-advantage model, entropy controller, watchdog

@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-import torch
-
 from server.api.schemas import (
     AnalyzeActionDetail,
     AnalyzeCalibrationSummary,
@@ -14,63 +12,20 @@ from server.api.schemas import (
     AnalyzeSimulateResponse,
 )
 from server.config import get_settings
-from server.runtime.seating import ANALYZE_SEAT_NAMES
-from server.runtime.views import build_player_state
 from server.services.ai_loader import inference_turn_in_thread, load_agent
 from server.services.analysis_common import (
     build_action_detail,
     compute_oracle_values,
     deployment_sampler,
-    find_actor,
-    memory_drift,
-    run_inference_step,
-    select_action_id,
-    set_seed,
 )
-from sheepshead.agent.observation import last_trick_observation_for
 from sheepshead.agent.ppo import PPOAgent
-from sheepshead.game import Game
-from sheepshead.rewards import (
-    handle_trick_completion,
-    process_episode_rewards,
-    process_terminal_rewards,
-    update_intermediate_rewards_for_action,
+from sheepshead.agent.traced_game import (
+    SEAT_NAMES,
+    default_device,
+    play_traced_game,
 )
-
-
-def _setup_simulation(
-    req: AnalyzeSimulateRequest,
-    agent: PPOAgent | None,
-) -> tuple[PPOAgent, Any, Game]:
-    """Seed RNGs, resolve the agent, and deal the game.
-
-    Stage (a) of ``simulate_game``: deal/agent setup + seeding.
-    """
-    # Set seed if provided
-    if req.seed is not None:
-        set_seed(req.seed)
-
-    # Load the configured agent unless the caller supplied one; clients of
-    # the API cannot influence which file is read.
-    settings = get_settings()
-    if agent is None:
-        agent = load_agent(settings.sheepshead_model_path)
-
-    # Reset recurrent state before simulation
-    agent.reset_recurrent_state()
-
-    # Initialize game with default double_on_the_bump=True (model doesn't consider this anyway)
-    partner_mode = 1 if req.partnerMode == 1 else 0  # Convert to Game's expected format
-    # Pass the seed through to the Game so the deal itself is reproducible:
-    # Game uses its own local RNG instance, which ignores the global seeds that
-    # set_seed() configures. Without this, the same seed reshuffles a new deal
-    # on every run.
-    game = Game(
-        partner_selection_mode=partner_mode,
-        seed=req.seed,
-    )
-
-    return agent, settings, game
+from sheepshead.game import Game
+from sheepshead.rewards import process_episode_rewards, process_terminal_rewards
 
 
 def _compute_discounted_returns(
@@ -83,8 +38,7 @@ def _compute_discounted_returns(
     and attach per-step rewards and discounted returns back onto ``trace``
     (mutated in place, aligned by index).
 
-    Stage (c) of ``simulate_game``: the reward-shaping replay + discounted-
-    return computation. Both reward schedules are computed from the SAME
+    The reward-shaping replay + discounted-return computation. Both reward schedules are computed from the SAME
     sheepshead.rewards functions the trainers use: the shaped baseline
     (``process_episode_rewards``) and the terminal-only return
     (``process_terminal_rewards``, i.e. the league trainer's
@@ -232,19 +186,6 @@ def _build_calibration_summary(
     )
 
 
-def _build_final_payload(game: Game) -> Optional[Dict[str, Any]]:
-    """Build the final-state payload once the simulation reaches a terminal
-    game state.
-
-    Stage (d) of ``simulate_game`` (part 1): response assembly.
-    """
-    if not game.is_done():
-        return None
-    # Use any player to get the final state
-    final_state = build_player_state(game.players[0])
-    return final_state["view"].get("final")
-
-
 def _assemble_response(
     req: AnalyzeSimulateRequest,
     settings: Any,
@@ -254,10 +195,7 @@ def _assemble_response(
     memory_observes: List[AnalyzeMemoryObserve],
     final_payload: Optional[Dict[str, Any]],
 ) -> AnalyzeSimulateResponse:
-    """Assemble the final ``AnalyzeSimulateResponse``.
-
-    Stage (d) of ``simulate_game`` (part 2): response assembly.
-    """
+    """Assemble the final ``AnalyzeSimulateResponse``."""
     return AnalyzeSimulateResponse(
         meta=AnalyzeSimulateMeta(
             partnerMode=req.partnerMode,
@@ -285,141 +223,46 @@ def simulate_game(
 ) -> AnalyzeSimulateResponse:
     """Simulate a full Sheepshead game and return detailed analysis trace.
 
-    ``agent`` defaults to the configured server model. Offline analysis
-    passes its own (already loaded) agent to replay the same deterministic
-    path against another checkpoint; its recurrent state is reset here, so
-    one agent can be reused across calls.
+    ``agent`` defaults to the configured server model; clients of the API
+    cannot influence which file is read. The game itself is played by
+    sheepshead.agent.traced_game, the same path the research scanners run.
     """
+    settings = get_settings()
+    if agent is None:
+        agent = load_agent(settings.sheepshead_model_path)
+    sampler, _ = deployment_sampler(settings, req.seed)
+    device = default_device()
 
-    agent, settings, game = _setup_simulation(req, agent)
+    traced = play_traced_game(
+        agent,
+        seed=req.seed,
+        partner_mode=1 if req.partnerMode == 1 else 0,
+        deterministic=req.deterministic,
+        max_steps=req.maxSteps,
+        sampler=sampler,
+        device=device,
+        inference_turn=inference_turn_in_thread,
+    )
 
-    # Player display names
-    players = ANALYZE_SEAT_NAMES
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    # Trace storage
-    trace: List[AnalyzeActionDetail] = []
-    step_index = 0
-    # For reward shaping and discounted return computation
-    episode_transitions: List[Dict[str, Any]] = []
-    current_trick_transitions: List[Dict[str, Any]] = []
-    # Oracle critic event streams (per seat, chronological), collected the
-    # same way the trainer does with collect_oracle=True.
-    has_oracle = getattr(agent, "oracle_critic", None) is not None
-    oracle_events: Dict[int, List[Dict[str, Any]]] = {}
-    oracle_decision_pos: List[tuple[int, int]] = []  # aligned with trace
-    # Trick-completion observes are memory updates too; measure their drift
-    # so the memory chart shows the full update sequence.
-    memory_observes: List[AnalyzeMemoryObserve] = []
-    tricks_observed = 0
-
-    sampler, _ = deployment_sampler(get_settings(), req.seed)
-
-    # Simulation loop
-    while not game.is_done() and step_index < req.maxSteps:
-        actor_player = find_actor(game)
-        if actor_player is None:
-            # No valid actions found, game should be done
-            break
-        actor_seat = actor_player.position
-
-        inference = run_inference_step(agent, actor_player, actor_seat, players, device)
-
-        if has_oracle:
-            # Must be captured at decision time: hands shrink as cards play.
-            seq = oracle_events.setdefault(actor_seat, [])
-            oracle_decision_pos.append((actor_seat, len(seq)))
-            seq.append(actor_player.get_oracle_state_dict())
-
-        action_id = select_action_id(
-            inference.action_probs,
-            req.deterministic,
-            inference.valid_actions,
-            sampler,
+    trace = [build_action_detail(decision, agent) for decision in traced.decisions]
+    memory_observes = [
+        AnalyzeMemoryObserve(
+            afterStepIndex=o.after_step_index,
+            trick=o.trick,
+            seat=o.seat,
+            seatName=SEAT_NAMES[o.seat - 1],
+            memoryCosineDistance=o.memory_cosine_distance,
+            memoryNorm=o.memory_norm,
         )
+        for o in traced.observes
+    ]
 
-        trace.append(
-            build_action_detail(
-                step_index,
-                actor_seat,
-                players,
-                agent,
-                inference,
-                action_id,
-                build_player_state(actor_player)["view"],
-            )
-        )
+    _compute_discounted_returns(trace, traced.transitions, traced.game, agent)
+    compute_oracle_values(
+        agent, traced.oracle_events, traced.oracle_decision_pos, trace, device
+    )
+    calibration = _build_calibration_summary(trace, traced.game, list(SEAT_NAMES))
 
-        # Build training-like transition for reward shaping
-        transition = {
-            "player": actor_player,
-            "state": inference.state,
-            "action": action_id,
-            "log_prob": 0.0,
-            "value": float(inference.value.item()),
-            "valid_actions": set(inference.valid_actions),
-            "intermediate_reward": 0.0,
-        }
-
-        # Apply shared intermediate shaping and trick tracking
-        update_intermediate_rewards_for_action(
-            game,
-            actor_player,
-            action_id,
-            transition,
-            current_trick_transitions,
-        )
-
-        episode_transitions.append(transition)
-
-        # Apply action
-        actor_player.act(action_id)
-
-        # Trick completion rewards, if any
-        trick_completed = handle_trick_completion(game, current_trick_transitions)
-        if trick_completed:
-            # Propagate an observation for the just-completed trick to all seats
-            for seat in game.players:
-                memory_before = agent.get_recurrent_memory(seat.position, device=device)
-                with inference_turn_in_thread():
-                    agent.observe(
-                        last_trick_observation_for(seat, agent),
-                        player_id=seat.position,
-                    )
-                memory_after = agent.get_recurrent_memory(seat.position, device=device)
-                distance, norm = memory_drift(memory_before, memory_after)
-                memory_observes.append(
-                    AnalyzeMemoryObserve(
-                        afterStepIndex=step_index,
-                        trick=tricks_observed,
-                        seat=seat.position,
-                        seatName=players[seat.position - 1],
-                        memoryCosineDistance=distance,
-                        memoryNorm=norm,
-                    )
-                )
-                # Trainer protocol: no observation event after the final trick.
-                if has_oracle and not game.is_done():
-                    oracle_events.setdefault(seat.position, []).append(
-                        seat.get_last_trick_oracle_state_dict()
-                    )
-            tricks_observed += 1
-
-        step_index += 1
-
-    # Get final state if game is done
-    final_payload = _build_final_payload(game)
-
-    # Compute discounted returns per action if we have any transitions
-    _compute_discounted_returns(trace, episode_transitions, game, agent)
-
-    if has_oracle:
-        compute_oracle_values(agent, oracle_events, oracle_decision_pos, trace, device)
-
-    calibration = _build_calibration_summary(trace, game, players)
-
-    # Build response
     return _assemble_response(
-        req, settings, agent, calibration, trace, memory_observes, final_payload
+        req, settings, agent, calibration, trace, memory_observes, traced.final
     )

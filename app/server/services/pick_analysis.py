@@ -17,8 +17,6 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-import torch
-
 from server.api.schemas import (
     AnalyzeActionDetail,
     AnalyzePickMeta,
@@ -28,18 +26,19 @@ from server.api.schemas import (
     AnalyzePickScenario,
 )
 from server.config import get_settings
-from server.runtime.seating import ANALYZE_SEAT_NAMES
-from server.runtime.views import build_player_state
-from server.services.ai_loader import load_agent
-from server.services.analysis_common import (
-    build_action_detail,
-    deployment_sampler,
+from server.services.ai_loader import inference_turn_in_thread, load_agent
+from server.services.analysis_common import build_action_detail, deployment_sampler
+from sheepshead.agent.traced_game import (
+    SEAT_NAMES,
+    Decision,
+    default_device,
     find_actor,
     run_inference_step,
     select_action_id,
     set_seed,
 )
 from sheepshead.game import DECK, Game
+from sheepshead.views import build_player_state
 
 # Pre-play is at most 5 picks/passes + call + under + 2 buries; anything
 # past this indicates a bug rather than a legal phase sequence.
@@ -110,8 +109,8 @@ def analyze_pick(req: AnalyzePickRequest) -> AnalyzePickResponse:
     game = Game(partner_selection_mode=partner_mode, seed=req.seed)
     _apply_scenario(game, req.seat, req.hand, req.blind)
 
-    players = ANALYZE_SEAT_NAMES
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    players = SEAT_NAMES
+    device = default_device()
     scenario = AnalyzePickScenario(
         seat=req.seat,
         seatName=players[req.seat - 1],
@@ -132,7 +131,9 @@ def analyze_pick(req: AnalyzePickRequest) -> AnalyzePickResponse:
             break
         actor_seat = actor_player.position
 
-        inference = run_inference_step(agent, actor_player, actor_seat, players, device)
+        inference = run_inference_step(
+            agent, actor_player, device, inference_turn_in_thread
+        )
         action_id = select_action_id(
             inference.action_probs,
             req.deterministic,
@@ -140,17 +141,14 @@ def analyze_pick(req: AnalyzePickRequest) -> AnalyzePickResponse:
             sampler,
         )
 
-        decisions.append(
-            build_action_detail(
-                len(decisions),
-                actor_seat,
-                players,
-                agent,
-                inference,
-                action_id,
-                build_player_state(actor_player)["view"],
-            )
+        decision = Decision(
+            step_index=len(decisions),
+            seat=actor_seat,
+            action_id=action_id,
+            inference=inference,
+            view=build_player_state(actor_player)["view"],
         )
+        decisions.append(build_action_detail(decision, agent))
 
         actor_player.act(action_id)
 

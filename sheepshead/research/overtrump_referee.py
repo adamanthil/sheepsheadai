@@ -53,9 +53,8 @@ from typing import Any
 import numpy as np
 import torch
 
-from server.runtime.seating import ANALYZE_SEAT_NAMES
-from server.services.analysis_common import find_actor, run_inference_step, set_seed
 from sheepshead.agent.observation import last_trick_observation_for
+from sheepshead.agent.traced_game import find_actor, run_inference_step, set_seed
 from sheepshead.game import ACTIONS, DECK, TRUMP_POWER, Game
 from sheepshead.research.frozen_node_policy_read import (
     POINT_TRUMPS,
@@ -65,7 +64,6 @@ from sheepshead.research.scan_defender_trump_leads import load_scan_agent
 from sheepshead.rewards import RETURN_SCALE
 
 DEVICE = torch.device("cpu")
-SEATS = list(ANALYZE_SEAT_NAMES)
 
 
 def _play_id(card: str) -> int:
@@ -98,7 +96,7 @@ def _continue(game: Game, agent: Any, deterministic: bool) -> None:
         actor = find_actor(game)
         if actor is None:
             raise RuntimeError("no actor before the hand is done")
-        inf = run_inference_step(agent, actor, actor.position, SEATS, DEVICE)
+        inf = run_inference_step(agent, actor, DEVICE)
         probs = inf.action_probs.squeeze(0)
         if deterministic:
             a = int(torch.argmax(probs).item()) + 1
@@ -130,7 +128,7 @@ def referee_seed(
         actor = find_actor(game)
         if actor is None:
             raise RuntimeError(f"seed {seed}: no actor at step {step}")
-        inf = run_inference_step(agent, actor, actor.position, SEATS, DEVICE)
+        inf = run_inference_step(agent, actor, DEVICE)
         if action_id not in inf.valid_actions:
             raise RuntimeError(f"seed {seed} step {step}: trace action is illegal")
         if step in steps:
