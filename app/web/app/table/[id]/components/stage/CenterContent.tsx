@@ -3,9 +3,9 @@ import { PlayingCard, ds } from "../../../../../lib/ds";
 import type { SeatView, StageProps } from "./types";
 import styles from "../Stage.module.css";
 
-// ---------- Card / chit content for a seat ----------
+// ---------- Card content for a seat ----------
 // `w` is the card width in px; omit it (mobile) to let the CSS-driven --pc-w
-// size the card, chit and empty slot alike.
+// size the card and the empty space alike.
 export function seatCardContent(props: StageProps, seat: SeatView, w?: number) {
   const sizeVars =
     w != null
@@ -24,26 +24,11 @@ export function seatCardContent(props: StageProps, seat: SeatView, w?: number) {
         />
       );
     }
-    return <div className={styles.emptyCard} style={sizeVars} />;
   }
-  // pick / interlude → chits, driven by the seat's role so seats that
-  // haven't acted yet don't falsely read "passed".
-  let text: string;
-  if (phase === "pick") {
-    text =
-      seat.role === "PASS"
-        ? "passed"
-        : seat.role === "PENDING"
-          ? "deciding"
-          : "waiting";
-  } else {
-    text = "waiting";
-  }
-  return (
-    <div className={styles.chit} style={sizeVars}>
-      <span className={styles.chitText}>{text}</span>
-    </div>
-  );
+  // No card yet, or a decision phase: an empty, card-sized space keeps the
+  // seat's name plate where it sits once a card is played. Who passed or is
+  // deciding reads on the plate's badge.
+  return <div className={styles.emptyCard} style={sizeVars} />;
 }
 
 // ---------- Staging pieces shared by the bury and under branches ----------
@@ -135,14 +120,7 @@ export function CenterContent({
       const h = Math.round(w * 1.45);
       return (
         <>
-          {!mobile && (
-            <div
-              className={ds.overline}
-              style={{ fontSize: 10, marginBottom: 12 }}
-            >
-              Pick or pass
-            </div>
-          )}
+          <div className={styles.decisionTitle}>Pick or pass</div>
           <div className={styles.callRow}>
             {props.pickActionId != null && (
               <button
@@ -194,11 +172,6 @@ export function CenterContent({
               </button>
             )}
           </div>
-          {mobile && (
-            <div className={ds.overline} style={{ fontSize: 8, marginTop: 8 }}>
-              Pick or pass
-            </div>
-          )}
         </>
       );
     }
@@ -354,14 +327,7 @@ export function CenterContent({
     const w = mobile ? 60 : Math.round(96 * scale);
     return (
       <>
-        {!mobile && (
-          <div
-            className={ds.overline}
-            style={{ fontSize: 10, marginBottom: 12 }}
-          >
-            Choose your partner
-          </div>
-        )}
+        <div className={styles.decisionTitle}>Call a partner</div>
         <div className={styles.callRow}>
           {props.callOptions.map((o) => {
             const sel = props.selectedCall === o.label;
@@ -407,11 +373,6 @@ export function CenterContent({
             );
           })}
         </div>
-        {mobile && (
-          <div className={ds.overline} style={{ fontSize: 8, marginTop: 8 }}>
-            Call partner
-          </div>
-        )}
       </>
     );
   }

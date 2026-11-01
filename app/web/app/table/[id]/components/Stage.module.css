@@ -259,31 +259,22 @@
   margin-top: 6px;
 }
 
-/* Chits */
-/* Chits and empty card slots keep card proportions, sized off the same --pc-w
-   the cards themselves follow. */
-.chit {
-  width: var(--pc-w, 64px);
-  height: calc(var(--pc-w, 64px) * 1.45);
-  border: 1px dashed var(--rule-strong);
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: color-mix(in oklab, var(--bg-page) 60%, transparent);
-}
-.chitText {
-  font-family: var(--font-mono);
-  font-size: max(9px, calc(var(--pc-w, 64px) * 0.12));
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
+/* A seat with no card on the table: empty space with a card's proportions,
+   sized off the same --pc-w the cards follow, so name plates don't move. */
 .emptyCard {
   width: var(--pc-w, 64px);
   height: calc(var(--pc-w, 64px) * 1.45);
-  border: 1px dashed var(--rule);
-  border-radius: 4px;
+}
+
+/* The heading over a decision in the center: "Pick or pass", "Call a
+   partner". */
+.decisionTitle {
+  font-family: var(--font-display);
+  font-size: 22px;
+  line-height: 1.1;
+  color: var(--ink);
+  margin-bottom: 14px;
+  white-space: nowrap;
 }
 
 /* Callout bulletin */
@@ -365,9 +356,9 @@
     92px
   );
   /* Only the played cards claim the extra room. In the decision phases the
-     ring holds placeholder chits and the center holds the pick / bury / call
-     UI, so the chits stay small (and shrink further on a short stage) rather
-     than crowd those wide center rows. */
+     ring holds empty card-sized spaces and the center holds the pick / bury /
+     call UI, so the spaces stay small (and shrink further on a short stage)
+     rather than crowd those wide center rows. */
   --pc-w: clamp(44px, min(var(--mob-card-fit), 20cqh - 20px), 66px);
 }
 /* The top ring row hangs off the top edge rather than off a fixed percentage

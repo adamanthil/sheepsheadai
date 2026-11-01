@@ -9,9 +9,9 @@ import styles from "../Stage.module.css";
 
 // ---------- Mobile ----------
 // Card sizing is CSS-driven: the stage is a size container and Stage.module.css
-// sets --pc-w on its children from the measured box, so the ring cards, chits
-// and collect animation all follow without any JS measurement. The mobStagePlay
-// class lets the played cards grow past the decision-phase chit size.
+// sets --pc-w on its children from the measured box, so the ring cards, empty
+// seats and collect animation all follow without any JS measurement. The
+// mobStagePlay class lets the played cards grow past the decision-phase size.
 export default function MobileStage(props: StageProps) {
   const { seats } = props;
   const playing = props.phase === "play" || props.phase === "done";
