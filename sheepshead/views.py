@@ -8,7 +8,7 @@ it lives in the engine layer rather than in the app.
 
 from typing import Any, Dict
 
-from sheepshead.game import CARD_FULL_NAMES, DECK, Player
+from sheepshead.game import CARD_FULL_NAMES, DECK, UNDER_TOKEN, Player
 
 
 def build_player_state(player: Player, score_multiplier: int = 1) -> Dict[str, Any]:
@@ -27,6 +27,14 @@ def build_player_state(player: Player, score_multiplier: int = 1) -> Dict[str, A
     game = player.game
     blind_cards = list(game.blind) if player.is_picker else []
     bury_cards = list(game.bury) if player.is_picker else []
+    # A called-under picker holds the under face down until it is played;
+    # only the picker ever learns which card it is.
+    under_in_hand = (
+        player.is_picker
+        and game.is_called_under
+        and game.under_card is not None
+        and all(trick[player.position - 1] != UNDER_TOKEN for trick in game.history)
+    )
 
     hand_cards.sort(key=lambda card: DECK.index(card))
     blind_cards.sort(key=lambda card: DECK.index(card))
@@ -104,6 +112,7 @@ def build_player_state(player: Player, score_multiplier: int = 1) -> Dict[str, A
         "hand": hand_cards,
         "blind": blind_cards,
         "bury": bury_cards,
+        "under_card": game.under_card if under_in_hand else None,
         "history": game.history,
         "is_done": is_done,
         "final": final_payload,

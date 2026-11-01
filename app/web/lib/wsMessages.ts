@@ -76,6 +76,7 @@ const gameView = z.looseObject({
   called_under: z.boolean(),
   alone: z.boolean(),
   bury: z.array(z.string()).optional(),
+  under_card: z.string().nullable().optional(),
 });
 
 const tableState = z.looseObject({

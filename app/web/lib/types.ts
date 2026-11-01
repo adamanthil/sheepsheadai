@@ -82,6 +82,9 @@ export type GameView = {
   alone: boolean;
   /** The buried cards. Masked server-side: non-pickers get []. */
   bury?: string[];
+  /** The face-down under card, sent only to the picker while they still
+   * hold it; null once played and for everyone else. */
+  under_card?: string | null;
 };
 
 export type TableStateMsg = {

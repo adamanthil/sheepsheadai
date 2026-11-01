@@ -64,6 +64,7 @@ async def test_spectator_gets_public_view_only():
     view = public["view"]
     assert view["hand"] == view["blind"] == view["bury"] == []
     assert "player" not in view
+    assert "under_card" not in view
     assert view["picker"] == game.picker
     # Every card the spectator can see has actually been played.
     played = {c for trick in game.history for c in trick if c}
