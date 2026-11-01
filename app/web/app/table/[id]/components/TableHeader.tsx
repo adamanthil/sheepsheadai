@@ -2,145 +2,130 @@ import React, { useState } from "react";
 import { Wordmark, MiniCardMark, ds } from "../../../../lib/ds";
 import styles from "./TableHeader.module.css";
 
+/** Leaving the table: mid-hand, Leave first asks when. */
+export interface LeaveControls {
+  /** Seated with a hand in play: Leave offers to wait for the hand's end. */
+  canLeaveAfterHand: boolean;
+  leavingAfterHand: boolean;
+  onLeave: () => void;
+  onLeaveAfterHand: (on: boolean) => void;
+}
+
+/** The host's Close table: mid-hand, it can wait for the hand's end. */
+export interface CloseControls {
+  /** A hand is being played, so the table can close once it ends. */
+  handInPlay: boolean;
+  closingAfterHand: boolean;
+  onCloseAfterHand: (on: boolean) => void;
+  onCloseTable: () => void;
+}
+
 interface TableHeaderProps {
   roomName: string;
   rulesBadge: string | null;
   stakeBadge: string | null;
   handNumber: number;
-  phaseLabel: string;
-  connected: boolean;
   isMobile: boolean;
-  onLeave: () => void;
-  /** Seated with a hand in play: Leave offers to wait for the hand's end. */
-  canLeaveAfterHand: boolean;
-  leavingAfterHand: boolean;
-  onLeaveAfterHand: (on: boolean) => void;
+  leave: LeaveControls;
+  /** Host only. */
+  close: CloseControls | null;
   onShowScores: () => void;
   onShowCheatSheet: () => void;
-  onShowLog?: () => void;
+  /** Mobile: chat and the menu live behind header buttons. */
+  onShowChat: () => void;
+  chatUnread: boolean;
+  onShowMenu: () => void;
 }
 
-export default function TableHeader({
+/** Drawn, not typed: a text "?" sits off-centre by however the font sets
+ * its glyph. */
+function HelpGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M5.9 5.9a2.1 2.1 0 1 1 3.1 1.85c-.6.33-1 .8-1 1.45v.5" />
+      <circle cx="8" cy="11.5" r="0.8" />
+    </svg>
+  );
+}
+
+function HelpButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      className={styles.iconBtn}
+      onClick={onClick}
+      aria-label="Cheat sheet: card power and points"
+      title="Cheat sheet"
+    >
+      <span className={styles.help}>
+        <HelpGlyph />
+      </span>
+    </button>
+  );
+}
+
+export default function TableHeader(props: TableHeaderProps) {
+  if (props.isMobile) return <MobileHeader {...props} />;
+  return <DesktopHeader {...props} />;
+}
+
+function MobileHeader({
+  roomName,
+  handNumber,
+  leave,
+  close,
+  onShowCheatSheet,
+  onShowChat,
+  chatUnread,
+  onShowMenu,
+}: TableHeaderProps) {
+  // Something set to happen when the hand ends is flagged on the menu.
+  const armed = leave.leavingAfterHand || !!close?.closingAfterHand;
+  return (
+    <div className={styles.mob}>
+      <div className={styles.mobLeft}>
+        <MiniCardMark h={20} />
+        <div className={styles.mobRoom}>{roomName}</div>
+        <div className={styles.mobMeta}>H{handNumber}</div>
+      </div>
+      <div className={styles.mobRight}>
+        <HelpButton onClick={onShowCheatSheet} />
+        <button
+          type="button"
+          className={`${styles.iconBtn} ${chatUnread ? styles.dot : ""}`}
+          onClick={onShowChat}
+          aria-label={chatUnread ? "Chat, new messages" : "Chat"}
+        >
+          <svg viewBox="0 0 20 20" aria-hidden="true">
+            <path d="M3.5 4.5h13v9h-7l-4 3v-3h-2z" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          className={`${styles.iconBtn} ${armed ? styles.dot : ""}`}
+          onClick={onShowMenu}
+          aria-label="Table menu"
+          aria-haspopup="dialog"
+        >
+          <svg viewBox="0 0 20 20" aria-hidden="true">
+            <path d="M3.5 6h13M3.5 10h13M3.5 14h13" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function DesktopHeader({
   roomName,
   rulesBadge,
   stakeBadge,
   handNumber,
-  phaseLabel,
-  isMobile,
-  onLeave,
-  canLeaveAfterHand,
-  leavingAfterHand,
-  onLeaveAfterHand,
+  leave,
+  close,
   onShowScores,
   onShowCheatSheet,
-  onShowLog,
 }: TableHeaderProps) {
-  const [choosing, setChoosing] = useState(false);
-  const linkClass = isMobile ? styles.mobLink : ds.link;
-  const leaveClass = isMobile ? styles.mobLeave : `${ds.link} ${styles.leave}`;
-  const fontSize = isMobile ? undefined : 12;
-
-  // Mid-hand, Leave first asks when: now forfeits the hand to the AI, after
-  // the hand waits for it to end. Once asked for, the wait can be undone.
-  let leave: React.ReactNode;
-  if (canLeaveAfterHand && leavingAfterHand) {
-    leave = (
-      <span className={styles.leaveRow}>
-        <span className={styles.armed}>
-          {isMobile ? "Leaving after hand" : "Leaving after this hand"}
-        </span>
-        <a
-          className={linkClass}
-          style={{ fontSize }}
-          onClick={() => onLeaveAfterHand(false)}
-        >
-          Undo
-        </a>
-      </span>
-    );
-  } else if (canLeaveAfterHand && choosing) {
-    leave = (
-      <span className={styles.leaveRow}>
-        <a
-          className={linkClass}
-          style={{ fontSize }}
-          onClick={() => {
-            setChoosing(false);
-            onLeaveAfterHand(true);
-          }}
-        >
-          After this hand
-        </a>
-        <a className={leaveClass} style={{ fontSize }} onClick={onLeave}>
-          Leave now
-        </a>
-        <a
-          className={linkClass}
-          style={{ fontSize }}
-          onClick={() => setChoosing(false)}
-        >
-          Cancel
-        </a>
-      </span>
-    );
-  } else {
-    leave = (
-      <a
-        className={leaveClass}
-        style={{ fontSize }}
-        onClick={canLeaveAfterHand ? () => setChoosing(true) : onLeave}
-      >
-        Leave
-      </a>
-    );
-  }
-  const leaveExpanded = canLeaveAfterHand && choosing && !leavingAfterHand;
-
-  if (isMobile) {
-    return (
-      <div className={styles.mob}>
-        {/* The choices need the room; the table name comes back after. */}
-        {leaveExpanded ? null : (
-          <div className={styles.mobLeft}>
-            <MiniCardMark h={20} />
-            <div className={styles.mobRoom}>{roomName}</div>
-            {/* Makes room for "Leaving after hand"; the hand still shows. */}
-            {!(canLeaveAfterHand && leavingAfterHand) && (
-              <div className={styles.mobMeta}>
-                H{handNumber} · {phaseLabel}
-              </div>
-            )}
-            {stakeBadge && (
-              <span className={`${ds.badge} ${ds.badgeAccent} ${styles.stake}`}>
-                {stakeBadge}
-              </span>
-            )}
-          </div>
-        )}
-        <div className={styles.mobRight}>
-          {/* Hidden with the table name while Leave's choices take the row. */}
-          {!leaveExpanded && (
-            <button
-              type="button"
-              className={styles.mobHelp}
-              onClick={onShowCheatSheet}
-              aria-label="Cheat sheet: card power and points"
-              title="Cheat sheet"
-            >
-              {/* Drawn, not typed: a text "?" sits off-centre by however
-                  the font sets its glyph. */}
-              <svg viewBox="0 0 16 16" aria-hidden="true">
-                <path d="M5.9 5.9a2.1 2.1 0 1 1 3.1 1.85c-.6.33-1 .8-1 1.45v.5" />
-                <circle cx="8" cy="11.5" r="0.8" />
-              </svg>
-            </button>
-          )}
-          {leave}
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className={styles.desk}>
       <div className={styles.deskLeft}>
@@ -161,33 +146,135 @@ export default function TableHeader({
           <span className={ds.overline}>Hand</span>
           <span className={styles.statNum}>{handNumber}</span>
         </div>
-        <div className={styles.stat}>
-          <span className={ds.overline}>Phase</span>
-          <span className={styles.phase}>{phaseLabel}</span>
-        </div>
         <div className={styles.links}>
-          <a
-            className={ds.link}
-            style={{ fontSize: 12 }}
-            onClick={onShowCheatSheet}
-          >
-            Cheat sheet
-          </a>
-          <a
-            className={ds.link}
-            style={{ fontSize: 12 }}
-            onClick={onShowScores}
-          >
+          <HelpButton onClick={onShowCheatSheet} />
+          <button type="button" className={styles.link} onClick={onShowScores}>
             Scores
-          </a>
-          {onShowLog && (
-            <a className={ds.link} style={{ fontSize: 12 }} onClick={onShowLog}>
-              Chat
-            </a>
-          )}
-          {leave}
+          </button>
+          {close && <DesktopClose close={close} />}
+          <DesktopLeave leave={leave} />
         </div>
       </div>
     </div>
+  );
+}
+
+// Mid-hand, Leave first asks when: now forfeits the hand to the AI, after
+// the hand waits for it to end. Once asked for, the wait can be undone.
+function DesktopLeave({ leave }: { leave: LeaveControls }) {
+  const [choosing, setChoosing] = useState(false);
+  if (leave.canLeaveAfterHand && leave.leavingAfterHand) {
+    return (
+      <span className={styles.choiceRow}>
+        <span className={styles.armed}>Leaving after this hand</span>
+        <button
+          type="button"
+          className={styles.link}
+          onClick={() => leave.onLeaveAfterHand(false)}
+        >
+          Undo
+        </button>
+      </span>
+    );
+  }
+  if (leave.canLeaveAfterHand && choosing) {
+    return (
+      <span className={styles.choiceRow}>
+        <button
+          type="button"
+          className={styles.link}
+          onClick={() => {
+            setChoosing(false);
+            leave.onLeaveAfterHand(true);
+          }}
+        >
+          After this hand
+        </button>
+        <button
+          type="button"
+          className={`${styles.link} ${styles.danger}`}
+          onClick={leave.onLeave}
+        >
+          Leave now
+        </button>
+        <button
+          type="button"
+          className={styles.link}
+          onClick={() => setChoosing(false)}
+        >
+          Cancel
+        </button>
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className={`${styles.link} ${styles.danger}`}
+      onClick={
+        leave.canLeaveAfterHand ? () => setChoosing(true) : leave.onLeave
+      }
+    >
+      Leave
+    </button>
+  );
+}
+
+function DesktopClose({ close }: { close: CloseControls }) {
+  const [confirming, setConfirming] = useState(false);
+  if (close.closingAfterHand) {
+    return (
+      <span className={styles.choiceRow}>
+        <span className={styles.armed}>Table ends after this hand</span>
+        <button
+          type="button"
+          className={styles.link}
+          onClick={() => close.onCloseAfterHand(false)}
+        >
+          Undo
+        </button>
+      </span>
+    );
+  }
+  if (confirming) {
+    return (
+      <span className={styles.choiceRow}>
+        {close.handInPlay && (
+          <button
+            type="button"
+            className={styles.link}
+            onClick={() => {
+              setConfirming(false);
+              close.onCloseAfterHand(true);
+            }}
+          >
+            End after this hand
+          </button>
+        )}
+        <button
+          type="button"
+          className={`${styles.link} ${styles.danger}`}
+          onClick={close.onCloseTable}
+        >
+          {close.handInPlay ? "Close now" : "Confirm close"}
+        </button>
+        <button
+          type="button"
+          className={styles.link}
+          onClick={() => setConfirming(false)}
+        >
+          Cancel
+        </button>
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className={`${styles.link} ${styles.danger}`}
+      onClick={() => setConfirming(true)}
+    >
+      Close table
+    </button>
   );
 }

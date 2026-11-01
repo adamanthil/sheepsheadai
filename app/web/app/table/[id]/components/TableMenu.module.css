@@ -1,0 +1,123 @@
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: color-mix(in oklab, var(--ink) 38%, transparent);
+}
+.sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 51;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 0 max(16px, env(safe-area-inset-bottom));
+  background: var(--bg-card);
+  border-radius: 14px 14px 0 0;
+  box-shadow: var(--shadow-2);
+}
+.grab {
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--rule);
+  align-self: center;
+}
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 20px 14px;
+  border-bottom: 1px solid var(--bg-page-deep);
+}
+.titleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.title {
+  font-family: var(--font-display);
+  font-size: 24px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rules {
+  align-self: flex-start;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 52px;
+  padding: 0 20px;
+  border: 0;
+  background: none;
+  font-family: var(--font-ui);
+  font-size: 15px;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+button.row:focus-visible {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: -2px;
+}
+.row svg {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* A follow-up choice under the row that opened it, indented past its icon. */
+.sub {
+  padding-left: 54px;
+}
+.grow {
+  flex: 1;
+}
+.note {
+  font-size: 12px;
+  color: var(--muted);
+}
+.danger {
+  color: var(--accent-2);
+}
+.armed {
+  flex: 1;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 16px;
+  color: var(--accent-2);
+}
+.inline {
+  padding: 8px 0 8px 12px;
+  border: 0;
+  background: none;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--rule-strong);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.rule {
+  height: 1px;
+  margin: 6px 0;
+  background: var(--bg-page-deep);
+}
+.cancel {
+  color: var(--muted);
+  justify-content: center;
+  text-align: center;
+}

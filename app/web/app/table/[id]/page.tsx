@@ -33,7 +33,6 @@ import {
   computeHandNumber,
   computeHasLastTrick,
   computePrevText,
-  computeLastMessage,
 } from "./lib/tableSelectors";
 import {
   useTableSocket,
@@ -45,6 +44,7 @@ import GameOverBanner from "./components/GameOverBanner";
 import ScoresOverlay from "./components/ScoresOverlay";
 import CheatSheet from "../../how-to-play/CheatSheet";
 import TableHeader from "./components/TableHeader";
+import TableMenu from "./components/TableMenu";
 import Stage from "./components/Stage";
 import PlayerHand from "./components/PlayerHand";
 import ActionBar from "./components/ActionBar";
@@ -53,16 +53,6 @@ import RightRail from "./components/RightRail";
 import MobileLogScreen from "./components/MobileLogScreen";
 
 const TOTAL_TRICKS = 6;
-
-const PHASE_LABEL = {
-  pick: "Pick or pass",
-  bury: "Bury 2 cards",
-  call: "Call partner",
-  under: "Tuck a card under",
-  setup: "Setting up",
-  play: "Play a card",
-  done: "Hand over",
-} as const;
 
 const HELPER = {
   pick: "Pick the blind, or pass the buck.",
@@ -147,9 +137,25 @@ export default function TablePage() {
   const secondsLeft = useCountdown(turnDeadline);
   const mutes = useChatMutes(params?.id);
   const [showScores, setShowScores] = useState(false);
-  const [confirmClose, setConfirmClose] = useState(false);
   const [showMobileLog, setShowMobileLog] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
   const [showCheatSheet, setShowCheatSheet] = useState(false);
+
+  // Chat's unread dot counts only what other players type, never the game
+  // log. The first batch is the history the table had when we arrived, and
+  // opening the chat reads everything in it.
+  const playerMessages = mutes
+    .visible(chatMessages)
+    .filter((m) => m.type === "player" && m.author_id !== clientId).length;
+  const [seenMessages, setSeenMessages] = useState<number | null>(null);
+  if (
+    chatMessages.length > 0 &&
+    (seenMessages === null ||
+      (showMobileLog && seenMessages !== playerMessages))
+  ) {
+    setSeenMessages(playerMessages);
+  }
+  const chatUnread = seenMessages !== null && playerMessages > seenMessages;
 
   const isYourTurn = !!lastState && computeIsYourTurn(lastState);
   const isHost = lastState ? computeIsHost(lastState) : false;
@@ -254,7 +260,6 @@ export default function TablePage() {
   const prevText = computePrevText(showPrev, hasLastTrick, view, table);
 
   const shownChat = mutes.visible(chatMessages);
-  const lastMessage = computeLastMessage(shownChat);
 
   // Host-only Remove for another human, offered on scoreboard rows and on
   // chat authors (the only place an unseated spectator shows up).
@@ -383,14 +388,6 @@ export default function TablePage() {
         hasLastTrick={hasLastTrick}
         showPrev={showPrev}
         onTogglePrev={() => setShowPrev(!showPrev)}
-        onShowScores={() => setShowScores(true)}
-        isHost={isHost}
-        confirmClose={confirmClose}
-        onConfirmClose={setConfirmClose}
-        onCloseTable={closeTable}
-        handInPlay={handInPlay}
-        closingAfterHand={table.closingAfterHand}
-        onCloseAfterHand={(on) => void setCloseAfterHand(on)}
         isMobile={isMobile}
         secondsLeft={secondsLeft}
       />
@@ -476,23 +473,36 @@ export default function TablePage() {
     </>
   );
 
+  const leave = {
+    canLeaveAfterHand: handInPlay && yourSeat !== null && !departure,
+    leavingAfterHand:
+      yourSeat !== null && !!table.seatLeavingAfterHand[String(yourSeat)],
+    onLeave: () => router.push("/"),
+    onLeaveAfterHand: (on: boolean) => void setLeaveAfterHand(on),
+  };
+  const close = isHost
+    ? {
+        handInPlay,
+        closingAfterHand: table.closingAfterHand,
+        onCloseAfterHand: (on: boolean) => void setCloseAfterHand(on),
+        onCloseTable: () => void closeTable(),
+      }
+    : null;
+
   const header = (
     <TableHeader
       roomName={table.name}
       rulesBadge={rulesBadge}
       stakeBadge={stakeBadge}
       handNumber={handNumber}
-      phaseLabel={PHASE_LABEL[kind]}
-      connected={connected}
       isMobile={isMobile}
-      onLeave={() => router.push("/")}
-      canLeaveAfterHand={handInPlay && yourSeat !== null && !departure}
-      leavingAfterHand={
-        yourSeat !== null && !!table.seatLeavingAfterHand[String(yourSeat)]
-      }
-      onLeaveAfterHand={(on) => void setLeaveAfterHand(on)}
+      leave={leave}
+      close={close}
       onShowScores={() => setShowScores(true)}
       onShowCheatSheet={() => setShowCheatSheet(true)}
+      onShowChat={() => setShowMobileLog(true)}
+      chatUnread={chatUnread}
+      onShowMenu={() => setShowMenu(true)}
     />
   );
 
@@ -517,14 +527,20 @@ export default function TablePage() {
         {header}
         <div className={styles.mobBody}>
           {stage}
-          <div className={styles.ribbon} onClick={() => setShowMobileLog(true)}>
-            <span className={styles.ribbonTag}>Last</span>
-            <span className={styles.ribbonLast}>{lastMessage}</span>
-            <span className={styles.ribbonLink}>Log &amp; Chat ↗</span>
-          </div>
           {hand}
           {actionBar}
         </div>
+        {showMenu && (
+          <TableMenu
+            roomName={table.name}
+            rulesBadge={rulesBadge}
+            stakeBadge={stakeBadge}
+            onShowScores={() => setShowScores(true)}
+            leave={leave}
+            close={close}
+            onClose={() => setShowMenu(false)}
+          />
+        )}
         {overlays}
       </div>
     );

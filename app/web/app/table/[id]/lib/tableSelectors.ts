@@ -1,9 +1,4 @@
-import type {
-  ChatMessage,
-  GameView,
-  TableStateMsg,
-  TableView,
-} from "../../../../lib/types";
+import type { GameView, TableStateMsg, TableView } from "../../../../lib/types";
 import { parseCard } from "../../../../lib/ds";
 import { gameModeLabel, scoringModeLabel } from "../../../../lib/rules";
 import { accountForSeat, nameForSeat, isAiSeat } from "../utils/seatMath";
@@ -170,12 +165,4 @@ export function computePrevText(
 ): string | null {
   if (!(showPrev && hasLastTrick)) return null;
   return `Trick to ${nameForSeat(view.last_trick_winner, table)} · ${view.last_trick_points ?? 0} pts`;
-}
-
-export function computeLastMessage(chatMessages: ChatMessage[]): string {
-  const last = chatMessages[chatMessages.length - 1];
-  if (!last) return "Hand in progress";
-  return last.type === "system" && last.author
-    ? `${last.author} ${last.body}`
-    : last.body;
 }
