@@ -2,21 +2,32 @@ import React from "react";
 import { ds } from "../../../../lib/ds";
 import type { TableView } from "../../../../lib/types";
 import { isAiSeat, isTakeableSeat, nameForSeat } from "../utils/seatMath";
-import { TurnClock } from "./ActionBar";
-import styles from "./ActionBar.module.css";
+import styles from "./SpectatorBar.module.css";
+
+/** Seconds left on the acting player's turn clock, red for the last 5. */
+function TurnClock({ secondsLeft }: { secondsLeft: number | null }) {
+  if (secondsLeft === null) return null;
+  return (
+    <span
+      className={`${styles.clock} ${secondsLeft <= 5 ? styles.clockUrgent : ""}`}
+      aria-label={`${secondsLeft} seconds left to move`}
+    >
+      {secondsLeft}s
+    </span>
+  );
+}
 
 interface SpectatorBarProps {
   table: TableView;
   actorName: string;
   onTakeSeat: (seat: number) => void;
-  onShowScores: () => void;
   isMobile: boolean;
   secondsLeft: number | null;
   /** Set when the turn clock moved this spectator out of a seat. */
   homeOccupant?: string | null;
 }
 
-/** Stands in for the ActionBar while you watch: one button per AI seat
+/** Stands in for the hand while you watch: one button per AI seat
  * that was dealt to the AI, each taking over that AI's hand where it
  * stands. A player the turn clock moved out is offered only their own seat
  * back while its AI still holds it (the server enforces both rules). */
@@ -47,15 +58,6 @@ export default function SpectatorBar(props: SpectatorBarProps) {
         : `Take seat ${seat} · ${nameForSeat(seat, props.table)}`}
     </button>
   ));
-  const scores = (
-    <button
-      className={`${ds.btn} ${ds.btnGhost} ${ds.btnSm}`}
-      onClick={props.onShowScores}
-    >
-      Scores
-    </button>
-  );
-
   if (props.isMobile) {
     return (
       <div className={styles.mob}>
@@ -64,7 +66,6 @@ export default function SpectatorBar(props: SpectatorBarProps) {
           <TurnClock secondsLeft={props.secondsLeft} />
         </div>
         <div className={styles.mobRow}>{seatButtons}</div>
-        <div className={styles.mobRow}>{scores}</div>
       </div>
     );
   }
@@ -81,7 +82,6 @@ export default function SpectatorBar(props: SpectatorBarProps) {
         ) : (
           <span className={styles.helper}>No seats to take over this hand</span>
         )}
-        {scores}
       </div>
     </div>
   );

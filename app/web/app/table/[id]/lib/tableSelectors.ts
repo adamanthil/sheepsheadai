@@ -157,12 +157,57 @@ export function computeHasLastTrick(view: GameView): boolean {
   return view.last_trick?.length === 5;
 }
 
-export function computePrevText(
+/** One piece of the context line: plain text, or a card drawn in its suit's
+ * colour. Kept apart so a player's name is never read as a card code. */
+export type ContextPart = string | { card: string };
+
+/**
+ * The line under the table: the one fact about this hand worth keeping in
+ * view, e.g. "A♣ called", "A♥ called under · Trevor is partner", "J♦
+ * partner", "Kyle goes alone", "Leaster", followed by the doubler when one
+ * is on. While the last trick is shown it says only that.
+ */
+export function computeContext(
+  lastState: TableStateMsg,
+  phase: TablePhase,
   showPrev: boolean,
-  hasLastTrick: boolean,
-  view: GameView,
-  table: TableView,
-): string | null {
-  if (!(showPrev && hasLastTrick)) return null;
-  return `Trick to ${nameForSeat(view.last_trick_winner, table)} · ${view.last_trick_points ?? 0} pts`;
+): ContextPart[] {
+  if (showPrev) return ["Last trick"];
+  const { view, table, yourSeat } = lastState;
+  const picker = view.picker || 0;
+  const partner = view.partner || 0;
+  const who = (seat: number) =>
+    seat === yourSeat ? "You" : nameForSeat(seat, table);
+  const partnerText = partner
+    ? partner === yourSeat
+      ? "you are partner"
+      : `${nameForSeat(partner, table)} is partner`
+    : null;
+  const jdMode = table.rules?.partnerMode === 0;
+
+  const facts: ContextPart[][] = [];
+  if (view.is_leaster) {
+    facts.push(["Leaster"]);
+  } else if (picker) {
+    if (view.alone) {
+      facts.push([
+        `${who(picker)} ${picker === yourSeat ? "go" : "goes"} alone`,
+      ]);
+    } else if (view.called_card) {
+      facts.push([
+        { card: view.called_card },
+        view.called_under ? " called under" : " called",
+      ]);
+      if (partnerText) facts.push([partnerText]);
+    } else if (jdMode && phase !== "interlude") {
+      facts.push([{ card: "JD" }, " partner"]);
+      if (partnerText) facts.push([partnerText]);
+    } else {
+      facts.push([`${who(picker)} picked`]);
+    }
+  }
+  const stake = stakeBadgeText(table.scoreMultiplier);
+  if (stake) facts.push([stake]);
+
+  return facts.flatMap((fact, i) => (i === 0 ? fact : [" · ", ...fact]));
 }

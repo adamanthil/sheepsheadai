@@ -3,7 +3,7 @@ import { PlayingCard } from "../../../../../lib/ds";
 import { MOBILE_RING_ANCHORS } from "../../lib/seatLayout";
 import CollectOverlay from "../CollectOverlay";
 import { CenterContent, seatCardContent } from "./CenterContent";
-import { RingChip, roleName } from "./chrome";
+import { LastTrickButton, RingChip, roleName, showLastTrick } from "./chrome";
 import type { StageProps } from "./types";
 import styles from "../Stage.module.css";
 
@@ -108,6 +108,12 @@ export default function MobileStage(props: StageProps) {
         />
       )}
 
+      {showLastTrick(props) && (
+        <LastTrickButton
+          showPrev={props.showPrev}
+          onToggle={props.onTogglePrev}
+        />
+      )}
       {props.callout && <div className={styles.callout}>{props.callout}</div>}
     </div>
   );

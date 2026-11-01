@@ -122,7 +122,7 @@ export function CenterContent({
   props: StageProps;
   mobile?: boolean;
 }) {
-  const { phase, isYourTurn, yourMode, trickIndex, totalTricks } = props;
+  const { phase, yourMode, trickIndex, totalTricks } = props;
   const scale = mobile ? 1 : (props.uiScale ?? 1);
 
   if (phase === "pick") {
@@ -420,26 +420,13 @@ export function CenterContent({
     return <div className={styles.centerSub}>Setting up the hand…</div>;
   }
 
-  // play / done
-  const label = props.isLeaster
-    ? "Leaster"
-    : `Trick ${Math.min(trickIndex + 1, totalTricks)} of ${totalTricks}`;
+  // play / done. Whose turn it is and the hand's mode (leaster, the call)
+  // read on the status line under the table; the middle keeps the count.
+  // While the last trick is shown, the count is that trick's.
+  const shown = props.showPrev ? trickIndex : trickIndex + 1;
   return (
-    <>
-      <div className={ds.overline} style={{ fontSize: mobile ? 8 : 10 }}>
-        {label}
-      </div>
-      {isYourTurn && (
-        <div className={styles.turnPill} style={{ marginTop: mobile ? 4 : 8 }}>
-          <span className={styles.turnDot} />
-          <span
-            className={styles.turnText}
-            style={{ fontSize: mobile ? 9 : 10 }}
-          >
-            your turn
-          </span>
-        </div>
-      )}
-    </>
+    <div className={ds.overline} style={{ fontSize: mobile ? 8 : 10 }}>
+      Trick {Math.min(Math.max(shown, 1), totalTricks)} of {totalTricks}
+    </div>
   );
 }

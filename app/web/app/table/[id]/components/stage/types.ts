@@ -34,15 +34,15 @@ export interface StageProps {
   seats: SeatView[];
   yourSeat: number;
   phase: TablePhase;
-  isLeaster: boolean;
   yourMode: InterludeMode;
-  isYourTurn: boolean;
   trickIndex: number;
   totalTricks: number;
   displayCards: string[]; // current_trick, or last_trick when showing prev
   winnerSeat: number | null;
   showPrev: boolean;
-  prevText: string | null;
+  /** A trick has been played, so the last one can be shown. */
+  hasLastTrick: boolean;
+  onTogglePrev: () => void;
   callOptions: CallOption[];
   selectedCall: string | null;
   onAction: (actionId: number) => void;

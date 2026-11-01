@@ -8,7 +8,7 @@ import { useCountdown } from "../../../lib/hooks/useCountdown";
 import { useChatMutes } from "../../../lib/hooks/useChatMutes";
 import { ds, useIsMobile, useMediaQuery } from "../../../lib/ds";
 import styles from "./page.module.css";
-import { accountForSeat, isAiSeat, nameForSeat } from "./utils/seatMath";
+import { isAiSeat, nameForSeat } from "./utils/seatMath";
 import { RemovePlayerButton } from "../../components/RemovePlayerButton";
 import type { ChatMessage } from "../../../lib/types";
 import {
@@ -32,7 +32,7 @@ import {
   computeWinnerSeat,
   computeHandNumber,
   computeHasLastTrick,
-  computePrevText,
+  computeContext,
 } from "./lib/tableSelectors";
 import {
   useTableSocket,
@@ -47,21 +47,22 @@ import TableHeader from "./components/TableHeader";
 import TableMenu from "./components/TableMenu";
 import Stage from "./components/Stage";
 import PlayerHand from "./components/PlayerHand";
-import ActionBar from "./components/ActionBar";
+import TableStatus from "./components/TableStatus";
 import SpectatorBar from "./components/SpectatorBar";
 import RightRail from "./components/RightRail";
 import MobileLogScreen from "./components/MobileLogScreen";
 
 const TOTAL_TRICKS = 6;
 
-const HELPER = {
-  pick: "Pick the blind, or pass the buck.",
-  bury: "Choose two cards to bury, then confirm.",
-  call: "Choose your partner ace, or go alone.",
-  under: "Choose the card to tuck under, then confirm.",
-  play: "Tap a highlighted card to play.",
-  setup: "Setting up the hand…",
-  done: "Hand complete.",
+// The turn line's word for what your turn asks of you.
+const TURN_LABEL = {
+  pick: "Your pick",
+  bury: "Bury 2 cards",
+  call: "Your call",
+  under: "Choose the under",
+  play: "Your play",
+  setup: "Your move",
+  done: "Your move",
 } as const;
 
 export default function TablePage() {
@@ -101,6 +102,7 @@ export default function TablePage() {
     departure,
     lastState,
     turnDeadline,
+    turnSeconds,
     actionLookup,
     chatMessages,
     takeAction,
@@ -240,10 +242,10 @@ export default function TablePage() {
   // Spectators (yourSeat null) watch the ring from seat 1's point of view.
   const viewSeat = yourSeat ?? 1;
   const started = playStartedFn(lastState);
-  const { phase, isLeaster } = derivePhase(lastState);
+  const { phase } = derivePhase(lastState);
   const yourMode = interludeMode(validActionStrings);
 
-  // The "kind" used for labels/helper text.
+  // What your turn asks of you, for the turn line.
   const kind = computeKind(phase, yourMode);
 
   const seats = buildSeats(lastState, table, yourSeat, started);
@@ -257,7 +259,7 @@ export default function TablePage() {
   const stakeBadge = stakeBadgeText(table.scoreMultiplier);
   const hasLastTrick = computeHasLastTrick(view);
   const handInPlay = table.status === "playing" && !view.is_done;
-  const prevText = computePrevText(showPrev, hasLastTrick, view, table);
+  const context = computeContext(lastState, phase, showPrev);
 
   const shownChat = mutes.visible(chatMessages);
 
@@ -309,15 +311,14 @@ export default function TablePage() {
       seats={seats}
       yourSeat={viewSeat}
       phase={phase}
-      isLeaster={isLeaster}
       yourMode={yourMode}
-      isYourTurn={isYourTurn}
       trickIndex={view.current_trick_index}
       totalTricks={TOTAL_TRICKS}
       displayCards={displayCards}
       winnerSeat={winnerSeat}
       showPrev={showPrev}
-      prevText={prevText}
+      hasLastTrick={hasLastTrick}
+      onTogglePrev={() => setShowPrev(!showPrev)}
       callOptions={callOptions}
       selectedCall={null}
       onAction={takeAction}
@@ -340,8 +341,7 @@ export default function TablePage() {
 
   // A spectator has no hand. On desktop the stage is fixed-height and the
   // hand fills the rest of the column, so a spacer takes its place to keep
-  // seat 1's name plate (drawn where "you" would sit) clear of the bar
-  // below; on mobile the stage itself absorbs the space.
+  // the SpectatorBar at the bottom; on mobile the stage absorbs the space.
   const hand =
     yourSeat === null ? (
       !isMobile && <div className={styles.spectatorSpacer} aria-hidden="true" />
@@ -350,48 +350,51 @@ export default function TablePage() {
         hand={view.hand}
         hasUnder={!!view.under_card}
         isYourTurn={isYourTurn}
-        phase={phase}
-        yourMode={yourMode}
+        dimUnplayable={phase === "play" && isYourTurn}
         validActionStrings={validActionStrings}
         onCardClick={handleCardClick}
         stagedCards={stagedCards}
-        yourRole={yourRole}
-        isDealer={yourSeat === DEALER_SEAT}
         isMobile={isMobile}
         uiScale={uiScale}
       />
     );
 
-  const actionBar =
-    yourSeat === null ? (
-      <SpectatorBar
-        table={table}
-        actorName={nameForSeat(lastState.actorSeat, table)}
-        onTakeSeat={(seat) => void takeSeat(seat)}
-        onShowScores={() => setShowScores(true)}
-        isMobile={isMobile}
-        secondsLeft={secondsLeft}
-        homeOccupant={lastState.homeOccupant}
-      />
-    ) : (
-      <ActionBar
-        yourName={nameForSeat(yourSeat, table)}
-        yourAccount={accountForSeat(yourSeat, table)}
-        yourSeat={yourSeat}
-        yourRole={yourRole}
-        isYourTurn={isYourTurn}
-        actorName={nameForSeat(lastState.actorSeat, table)}
-        helper={HELPER[kind]}
-        validActions={lastState.valid_actions}
-        actionLookup={actionLookup}
-        onTakeAction={takeAction}
-        hasLastTrick={hasLastTrick}
-        showPrev={showPrev}
-        onTogglePrev={() => setShowPrev(!showPrev)}
-        isMobile={isMobile}
-        secondsLeft={secondsLeft}
-      />
-    );
+  const actorSeat = lastState.actorSeat;
+  const status = (
+    <TableStatus
+      context={context}
+      clock={
+        turnDeadline !== null && turnSeconds !== null
+          ? { deadline: turnDeadline, totalSeconds: turnSeconds }
+          : null
+      }
+      secondsLeft={secondsLeft}
+      isMobile={isMobile}
+      turn={
+        yourSeat === null
+          ? null
+          : {
+              isYourTurn,
+              yourLabel: TURN_LABEL[kind],
+              actorName:
+                actorSeat && !isYourTurn ? nameForSeat(actorSeat, table) : null,
+              role: yourRole,
+              isDealer: yourSeat === DEALER_SEAT,
+            }
+      }
+    />
+  );
+
+  const spectatorBar = yourSeat === null && (
+    <SpectatorBar
+      table={table}
+      actorName={nameForSeat(actorSeat, table)}
+      onTakeSeat={(seat) => void takeSeat(seat)}
+      isMobile={isMobile}
+      secondsLeft={secondsLeft}
+      homeOccupant={lastState.homeOccupant}
+    />
+  );
 
   const overlays = (
     <>
@@ -527,8 +530,9 @@ export default function TablePage() {
         {header}
         <div className={styles.mobBody}>
           {stage}
+          {status}
           {hand}
-          {actionBar}
+          {spectatorBar}
         </div>
         {showMenu && (
           <TableMenu
@@ -558,8 +562,9 @@ export default function TablePage() {
             aria-label={connected ? "Connected" : "Disconnected"}
           />
           {stage}
+          {status}
           {hand}
-          {actionBar}
+          {spectatorBar}
         </div>
         <RightRail
           table={table}

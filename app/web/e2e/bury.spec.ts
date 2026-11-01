@@ -43,5 +43,5 @@ test("staged bury: stage, put back, confirm", async ({ page }) => {
   // Re-stage and confirm: both BURY actions land and play starts.
   await clickableCards.first().click();
   await confirm.click();
-  await expect(page.getByText("Play a card")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Your play")).toBeVisible({ timeout: 15_000 });
 });

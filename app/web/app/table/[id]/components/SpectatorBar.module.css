@@ -10,21 +10,6 @@
   background: var(--bg-page);
   flex-shrink: 0;
 }
-.deskWho {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-.whoName {
-  font-family: var(--font-display);
-  font-size: 20px;
-}
-.whoSub {
-  font-family: var(--font-display);
-  font-style: italic;
-  font-size: 13px;
-  color: var(--muted);
-}
 .deskRight {
   display: flex;
   gap: 10px;
@@ -75,63 +60,11 @@
   justify-content: center;
   flex-wrap: wrap;
 }
-/* During play the primary row is empty (cards are played from the hand); an
-   empty row would still cost a flex gap, which the ring stage needs more. */
-.mobRow:empty {
-  display: none;
-}
-/* Slightly shorter buttons than the shared .btn: the bar sits under the hand
-   on every phone, so its height comes straight out of the ring stage. */
+/* Slightly shorter buttons than the shared .btn: the bar sits under the
+   table on every phone, so its height comes straight out of the ring stage. */
 .mob button {
   padding-top: 8px;
   padding-bottom: 8px;
-}
-
-.utilRow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-}
-/* Close table and its expanded choices, divided from the buttons before. */
-.closeGroup {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  padding-left: 12px;
-  margin-left: 4px;
-  border-left: 1px solid var(--rule);
-}
-/* Closing now ends the table for everyone, mid-hand or not. */
-.dangerBtn {
-  background: var(--accent-2);
-  border-color: var(--accent-2);
-  color: var(--card-paper);
-}
-@media (hover: hover) {
-  .dangerBtn:hover {
-    background: var(--accent-2-soft);
-    border-color: var(--accent-2-soft);
-  }
-}
-/* On a phone the expanded group wraps onto its own line, which sets it
-   apart already; a divider there would dangle at the line's start. */
-.mob .closeGroup {
-  padding-left: 0;
-  margin-left: 0;
-  border-left: none;
-}
-/* A close the host asked for once the hand ends. */
-.armed {
-  font-family: var(--font-display);
-  font-style: italic;
-  font-size: 13px;
-  color: var(--accent-2);
-}
-.dangerLink {
-  color: var(--accent-2);
-  border-color: transparent;
 }
 
 /* Turn clock (runtime/turn_timer on the server): seconds left to move. */

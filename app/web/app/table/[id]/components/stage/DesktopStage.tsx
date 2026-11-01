@@ -3,7 +3,7 @@ import { PlayingCard } from "../../../../../lib/ds";
 import { RING_ANCHORS } from "../../lib/seatLayout";
 import CollectOverlay from "../CollectOverlay";
 import { CenterContent, seatCardContent } from "./CenterContent";
-import { RingChip, roleName } from "./chrome";
+import { LastTrickButton, RingChip, roleName, showLastTrick } from "./chrome";
 import type { StageProps } from "./types";
 import styles from "../Stage.module.css";
 
@@ -80,9 +80,6 @@ export default function DesktopStage(props: StageProps) {
           </div>
         )}
 
-        {props.showPrev && props.prevText && !props.animTrick && (
-          <div className={styles.prevBanner}>{props.prevText}</div>
-        )}
         {props.animTrick && (
           <CollectOverlay
             yourSeat={yourSeat}
@@ -94,6 +91,13 @@ export default function DesktopStage(props: StageProps) {
         )}
         {props.callout && <div className={styles.callout}>{props.callout}</div>}
       </div>
+      {showLastTrick(props) && (
+        <LastTrickButton
+          showPrev={props.showPrev}
+          onToggle={props.onTogglePrev}
+          withLabel
+        />
+      )}
     </div>
   );
 }

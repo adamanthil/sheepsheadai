@@ -172,29 +172,6 @@
 }
 
 /* Center pieces */
-.turnPill {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  background: var(--bg-page);
-  padding: 6px 14px;
-  border: 1px solid var(--accent-2);
-  border-radius: 999px;
-}
-.turnDot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--accent-2);
-  animation: ssPulse 1.6s ease-in-out infinite;
-}
-.turnText {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--ink);
-}
 .centerSub {
   font-family: var(--font-display);
   font-style: italic;
@@ -307,24 +284,6 @@
   height: calc(var(--pc-w, 64px) * 1.45);
   border: 1px dashed var(--rule);
   border-radius: 4px;
-}
-
-/* Prev-trick banner */
-.prevBanner {
-  position: absolute;
-  left: 50%;
-  bottom: 6px;
-  transform: translateX(-50%);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.1em;
-  color: var(--muted);
-  background: var(--bg-page);
-  padding: 4px 10px;
-  border: 1px solid var(--rule);
-  border-radius: 3px;
-  white-space: nowrap;
-  z-index: 4;
 }
 
 /* Callout bulletin */
@@ -440,4 +399,71 @@
   flex-direction: column;
   align-items: center;
   pointer-events: none;
+}
+
+/* Last trick: a 44px tap target drawn as a small glyph in the table's
+   colour, so it reads as part of the table rather than a control. It
+   darkens on a disc while the last trick is showing. */
+.lastTrick {
+  position: absolute;
+  left: 4px;
+  bottom: 2px;
+  z-index: 4;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--rule-strong);
+  cursor: pointer;
+  isolation: isolate;
+}
+.lastTrick svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.lastTrickOn {
+  color: var(--ink-soft);
+}
+.lastTrickOn::before {
+  content: "";
+  position: absolute;
+  left: 7px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--bg-page-deep);
+  z-index: -1;
+}
+.lastTrick:focus-visible {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: -6px;
+  border-radius: 8px;
+}
+.lastTrickWide {
+  left: 0;
+  bottom: 0;
+  width: auto;
+  justify-content: flex-start;
+  padding: 0 10px 0 14px;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+.lastTrickWide svg {
+  color: var(--rule-strong);
+}
+.lastTrickWide.lastTrickOn svg {
+  color: var(--ink-soft);
 }

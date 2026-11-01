@@ -5,53 +5,13 @@
 .deskWrap {
   flex: 1;
   min-height: 0;
-  justify-content: flex-end;
-  padding-top: 12px;
   padding-bottom: 8px;
 }
 .mobWrap {
-  padding: 10px 12px 8px;
+  /* The hand is the last thing on a phone screen: keep the cards clear of
+     the bottom edge, where a touch starts a browser gesture, not a tap. */
+  padding: 0 12px max(12px, env(safe-area-inset-bottom));
   flex-shrink: 0;
-}
-
-.metaRow {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-/* Mobile reads the meta row as one line: the overline beside the badges. */
-.mobWrap .metaRow {
-  align-items: center;
-  margin-bottom: 8px;
-}
-.overline {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.badges {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-}
-/* Pin the badge strip to one badge's height (13px line + 5px padding + 2px
-   border) whether or not a badge is showing. On one line the meta row is
-   otherwise only as tall as its overline, so YOUR TURN appearing would grow
-   it and shrink the ring stage's cards with every turn. */
-.mobWrap .badges {
-  height: 20px;
-}
-.metaText {
-  font-family: var(--font-display);
-  font-style: italic;
-  color: var(--muted);
-  margin-top: 2px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .fan {

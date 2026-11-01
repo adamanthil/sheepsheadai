@@ -1,7 +1,7 @@
 import React from "react";
 import { SeatAvatar, ds } from "../../../../../lib/ds";
 import type { SeatRole } from "../../lib/phase";
-import type { SeatView } from "./types";
+import type { SeatView, StageProps } from "./types";
 import styles from "../Stage.module.css";
 
 /** Display name for the picker/partner roles; null for the rest. */
@@ -119,5 +119,44 @@ export function RingChip({
         <div className={`${styles.chipBadges} ${badgeSideClass}`}>{badge}</div>
       )}
     </div>
+  );
+}
+
+/** The last-trick button shows once a trick has been taken, and not while
+ * a trick is being swept off the table. */
+export function showLastTrick(props: StageProps): boolean {
+  return (
+    props.hasLastTrick &&
+    (props.phase === "play" || props.phase === "done") &&
+    !props.animTrick
+  );
+}
+
+// Shows the trick just taken, in place of the one in play; again to go back.
+// A faint arrow in the table's bottom-left corner, for the players who want
+// it; desktop adds the label it has room for.
+export function LastTrickButton({
+  showPrev,
+  onToggle,
+  withLabel,
+}: {
+  showPrev: boolean;
+  onToggle: () => void;
+  withLabel?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      className={`${styles.lastTrick} ${withLabel ? styles.lastTrickWide : ""} ${showPrev ? styles.lastTrickOn : ""}`}
+      onClick={onToggle}
+      aria-pressed={showPrev}
+      aria-label={withLabel ? undefined : "Last trick"}
+    >
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M6 3.5L2.5 7 6 10.5" />
+        <path d="M2.5 7h7a3.5 3.5 0 0 1 0 7H8" />
+      </svg>
+      {withLabel && <span>Last trick</span>}
+    </button>
   );
 }

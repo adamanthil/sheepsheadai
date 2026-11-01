@@ -1,0 +1,105 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+/* The context line: light, centred, the last thing in the play area. */
+.context {
+  min-height: 1.4em;
+  padding: 0 16px 10px;
+  text-align: center;
+  font-family: var(--font-ui);
+  font-weight: 300;
+  font-size: 15px;
+  letter-spacing: 0.01em;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.desk .context {
+  /* Clears the "You" plate under your played card, which hangs just past
+     the bottom of the fixed-height desktop stage. */
+  padding: 28px 0 12px;
+  font-size: 17px;
+}
+/* A card named in the line, in its suit's colour. */
+.card {
+  font-weight: 400;
+  color: var(--card-black);
+}
+.card.red {
+  color: var(--card-red);
+}
+
+/* The turn clock: a track, filled while a human's clock runs. */
+.track {
+  height: 3px;
+  background: var(--bg-page-deep);
+  overflow: hidden;
+}
+.desk .track {
+  width: 100%;
+  max-width: 640px;
+  align-self: center;
+}
+.fill,
+.fillYours {
+  display: block;
+  height: 100%;
+  transform-origin: left center;
+  animation-name: drain;
+  animation-timing-function: linear;
+  animation-fill-mode: both;
+  background: var(--rule-strong);
+}
+.fillYours {
+  background: var(--accent-2);
+}
+@keyframes drain {
+  from {
+    transform: scaleX(var(--from, 1));
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+.turn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 30px;
+  font-family: var(--font-ui);
+  font-size: 13px;
+}
+.desk .turn {
+  height: 36px;
+  font-size: 14px;
+  gap: 10px;
+}
+.yours {
+  font-weight: 500;
+  color: var(--accent-2);
+}
+.waiting {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 15px;
+  color: var(--muted);
+}
+.secs {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.urgent {
+  color: var(--accent-2);
+}
+.dealer {
+  font-size: 8px;
+  padding: 1px 5px;
+}
