@@ -54,10 +54,11 @@ export function buildCallOptions(
     } else if (label === "ALONE") {
       out.push({ actionId: aid, label, code: null, display: "Go alone" });
     } else if (label.startsWith("JD")) {
+      // Drawn as the jack itself; a null code would draw the Alone panel.
       out.push({
         actionId: aid,
         label,
-        code: null,
+        code: "JD",
         display: "Jack of Diamonds",
       });
     }

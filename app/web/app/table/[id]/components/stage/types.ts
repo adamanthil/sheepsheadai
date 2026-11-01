@@ -26,7 +26,7 @@ export interface SeatView {
 export interface CallOption {
   actionId: number;
   label: string; // raw action label, e.g. "CALL AC" / "ALONE"
-  code: string | null; // card code for ace options, null for ALONE/JD
+  code: string | null; // card to draw (the called card, or JD); null for ALONE
   display: string; // human label
 }
 
