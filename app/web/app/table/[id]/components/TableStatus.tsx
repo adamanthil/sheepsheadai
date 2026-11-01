@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { ds, isRedSuit, parseCard, suitSymbol } from "../../../../lib/ds";
 import type { YourRole } from "../lib/phase";
-import type { ContextPart } from "../lib/tableSelectors";
+import type { HandContext } from "../lib/tableSelectors";
 import { roleBadge } from "./stage/chrome";
 import styles from "./TableStatus.module.css";
 
@@ -14,7 +14,7 @@ export interface TurnClock {
 }
 
 interface TableStatusProps {
-  context: ContextPart[];
+  context: HandContext;
   clock: TurnClock | null;
   secondsLeft: number | null;
   isMobile: boolean;
@@ -45,8 +45,8 @@ export default function TableStatus({
   const yours = !!turn?.isYourTurn;
   return (
     <div className={`${styles.wrap} ${isMobile ? styles.mob : styles.desk}`}>
-      <div className={styles.context}>
-        {context.map((part, i) => {
+      <div className={`${styles.context} ${context.faded ? styles.faded : ""}`}>
+        {context.parts.map((part, i) => {
           if (typeof part === "string")
             return <React.Fragment key={i}>{part}</React.Fragment>;
           const { rank, suit } = parseCard(part.card);

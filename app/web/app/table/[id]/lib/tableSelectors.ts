@@ -161,32 +161,34 @@ export function computeHasLastTrick(view: GameView): boolean {
  * colour. Kept apart so a player's name is never read as a card code. */
 export type ContextPart = string | { card: string };
 
+export interface HandContext {
+  parts: ContextPart[];
+  /** The partner is known, so the call is only a reference now. */
+  faded: boolean;
+}
+
 /**
- * The line under the table: the one fact about this hand worth keeping in
- * view, e.g. "A♣ called", "A♥ called under · Trevor is partner", "J♦
- * partner", "Kyle goes alone", "Leaster", followed by the doubler when one
- * is on. While the player has the last trick open it says only that; a
- * trick held on the table after it is taken keeps the usual line.
+ * The line under the table: what the hand was declared as, kept in view
+ * as a reference, e.g. "A♣ called", "A♥ called under", "J♦ partner",
+ * "Kyle goes alone", "Leaster", followed by the doubler when one is on.
+ * It doesn't change as the hand is played; once the partner is revealed
+ * it fades. While the player has the last trick open it says only that;
+ * a trick held on the table after it is taken keeps the usual line.
  */
 export function computeContext(
   lastState: TableStateMsg,
   phase: TablePhase,
   lastTrickOpen: boolean,
-): ContextPart[] {
-  if (lastTrickOpen) return ["Last trick"];
+): HandContext {
+  if (lastTrickOpen) return { parts: ["Last trick"], faded: false };
   const { view, table, yourSeat } = lastState;
   const picker = view.picker || 0;
-  const partner = view.partner || 0;
   const who = (seat: number) =>
     seat === yourSeat ? "You" : nameForSeat(seat, table);
-  const partnerText = partner
-    ? partner === yourSeat
-      ? "you are partner"
-      : `${nameForSeat(partner, table)} is partner`
-    : null;
   const jdMode = table.rules?.partnerMode === 0;
 
   const facts: ContextPart[][] = [];
+  let hasPartner = false;
   if (view.is_leaster) {
     facts.push(["Leaster"]);
   } else if (picker) {
@@ -199,10 +201,10 @@ export function computeContext(
         { card: view.called_card },
         view.called_under ? " called under" : " called",
       ]);
-      if (partnerText) facts.push([partnerText]);
+      hasPartner = true;
     } else if (jdMode && phase !== "interlude") {
       facts.push([{ card: "JD" }, " partner"]);
-      if (partnerText) facts.push([partnerText]);
+      hasPartner = true;
     } else {
       facts.push([`${who(picker)} picked`]);
     }
@@ -210,5 +212,8 @@ export function computeContext(
   const stake = stakeBadgeText(table.scoreMultiplier);
   if (stake) facts.push([stake]);
 
-  return facts.flatMap((fact, i) => (i === 0 ? fact : [" · ", ...fact]));
+  return {
+    parts: facts.flatMap((fact, i) => (i === 0 ? fact : [" · ", ...fact])),
+    faded: hasPartner && !!view.partner,
+  };
 }
