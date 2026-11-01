@@ -18,8 +18,8 @@
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  padding-top: 18px;
-  padding-bottom: 12px;
+  padding-top: 22px;
+  padding-bottom: 16px;
 }
 /* Zero-width strut one card tall, so the fan keeps its height once the last
    card is played. Without it the hand collapses during the final trick and
@@ -37,10 +37,11 @@
    eat the room the table ring needs above it. Desktop sets --pc-w inline. */
 .mobWrap .fan {
   container-type: inline-size;
-  /* Room for the playable card's 6px lift plus its 2px ring, and no more:
-     every pixel saved here goes to the ring stage above. */
-  padding-top: 10px;
-  padding-bottom: 6px;
+  /* Room for the playable card's 6px lift plus its 2px ring, and a little
+     air so the hand doesn't crowd the turn line and the screen's edge;
+     anything more comes out of the ring stage above. */
+  padding-top: 14px;
+  padding-bottom: 10px;
 }
 .mobWrap .cardSlot,
 .mobWrap .fan::before {
