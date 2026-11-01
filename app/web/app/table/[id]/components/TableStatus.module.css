@@ -59,8 +59,10 @@
   animation-fill-mode: both;
   background: var(--rule-strong);
 }
+/* Your own clock reads a shade darker, in grey rather than the accent so
+   it doesn't shout. */
 .fillYours {
-  background: var(--accent-2);
+  background: var(--muted);
 }
 @keyframes drain {
   from {
