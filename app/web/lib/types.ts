@@ -106,6 +106,8 @@ export type TableStateMsg = {
   valid_actions: number[];
   /** Seconds left on the acting human's turn clock, or null when none runs. */
   turnSecondsLeft?: number | null;
+  /** Full length of that turn clock in seconds, or null when none runs. */
+  turnSeconds?: number | null;
   /** A spectator the turn clock moved out: the AI occupant now holding
    * their seat, which is the only seat they may take back. */
   homeOccupant?: string | null;

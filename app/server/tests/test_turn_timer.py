@@ -90,7 +90,12 @@ async def test_timeout_plays_for_the_human_and_strikes(hooks):
     assert conn.timeout_strikes == 1
     assert conn.seat == 1
     assert continued == [table]
-    assert ws.sent[0] == {"type": "turn_timer", "seat": 1, "secondsLeft": 0.01}
+    assert ws.sent[0] == {
+        "type": "turn_timer",
+        "seat": 1,
+        "secondsLeft": 0.01,
+        "turnSeconds": 0.01,
+    }
     last = table.chat_log[-1]
     assert (last["author"], last["body"]) == (
         "Pat",

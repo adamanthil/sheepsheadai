@@ -98,6 +98,7 @@ export const wsMessageSchema = z.discriminatedUnion("type", [
     view: gameView,
     valid_actions: z.array(z.number()),
     turnSecondsLeft: z.number().nullable().optional(),
+    turnSeconds: z.number().nullable().optional(),
     homeOccupant: z.string().nullable().optional(),
   }),
   z.looseObject({
@@ -134,6 +135,7 @@ export const wsMessageSchema = z.discriminatedUnion("type", [
     type: z.literal("turn_timer"),
     seat: z.number(),
     secondsLeft: z.number(),
+    turnSeconds: z.number().optional(),
   }),
 ]);
 

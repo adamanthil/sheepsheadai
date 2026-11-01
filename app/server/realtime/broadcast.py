@@ -103,6 +103,7 @@ async def broadcast_table_state(table: Table) -> None:
             "view": payload["view"],
             "valid_actions": valid_actions if conn.seat == actor_seat else [],
             "turnSecondsLeft": seconds_left,
+            "turnSeconds": table.turn_seconds if seconds_left is not None else None,
             # A spectator the turn timer moved out: the AI now in their seat,
             # which is the one seat they may take back.
             "homeOccupant": None if conn.seat else conn.home_occupant,

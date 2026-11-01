@@ -75,12 +75,18 @@ async def arm_turn_timer(table: Table, on_expired: Callable[[Table], None]) -> N
     seconds = turn_timeout_seconds()
     table.turn_timer_key = key
     table.turn_deadline = time.monotonic() + seconds
+    table.turn_seconds = seconds
     table.turn_timer_task = spawn(
         _expire(table, key, on_expired, seconds), f"turn-timer:{table.id}"
     )
     await broadcast_table_event(
         table,
-        {"type": "turn_timer", "seat": seat, "secondsLeft": seconds},
+        {
+            "type": "turn_timer",
+            "seat": seat,
+            "secondsLeft": seconds,
+            "turnSeconds": seconds,
+        },
     )
 
 

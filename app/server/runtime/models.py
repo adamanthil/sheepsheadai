@@ -116,6 +116,8 @@ class Table:
     turn_timer_key: Optional[Tuple[int, int, int]] = None
     # time.monotonic() at which the running turn timer expires
     turn_deadline: Optional[float] = None
+    # Full length of the running turn timer, for the client's clock bar
+    turn_seconds: Optional[float] = None
     running_scores: Dict[str, int] = field(
         default_factory=dict
     )  # occupant_id -> cumulative score

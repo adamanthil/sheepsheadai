@@ -42,6 +42,8 @@ export interface UseTableSocketReturn {
   lastState: TableStateMsg | null;
   /** Local-clock ms when the acting human's turn runs out, or null. */
   turnDeadline: number | null;
+  /** Full length in seconds of the running turn clock, or null. */
+  turnSeconds: number | null;
   actionLookup: Record<string, string>;
   chatMessages: ChatMessage[];
   /** POST one action. Resolves true when the server accepted it. */
@@ -72,6 +74,7 @@ export function useTableSocket(
   // Kept on the local clock: the server sends seconds left, not a
   // timestamp, so a skewed device clock can't distort the countdown.
   const [turnDeadline, setTurnDeadline] = useState<number | null>(null);
+  const [turnSeconds, setTurnSeconds] = useState<number | null>(null);
   const [actionLookup, setActionLookup] = useState<Record<string, string>>({});
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
@@ -154,6 +157,7 @@ export function useTableSocket(
               ? Date.now() + msg.turnSecondsLeft * 1000
               : null,
           );
+          setTurnSeconds(msg.turnSeconds ?? null);
 
           setLastState((prev: TableStateMsg | null) => {
             const cbs = callbacksRef.current;
@@ -224,6 +228,7 @@ export function useTableSocket(
           departed("left");
         } else if (data.type === "turn_timer") {
           setTurnDeadline(Date.now() + data.secondsLeft * 1000);
+          setTurnSeconds(data.turnSeconds ?? data.secondsLeft);
         } else if (data.type === "server_restart") {
           // Deploy in progress: the socket is about to drop; the reconnect
           // loop keeps retrying until the server is back.
@@ -399,6 +404,7 @@ export function useTableSocket(
     departure,
     lastState,
     turnDeadline,
+    turnSeconds,
     actionLookup,
     chatMessages,
     takeAction,
