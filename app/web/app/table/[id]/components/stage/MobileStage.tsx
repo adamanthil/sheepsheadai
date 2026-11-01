@@ -110,7 +110,7 @@ export default function MobileStage(props: StageProps) {
 
       {showLastTrick(props) && (
         <LastTrickButton
-          showPrev={props.showPrev}
+          open={props.lastTrickOpen}
           onToggle={props.onTogglePrev}
         />
       )}

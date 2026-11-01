@@ -136,20 +136,20 @@ export function showLastTrick(props: StageProps): boolean {
 // A faint arrow in the table's bottom-left corner, for the players who want
 // it; desktop adds the label it has room for.
 export function LastTrickButton({
-  showPrev,
+  open,
   onToggle,
   withLabel,
 }: {
-  showPrev: boolean;
+  open: boolean;
   onToggle: () => void;
   withLabel?: boolean;
 }) {
   return (
     <button
       type="button"
-      className={`${styles.lastTrick} ${withLabel ? styles.lastTrickWide : ""} ${showPrev ? styles.lastTrickOn : ""}`}
+      className={`${styles.lastTrick} ${withLabel ? styles.lastTrickWide : ""} ${open ? styles.lastTrickOn : ""}`}
       onClick={onToggle}
-      aria-pressed={showPrev}
+      aria-pressed={open}
       aria-label={withLabel ? undefined : "Last trick"}
     >
       <svg viewBox="0 0 16 16" aria-hidden="true">

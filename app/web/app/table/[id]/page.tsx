@@ -92,8 +92,13 @@ export default function TablePage() {
     else router.replace("/");
   }, [params?.id, router]);
 
-  const { showPrev, animTrick, triggerCollect, setShowPrev } =
-    useTrickAnimation();
+  const {
+    showPrev,
+    lastTrickOpen,
+    animTrick,
+    triggerCollect,
+    setLastTrickOpen,
+  } = useTrickAnimation();
   const { callout, showCallout } = useCallout();
 
   const {
@@ -259,7 +264,7 @@ export default function TablePage() {
   const stakeBadge = stakeBadgeText(table.scoreMultiplier);
   const hasLastTrick = computeHasLastTrick(view);
   const handInPlay = table.status === "playing" && !view.is_done;
-  const context = computeContext(lastState, phase, showPrev);
+  const context = computeContext(lastState, phase, lastTrickOpen);
 
   const shownChat = mutes.visible(chatMessages);
 
@@ -317,8 +322,9 @@ export default function TablePage() {
       displayCards={displayCards}
       winnerSeat={winnerSeat}
       showPrev={showPrev}
+      lastTrickOpen={lastTrickOpen}
       hasLastTrick={hasLastTrick}
-      onTogglePrev={() => setShowPrev(!showPrev)}
+      onTogglePrev={() => setLastTrickOpen(!lastTrickOpen)}
       callOptions={callOptions}
       selectedCall={null}
       onAction={takeAction}

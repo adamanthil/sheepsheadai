@@ -93,7 +93,7 @@ export default function DesktopStage(props: StageProps) {
       </div>
       {showLastTrick(props) && (
         <LastTrickButton
-          showPrev={props.showPrev}
+          open={props.lastTrickOpen}
           onToggle={props.onTogglePrev}
           withLabel
         />

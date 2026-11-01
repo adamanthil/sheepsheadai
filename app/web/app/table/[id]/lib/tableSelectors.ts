@@ -165,14 +165,15 @@ export type ContextPart = string | { card: string };
  * The line under the table: the one fact about this hand worth keeping in
  * view, e.g. "A♣ called", "A♥ called under · Trevor is partner", "J♦
  * partner", "Kyle goes alone", "Leaster", followed by the doubler when one
- * is on. While the last trick is shown it says only that.
+ * is on. While the player has the last trick open it says only that; a
+ * trick held on the table after it is taken keeps the usual line.
  */
 export function computeContext(
   lastState: TableStateMsg,
   phase: TablePhase,
-  showPrev: boolean,
+  lastTrickOpen: boolean,
 ): ContextPart[] {
-  if (showPrev) return ["Last trick"];
+  if (lastTrickOpen) return ["Last trick"];
   const { view, table, yourSeat } = lastState;
   const picker = view.picker || 0;
   const partner = view.partner || 0;

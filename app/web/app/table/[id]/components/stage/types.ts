@@ -40,6 +40,9 @@ export interface StageProps {
   displayCards: string[]; // current_trick, or last_trick when showing prev
   winnerSeat: number | null;
   showPrev: boolean;
+  /** The player opened the last trick, as opposed to it being held on the
+   * table after it was taken. */
+  lastTrickOpen: boolean;
   /** A trick has been played, so the last one can be shown. */
   hasLastTrick: boolean;
   onTogglePrev: () => void;

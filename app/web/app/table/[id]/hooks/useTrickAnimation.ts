@@ -6,14 +6,19 @@ export interface AnimTrick {
 }
 
 export interface UseTrickAnimationReturn {
+  /** The last trick is on the table: held there after it is taken, or
+   * opened by the player. */
   showPrev: boolean;
+  /** The player opened the last trick with its button. */
+  lastTrickOpen: boolean;
   animTrick: AnimTrick | null;
   triggerCollect: (cards: string[], winner: number) => void;
-  setShowPrev: (show: boolean) => void;
+  setLastTrickOpen: (open: boolean) => void;
 }
 
 export function useTrickAnimation(): UseTrickAnimationReturn {
-  const [showPrev, setShowPrev] = useState(false);
+  const [holding, setHolding] = useState(false);
+  const [lastTrickOpen, setLastTrickOpen] = useState(false);
   const [animTrick, setAnimTrick] = useState<AnimTrick | null>(null);
   const animTimerRef = useRef<NodeJS.Timeout | null>(null);
   const pauseTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -31,8 +36,9 @@ export function useTrickAnimation(): UseTrickAnimationReturn {
     if (animTimerRef.current) clearTimeout(animTimerRef.current);
     if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current);
 
-    // First show the previous trick
-    setShowPrev(true);
+    // First hold the trick just taken on the table
+    setLastTrickOpen(false);
+    setHolding(true);
 
     // After pause, start collection animation
     pauseTimerRef.current = setTimeout(() => {
@@ -41,10 +47,16 @@ export function useTrickAnimation(): UseTrickAnimationReturn {
       // After animation completes, hide everything
       animTimerRef.current = setTimeout(() => {
         setAnimTrick(null);
-        setShowPrev(false);
+        setHolding(false);
       }, 1300);
     }, 2000);
   }, []);
 
-  return { showPrev, animTrick, triggerCollect, setShowPrev };
+  return {
+    showPrev: holding || lastTrickOpen,
+    lastTrickOpen,
+    animTrick,
+    triggerCollect,
+    setLastTrickOpen,
+  };
 }
