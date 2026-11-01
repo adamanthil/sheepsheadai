@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { ds, isRedSuit, parseCard, suitSymbol } from "../../../../lib/ds";
 import type { YourRole } from "../lib/phase";
-import type { HandContext } from "../lib/tableSelectors";
+import { formatClock, type HandContext } from "../lib/tableSelectors";
 import { roleBadge } from "./stage/chrome";
 import styles from "./TableStatus.module.css";
 
@@ -92,7 +92,7 @@ export default function TableStatus({
               className={`${styles.secs} ${secondsLeft <= 5 ? styles.urgent : ""}`}
               aria-label={`${secondsLeft} seconds left to move`}
             >
-              {secondsLeft}s
+              {formatClock(secondsLeft)}
             </span>
           )}
         </div>

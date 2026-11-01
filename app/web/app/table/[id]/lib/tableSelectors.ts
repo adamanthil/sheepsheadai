@@ -217,3 +217,10 @@ export function computeContext(
     faded: hasPartner && !!view.partner,
   };
 }
+
+/** The turn clock as minutes and seconds, e.g. "2:00", "0:05". */
+export function formatClock(secondsLeft: number): string {
+  const minutes = Math.floor(secondsLeft / 60);
+  const seconds = secondsLeft % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}

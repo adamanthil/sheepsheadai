@@ -1,10 +1,11 @@
 import React from "react";
 import { ds } from "../../../../lib/ds";
 import type { TableView } from "../../../../lib/types";
+import { formatClock } from "../lib/tableSelectors";
 import { isAiSeat, isTakeableSeat, nameForSeat } from "../utils/seatMath";
 import styles from "./SpectatorBar.module.css";
 
-/** Seconds left on the acting player's turn clock, red for the last 5. */
+/** Time left on the acting player's turn clock, red for the last 5s. */
 function TurnClock({ secondsLeft }: { secondsLeft: number | null }) {
   if (secondsLeft === null) return null;
   return (
@@ -12,7 +13,7 @@ function TurnClock({ secondsLeft }: { secondsLeft: number | null }) {
       className={`${styles.clock} ${secondsLeft <= 5 ? styles.clockUrgent : ""}`}
       aria-label={`${secondsLeft} seconds left to move`}
     >
-      {secondsLeft}s
+      {formatClock(secondsLeft)}
     </span>
   );
 }
