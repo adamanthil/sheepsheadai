@@ -97,6 +97,23 @@
   position: relative;
   flex: 0 1 calc(var(--pc-w, 64px) * 0.68);
   min-width: 0;
+  /* A bare button: no chrome of its own, so the card looks the same as when
+     the slot was a div. Its card overflows it to the right as before. */
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+.cardSlot:focus-visible {
+  outline: none;
+}
+.cardSlot:focus-visible > * {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: 2px;
 }
 .cardSlot:last-child {
   flex: 0 0 var(--pc-w, 64px);

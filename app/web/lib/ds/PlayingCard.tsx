@@ -13,6 +13,8 @@ export interface PlayingCardProps {
   w?: number;
   playable?: boolean;
   dim?: boolean;
+  /** Face-down cards only: a word printed on the back, e.g. "under". */
+  label?: string;
   ariaHidden?: boolean;
   className?: string;
 }
@@ -22,6 +24,7 @@ export default function PlayingCard({
   w,
   playable,
   dim,
+  label,
   ariaHidden,
   className,
 }: PlayingCardProps) {
@@ -46,10 +49,12 @@ export default function PlayingCard({
   if (faceDown) {
     return (
       <div
-        className={`${styles.pc} ${styles.back} ${dim ? styles.dim : ""} ${className ?? ""}`}
+        className={`${styles.pc} ${styles.back} ${playable ? styles.playable : ""} ${dim ? styles.dim : ""} ${className ?? ""}`}
         style={cssVars}
         aria-hidden={ariaHidden}
-      />
+      >
+        {label && <span className={styles.backLabel}>{label}</span>}
+      </div>
     );
   }
 

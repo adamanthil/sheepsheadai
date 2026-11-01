@@ -1,11 +1,13 @@
 import React from "react";
-import { PlayingCard, ds } from "../../../../lib/ds";
+import { PlayingCard, cardName, ds } from "../../../../lib/ds";
 import type { TablePhase, InterludeMode, YourRole } from "../lib/phase";
 import { roleBadge } from "./stage/chrome";
 import styles from "./PlayerHand.module.css";
 
 interface PlayerHandProps {
   hand: string[];
+  /** The picker still holds a face-down under card (drawn last in the fan). */
+  hasUnder?: boolean;
   isYourTurn: boolean;
   phase: TablePhase;
   yourMode: InterludeMode;
@@ -39,8 +41,12 @@ const INTERLUDE_BADGE: Partial<Record<InterludeMode, string>> = {
   under: "choose under",
 };
 
+// Stands in for the under card in the fan; tapping it sends PLAY UNDER.
+const UNDER = "UNDER";
+
 export default function PlayerHand({
   hand,
+  hasUnder,
   isYourTurn,
   phase,
   yourMode,
@@ -63,12 +69,15 @@ export default function PlayerHand({
 
   const isClickable = (card: string) =>
     isYourTurn &&
-    (validActionStrings.has(`PLAY ${card}`) ||
-      validActionStrings.has(`BURY ${card}`) ||
-      validActionStrings.has(`UNDER ${card}`));
+    (card === UNDER
+      ? validActionStrings.has(`PLAY ${UNDER}`)
+      : validActionStrings.has(`PLAY ${card}`) ||
+        validActionStrings.has(`BURY ${card}`) ||
+        validActionStrings.has(`UNDER ${card}`));
 
   const staged = stagedCards ?? [];
   const shownHand = hand.filter((card) => !staged.includes(card));
+  const fanCards = hasUnder ? [...shownHand, UNDER] : shownHand;
 
   const metaKey = phase === "interlude" ? yourMode : phase;
   const meta = META[metaKey] ?? META.play;
@@ -86,7 +95,7 @@ export default function PlayerHand({
             className={`${ds.overline} ${styles.overline}`}
             style={{ fontSize: isMobile ? 9 : 11 }}
           >
-            Your hand · {shownHand.length} cards
+            Your hand · {fanCards.length} cards
             {isDealer && " · Dealer"}
           </div>
           {/* Mobile drops the prompt: the action bar below already carries
@@ -119,18 +128,31 @@ export default function PlayerHand({
       </div>
 
       <div className={styles.fan} style={fanVars}>
-        {shownHand.map((card, i) => {
+        {/* Every card is a button so the playable ones can be tabbed to;
+            the rest are disabled, which also takes them out of tab order. */}
+        {fanCards.map((card, i) => {
           const clickable = isClickable(card);
           return (
-            <div
+            <button
+              type="button"
               key={card + i}
               className={`${styles.cardSlot} ${clickable ? styles.clickable : ""}`}
               style={{ zIndex: i }}
+              disabled={!clickable}
               data-clickable={clickable || undefined}
-              onClick={() => clickable && onCardClick(card)}
+              aria-label={
+                card === UNDER
+                  ? "Your under card, played face down"
+                  : cardName(card)
+              }
+              onClick={() => onCardClick(card)}
             >
-              <PlayingCard code={card} playable={clickable} />
-            </div>
+              {card === UNDER ? (
+                <PlayingCard code="__" label="under" playable={clickable} />
+              ) : (
+                <PlayingCard code={card} playable={clickable} />
+              )}
+            </button>
           );
         })}
       </div>

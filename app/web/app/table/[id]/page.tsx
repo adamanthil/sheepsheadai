@@ -343,6 +343,7 @@ export default function TablePage() {
     ) : (
       <PlayerHand
         hand={view.hand}
+        hasUnder={!!view.under_card}
         isYourTurn={isYourTurn}
         phase={phase}
         yourMode={yourMode}

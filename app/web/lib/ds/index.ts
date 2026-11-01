@@ -5,7 +5,7 @@ export { default as SeatAvatar } from "./SeatAvatar";
 export type { SeatTone } from "./SeatAvatar";
 export { default as Wordmark } from "./Wordmark";
 export { default as MiniCardMark } from "./MiniCardMark";
-export { parseCard, suitSymbol, isRedSuit } from "./cardUtils";
+export { parseCard, suitSymbol, isRedSuit, cardName } from "./cardUtils";
 export type { Suit, ParsedCard } from "./cardUtils";
 export { useMediaQuery, useIsMobile } from "./useMediaQuery";
 export { default as ds } from "./ds.module.css";

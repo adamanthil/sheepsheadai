@@ -48,3 +48,24 @@ export function suitSymbol(s: Suit | null): string {
 export function isRedSuit(s: Suit | null): boolean {
   return s === "H" || s === "D";
 }
+
+const RANK_NAME: Record<string, string> = {
+  A: "Ace",
+  K: "King",
+  Q: "Queen",
+  J: "Jack",
+};
+
+const SUIT_NAME: Record<Suit, string> = {
+  C: "Clubs",
+  S: "Spades",
+  H: "Hearts",
+  D: "Diamonds",
+};
+
+/** Spoken name of a face-up card code, e.g. "QC" → "Queen of Clubs". */
+export function cardName(code: string): string {
+  const { rank, suit } = parseCard(code);
+  if (!suit) return code;
+  return `${RANK_NAME[rank] ?? rank} of ${SUIT_NAME[suit]}`;
+}

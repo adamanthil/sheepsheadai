@@ -119,6 +119,21 @@
   border-radius: 4px;
 }
 
+/* A word on a card back (the picker's face-down under), set low on the back
+   in the paper colour so the card still reads as face down. */
+.backLabel {
+  position: relative;
+  z-index: 1;
+  grid-row: 3;
+  justify-self: center;
+  margin-bottom: 16%;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: calc(var(--pcw) * 0.2);
+  line-height: 1;
+  color: var(--card-paper);
+}
+
 /* "under" placeholder — an inset card with an italic label. */
 .inset {
   background: var(--bg-sunk);
