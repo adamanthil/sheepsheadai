@@ -94,20 +94,7 @@
   transform: translateY(-6px);
 }
 .dim {
-  border-color: color-mix(in oklab, var(--card-edge) 60%, transparent);
-  box-shadow: none;
-}
-/* Faded under a wash of the page colour rather than made translucent, so
-   the cards it overlaps in a fan don't show through it. */
-.dim::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: color-mix(in oklab, var(--bg-page) 58%, transparent);
-  pointer-events: none;
-  /* Above the centre pip, whose transform stacks it over unpositioned
-     siblings. */
-  z-index: 1;
+  opacity: 0.45;
 }
 
 .back {

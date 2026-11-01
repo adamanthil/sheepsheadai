@@ -7,8 +7,6 @@ interface PlayerHandProps {
   /** The picker still holds a face-down under card (drawn last in the fan). */
   hasUnder?: boolean;
   isYourTurn: boolean;
-  /** Fade the cards you can't play, so the playable ones stand out. */
-  dimUnplayable?: boolean;
   validActionStrings: Set<string>;
   onCardClick: (card: string) => void;
   // Cards staged in the center (bury/under selection): hidden from the fan
@@ -25,7 +23,6 @@ export default function PlayerHand({
   hand,
   hasUnder,
   isYourTurn,
-  dimUnplayable,
   validActionStrings,
   onCardClick,
   stagedCards,
@@ -78,18 +75,9 @@ export default function PlayerHand({
               onClick={() => onCardClick(card)}
             >
               {card === UNDER ? (
-                <PlayingCard
-                  code="__"
-                  label="under"
-                  playable={clickable}
-                  dim={dimUnplayable && !clickable}
-                />
+                <PlayingCard code="__" label="under" playable={clickable} />
               ) : (
-                <PlayingCard
-                  code={card}
-                  playable={clickable}
-                  dim={dimUnplayable && !clickable}
-                />
+                <PlayingCard code={card} playable={clickable} />
               )}
             </button>
           );

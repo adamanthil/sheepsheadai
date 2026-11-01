@@ -356,7 +356,6 @@ export default function TablePage() {
         hand={view.hand}
         hasUnder={!!view.under_card}
         isYourTurn={isYourTurn}
-        dimUnplayable={phase === "play" && isYourTurn}
         validActionStrings={validActionStrings}
         onCardClick={handleCardClick}
         stagedCards={stagedCards}
