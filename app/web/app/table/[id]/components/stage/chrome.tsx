@@ -124,7 +124,9 @@ export function RingChip({
 
 /** The last-trick button shows once a trick has been taken, and not while
  * a trick is being swept off the table. */
-export function showLastTrick(props: StageProps): boolean {
+export function showLastTrick(
+  props: Pick<StageProps, "hasLastTrick" | "phase" | "animTrick">,
+): boolean {
   return (
     props.hasLastTrick &&
     (props.phase === "play" || props.phase === "done") &&
@@ -133,8 +135,10 @@ export function showLastTrick(props: StageProps): boolean {
 }
 
 // Shows the trick just taken, in place of the one in play; again to go back.
-// A faint arrow in the table's bottom-left corner, for the players who want
-// it; desktop adds the label it has room for.
+// A faint arrow at the bottom left of the play area, for the players who
+// want it: in the table's corner on desktop, with the label it has room for,
+// and at the left end of the context line on mobile, where the bottom-left
+// seat's name-plate can't reach it.
 export function LastTrickButton({
   open,
   onToggle,

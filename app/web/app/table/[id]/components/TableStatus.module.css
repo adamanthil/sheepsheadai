@@ -4,10 +4,15 @@
   flex-shrink: 0;
 }
 
+/* Holds the context line and, on mobile, the last-trick button. */
+.contextRow {
+  position: relative;
+}
 /* The context line: light, centred, the last thing in the play area. */
 .context {
   min-height: 1.4em;
-  padding: 0 16px 10px;
+  /* 48px each side keeps it centred and clear of the last-trick button. */
+  padding: 0 48px 10px;
   text-align: center;
   font-family: var(--font-ui);
   font-weight: 300;

@@ -18,6 +18,9 @@ interface TableStatusProps {
   clock: TurnClock | null;
   secondsLeft: number | null;
   isMobile: boolean;
+  /** The last-trick button, set on mobile: there it sits at the left end of
+   * the context line, clear of the bottom-left seat's name-plate. */
+  lastTrick?: React.ReactNode;
   /** Null for a spectator, whose SpectatorBar says whose turn it is. */
   turn: {
     isYourTurn: boolean;
@@ -40,26 +43,32 @@ export default function TableStatus({
   clock,
   secondsLeft,
   isMobile,
+  lastTrick,
   turn,
 }: TableStatusProps) {
   const yours = !!turn?.isYourTurn;
   return (
     <div className={`${styles.wrap} ${isMobile ? styles.mob : styles.desk}`}>
-      <div className={`${styles.context} ${context.faded ? styles.faded : ""}`}>
-        {context.parts.map((part, i) => {
-          if (typeof part === "string")
-            return <React.Fragment key={i}>{part}</React.Fragment>;
-          const { rank, suit } = parseCard(part.card);
-          return (
-            <span
-              key={i}
-              className={`${styles.card} ${isRedSuit(suit) ? styles.red : ""}`}
-            >
-              {rank}
-              {suitSymbol(suit)}
-            </span>
-          );
-        })}
+      <div className={styles.contextRow}>
+        {lastTrick}
+        <div
+          className={`${styles.context} ${context.faded ? styles.faded : ""}`}
+        >
+          {context.parts.map((part, i) => {
+            if (typeof part === "string")
+              return <React.Fragment key={i}>{part}</React.Fragment>;
+            const { rank, suit } = parseCard(part.card);
+            return (
+              <span
+                key={i}
+                className={`${styles.card} ${isRedSuit(suit) ? styles.red : ""}`}
+              >
+                {rank}
+                {suitSymbol(suit)}
+              </span>
+            );
+          })}
+        </div>
       </div>
       <div className={styles.track}>
         {clock && (

@@ -48,6 +48,7 @@ import TableMenu from "./components/TableMenu";
 import Stage from "./components/Stage";
 import PlayerHand from "./components/PlayerHand";
 import TableStatus from "./components/TableStatus";
+import { LastTrickButton, showLastTrick } from "./components/stage/chrome";
 import SpectatorBar from "./components/SpectatorBar";
 import RightRail from "./components/RightRail";
 import MobileLogScreen from "./components/MobileLogScreen";
@@ -375,6 +376,15 @@ export default function TablePage() {
       }
       secondsLeft={secondsLeft}
       isMobile={isMobile}
+      lastTrick={
+        isMobile &&
+        showLastTrick({ hasLastTrick, phase, animTrick }) && (
+          <LastTrickButton
+            open={lastTrickOpen}
+            onToggle={() => setLastTrickOpen(!lastTrickOpen)}
+          />
+        )
+      }
       turn={
         yourSeat === null
           ? null
