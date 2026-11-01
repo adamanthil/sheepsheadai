@@ -62,7 +62,7 @@
 /* Your own clock reads a shade darker, in grey rather than the accent so
    it doesn't shout. */
 .fillYours {
-  background: var(--muted);
+  background: color-mix(in oklab, var(--muted) 50%, var(--rule-strong));
 }
 @keyframes drain {
   from {
