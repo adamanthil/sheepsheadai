@@ -123,19 +123,29 @@ export function MobileWaitingLayout(props: MobileWaitingLayoutProps) {
       <div className={styles.mobHead}>
         <MiniCardMark h={20} />
         <h1 className={styles.mobRoom}>{roomName}</h1>
-        <button
-          type="button"
-          className={`${styles.iconBtn} ${chatUnread ? styles.dot : ""}`}
-          onClick={() => setMenuOpen(true)}
-          aria-label={
-            chatUnread ? "Waiting room menu, new messages" : "Waiting room menu"
-          }
-          aria-haspopup="dialog"
-        >
-          <svg viewBox="0 0 20 20" aria-hidden="true">
-            <path d="M3.5 6h13M3.5 10h13M3.5 14h13" />
-          </svg>
-        </button>
+        <div className={styles.mobIcons}>
+          <button
+            type="button"
+            className={`${styles.iconBtn} ${chatUnread ? styles.dot : ""}`}
+            onClick={() => setChatOpen(true)}
+            aria-label={chatUnread ? "Chat, new messages" : "Chat"}
+          >
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M3.5 4.5h13v9h-7l-4 3v-3h-2z" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            className={styles.iconBtn}
+            onClick={() => setMenuOpen(true)}
+            aria-label="Waiting room menu"
+            aria-haspopup="dialog"
+          >
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M3.5 6h13M3.5 10h13M3.5 14h13" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       <div className={styles.mobBody}>
@@ -196,8 +206,6 @@ export function MobileWaitingLayout(props: MobileWaitingLayoutProps) {
           roomName={roomName}
           shortId={shortId}
           hostName={hostName}
-          chatUnread={chatUnread}
-          onShowChat={() => setChatOpen(true)}
           onLeave={onLeave}
           onCloseTable={isHost ? closeTable : null}
           onClose={() => setMenuOpen(false)}

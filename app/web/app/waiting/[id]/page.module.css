@@ -182,8 +182,14 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* The menu: a 40px tap target around a 20px glyph; the negative margin
-   keeps it from growing the header row. */
+.mobIcons {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+/* Chat and the menu: a 40px tap target around a 20px glyph; the negative
+   margin keeps it from growing the header row. */
 .iconBtn {
   position: relative;
   width: 40px;

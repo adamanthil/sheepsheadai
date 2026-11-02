@@ -6,8 +6,6 @@ interface WaitingMenuProps {
   roomName: string;
   shortId: string;
   hostName: string | null;
-  chatUnread: boolean;
-  onShowChat: () => void;
   onLeave: () => void;
   /** Host only. */
   onCloseTable: (() => void) | null;
@@ -15,19 +13,16 @@ interface WaitingMenuProps {
 }
 
 const ICONS = {
-  chat: "M3.5 4.5h13v9h-7l-4 3v-3h-2z",
   leave: "M8 4H4v12h4M12 6l4 4-4 4M16 10H8",
   close: "M7.5 7.5l5 5M12.5 7.5l-5 5",
 };
 
-/** Mobile waiting-room menu: the room's details, the chat, Leave, and the
- * host's Close table. */
+/** Mobile waiting-room menu: the room's details, Leave, and the host's
+ * Close table. */
 export default function WaitingMenu({
   roomName,
   shortId,
   hostName,
-  chatUnread,
-  onShowChat,
   onLeave,
   onCloseTable,
   onClose,
@@ -42,19 +37,6 @@ export default function WaitingMenu({
           {hostName && ` · Host: ${hostName}`}
         </span>
       </div>
-      <button
-        type="button"
-        className={styles.row}
-        onClick={() => {
-          onClose();
-          onShowChat();
-        }}
-      >
-        <SheetIcon d={ICONS.chat} />
-        <span className={styles.grow}>Chat</span>
-        {chatUnread && <span className={styles.danger}>New messages</span>}
-      </button>
-      <div className={styles.rule} />
       <button type="button" className={styles.row} onClick={onLeave}>
         <SheetIcon d={ICONS.leave} />
         <span className={styles.grow}>Leave table</span>
