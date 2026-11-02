@@ -16,7 +16,7 @@ self-play learning — speed, 400k-episode skill, and convention learning?
 
 | item | value |
 |---|---|
-| status | **RUNNING** — launched 2026-10-28 (§5 log) |
+| status | **COMPLETE** — launched 2026-10-28, finished 2026-11-02 07:23; all 21 cells, 0 failed reads (§4, §5 log) |
 | driver | `python -m sheepshead.training.run_recall_ablation {train,eval,status}` |
 | run code | detached worktree `/Volumes/Nargothrond/dev/sheepsheadai-ablation-202610` (own `.venv`; `runs/`, `models/` symlinked to the main checkout) at the commit in §5 |
 | outputs | `runs/arch_ablation_202610/<arch>_s<seed>/` (checkpoints, `train.log`, `status.json`, `eval/`); driver log `runs/arch_ablation_202610/driver.log` |
@@ -182,25 +182,174 @@ completes first (≈ 1.6 days in).
 
 # 4. Results
 
-*(pending — filled from the report outputs as cells land)*
+All 21 cells trained in a single segment each (no resumes); every
+PANEL-A, PANEL-B and convention read landed. Source of every number
+below: `notebooks/arch_ablation_202610.csv` and `_deltas.csv`.
 
 ## 4.1 Endpoint table (400k composite; mean over seeds ± seed SE)
 
-| rung | arch | PANEL-A | PANEL-B | Δ vs rung below (A) | wall h | eps/s | watchdog escape ep |
-|---|---|---|---|---|---|---|---|
-| 1 | onehot-recall | | | — | | | |
-| 2 | pooled-recall-uninformed-noaux | | | | | | |
-| 3 | pooled-recall-noaux | | | | | | |
-| 4 | full-recall-noaux | | | | | | |
-| 5 | full-recall | | | | | | |
-| 6 | perceiver-recall-nobilinear | | | | | | |
-| 7 | perceiver-recall | | | | | | |
+Δ = paired per-deal delta vs the rung below, seed mean ± seed-level SE.
+**Bold** = real under the §3.2 rule (|Δ| > 2 SE and 3/3 seeds agree in
+sign); otherwise unresolved, with the count of seeds above zero.
+
+| rung | arch | PANEL-A | PANEL-B | Δ A vs rung below | Δ B vs rung below | wall h | eps/s | watchdog release ep (per seed) |
+|---|---|---|---|---|---|---|---|---|
+| 1 | `onehot-recall` | −0.164 ± 0.014 | −0.505 ± 0.022 | — | — | 2.59 | 42.8 | 5.8k; never engaged on s1042, s2042 |
+| 2 | `pooled-recall-uninformed-noaux` | −0.305 ± 0.042 | −0.639 ± 0.038 | **−0.142 ± 0.028** | **−0.134 ± 0.027** | 3.71 | 29.9 | 17.5k, 17.7k, 19.4k |
+| 3 | `pooled-recall-noaux` | −0.190 ± 0.037 | −0.557 ± 0.042 | +0.115 ± 0.079 (2/3 +) | +0.082 ± 0.079 (2/3 +) | 3.76 | 29.5 | 13.3k, 13.1k, 10.9k |
+| 4 | `full-recall-noaux` | −0.167 ± 0.039 | −0.518 ± 0.030 | +0.023 ± 0.031 (2/3 +) | +0.039 ± 0.034 (2/3 +) | 7.66 | 14.5 | 7.5k, 8.4k, 10.1k |
+| 5 | `full-recall` | −0.007 ± 0.031 | −0.353 ± 0.040 | **+0.160 ± 0.019** | **+0.165 ± 0.023** | 7.70 | 14.4 | 7.4k, 7.5k, 6.7k |
+| 6 | `perceiver-recall-nobilinear` | −0.106 ± 0.016 | −0.418 ± 0.007 | **−0.098 ± 0.045** | −0.065 ± 0.044 (1/3 +) | 8.15 | 13.8 | 4.7k, 6.3k, 6.3k |
+| 7 | `perceiver-recall` | +0.007 ± 0.030 | −0.341 ± 0.039 | **+0.113 ± 0.036** | +0.077 ± 0.042 (3/3 +, 1.8 SE) | 7.69 | 14.4 | 5.1k, 5.5k, 6.3k |
+
+Non-adjacent PANEL-A contrasts (per-seed endpoint differences; same
+CRN deals, so these are paired by seed but not bootstrapped per deal):
+
+| contrast | per seed (1042, 2042, 42) | mean ± seed SE |
+|---|---|---|
+| 7 − 1 (release vs MLP) | +0.196, +0.176, +0.141 | **+0.171 ± 0.016** |
+| 5 − 1 (production 30M design vs MLP) | +0.133, +0.102, +0.234 | +0.156 ± 0.040 |
+| 4 − 1 (all no-aux token machinery vs MLP) | −0.064, −0.045, +0.099 | −0.003 ± 0.052 |
+| 7 − 5 (release vs full-recall) | +0.063, +0.074, −0.093 | +0.015 ± 0.054 |
+
+Wall-clock: perceiver-recall-nobilinear s1042 ran at ~12 eps/s from
+~40k episodes on (9.30 h vs 7.5–7.6 h for its other seeds) — external
+machine load on 10-30, not the architecture; its other two seeds match
+rungs 4, 5 and 7. The release cell (7, s42) is the reused 09-16 run
+(7.77 h).
+
+**Reading.**
+
+1. **The release beats the MLP baseline by +0.171 ± 0.016 at the
+   bootstrap endpoint**, all three seeds +0.14 to +0.20 — the ladder's
+   total.
+2. **Aux heads are the largest single step (+0.160 A / +0.165 B, both
+   real).** Without them, the whole token stack — card tokens, pointer
+   actor, informed init, transformer (rungs 2–4) — ends level with the
+   one-hot MLP (4 − 1 = −0.003 ± 0.052). Every no-aux token arm is
+   bunched with the MLP at 400k; only the aux arms separate.
+3. **Card tokens + pointer without informed init hurt (−0.142, real)**
+   and are the slowest out of the always-pass trough (watchdog release
+   ~18k vs 13k informed, ~8k with the transformer, ~6–7k with aux).
+   Informed init recovers most of it (+0.115) but is unresolved on
+   seeds (s1042 −0.036) — order dependence (§2.3 #2): July measured
+   +0.060 for this step without the transformer.
+4. **The transformer (no aux) is unresolved at the endpoint
+   (+0.023 ± 0.031)** but was the one step that was real and uniform at
+   350k (+0.076 ± 0.003, seeds +0.071 to +0.079); its 400k composite
+   reversed on s2042.
+5. **Perceiver readout without the bilinear pointer is a regression
+   (−0.098, real on A; B unresolved)**, and **the bilinear pointer
+   recovers it (+0.113, real on A; B +0.077, 3/3 seeds positive but
+   1.8 SE)**. The two steps net to +0.015 ± 0.054 for the release over
+   `full-recall`: at the bootstrap endpoint, the perceiver-recall design
+   is not distinguishable from the production 30M design under the
+   recall observation. The bilinear pointer is what makes the perceiver
+   readout competitive, not an increment on top of a better readout.
+   (5→6 bundles readout + memory driver; §2.3 #1.)
 
 ## 4.2 Learning curves
 
-`notebooks/figures/arch_ablation_202610_panelA.png`
+![PANEL-A learning curves](figures/arch_ablation_202610_panelA.png)
+
+`notebooks/figures/arch_ablation_202610_panelA.png` (+ `.svg`). PANEL-A
+seed means at each composite stage:
+
+| rung | 150k | 200k | 250k | 300k | 350k | 400k |
+|---|---|---|---|---|---|---|
+| 1 onehot-recall | −0.358 | −0.291 | −0.219 | −0.215 | −0.194 | −0.164 |
+| 2 pooled-recall-uninformed-noaux | −0.702 | −0.665 | −0.599 | −0.470 | −0.374 | −0.305 |
+| 3 pooled-recall-noaux | −0.451 | −0.411 | −0.383 | −0.316 | −0.255 | −0.190 |
+| 4 full-recall-noaux | −0.533 | −0.448 | −0.332 | −0.276 | −0.179 | −0.167 |
+| 5 full-recall | −0.268 | −0.223 | −0.161 | −0.151 | −0.070 | −0.007 |
+| 6 perceiver-recall-nobilinear | −0.384 | −0.300 | −0.227 | −0.202 | −0.152 | −0.106 |
+| 7 perceiver-recall | −0.301 | −0.218 | −0.163 | −0.097 | −0.029 | +0.007 |
+
+- The aux arms (5, 7) lead from the first read (150k) and never fall
+  behind; 7 overtakes 5 from 300k (+0.054 at 300k, +0.041 at 350k,
+  seed means), converging by 400k.
+- The MLP is fast early (third-best at 150k, ahead of every no-aux
+  token arm until 350k) and flattest late (+0.19 over 150k→400k vs
+  +0.26–0.40 for the token arms). No arm has plateaued by 400k except
+  arguably the MLP; the endpoint ranking of rungs 1/3/4 is not stable
+  past the bootstrap horizon.
+- Real deltas by stage (`_deltas.csv`): rung 2 is real and negative at
+  every stage; rung 3 real at 150k–250k only (the informed-init gain is
+  early); rung 5 real at 200k, 350k, 400k; rung 6 real at 150k and
+  400k; rung 7 real at 300k, 350k, 400k.
 
 ## 4.3 Conventions
+
+Convention battery, seed means (4 × 1,000 greedy self-play games per
+checkpoint; per-seed values in the CSV). Partner trump lead and
+called-suit lead are %; t0 = defender trump lead at trick 0, %.
+
+**Partner trump lead** (the convention the bilinear hypothesis names):
+
+| rung | 50k | 100k | 150k | 200k | 250k | 300k | 350k | 400k |
+|---|---|---|---|---|---|---|---|---|
+| 1 onehot-recall | 5 | 32 | 41 | 45 | 43 | 57 | 66 | 59 |
+| 2 pooled-recall-uninformed-noaux | 4 | 3 | 20 | 31 | 27 | 53 | 43 | 63 |
+| 3 pooled-recall-noaux | 0 | 1 | 0 | 1 | 1 | 1 | 0 | 0 |
+| 4 full-recall-noaux | 0 | 1 | 0 | 1 | 1 | 0 | 4 | 0 |
+| 5 full-recall | 1 | 1 | 28 | 47 | 60 | 64 | 71 | 73 |
+| 6 perceiver-recall-nobilinear | 7 | 3 | 39 | 62 | 59 | 81 | 75 | 94 |
+| 7 perceiver-recall | 0 | **40** | 34 | 50 | 64 | 59 | 74 | 79 |
+
+**Play logit spread** (median, greedy play decisions):
+
+| rung | 50k | 100k | 150k | 200k | 300k | 400k |
+|---|---|---|---|---|---|---|
+| 5 full-recall | 0.13 | 0.26 | 0.45 | 0.53 | 0.69 | 0.79 |
+| 6 perceiver-recall-nobilinear | 0.19 | 0.26 | 0.28 | 0.41 | 0.67 | 0.72 |
+| 7 perceiver-recall | 0.38 | 0.46 | 0.55 | 0.63 | 0.68 | 0.75 |
+
+**Bilinear hypothesis (pre-registered §3.2): supported for onset, not
+for the bootstrap endpoint.**
+
+- Partner trump lead switches on ~50k episodes earlier with the
+  bilinear pointer: at 100k, rung 7 is at 33/69/19% (s42/1042/2042)
+  vs rung 6 at 6/1/0% — all three seeds. Rung 6 catches up by 150k
+  (39 vs 34) and finishes *higher* at 400k (94 vs 79; 87/94/100 vs
+  78/92/67).
+- The bilinear play head is roughly twice as decisive early (logit
+  spread 0.38 vs 0.19 at 50k, 0.55 vs 0.28 at 150k) and the arms
+  converge by 300k.
+- Called-suit lead shows no separation between 6 and 7 at any stage
+  (400k: 53 vs 53).
+- The panel delta (+0.113, real) is the cleaner endpoint signal; the
+  convention battery adds the timing, which the panel (first read
+  150k) cannot see.
+
+**Unexplained: informed-init no-aux arms never learn partner trump
+lead.** Rungs 3 and 4 sit at 0–1% at every checkpoint on every seed
+(one 9% read), while the MLP (59%), the *uninformed* pooled arm (63%)
+and every aux arm (73–94%) learn it. The only difference between rungs
+2 and 3 is the card-embedding init, so within the bootstrap the
+informed init without aux supervision coincides with the partner
+never finding this convention (3 seeds × 2 arms; mechanism untested). Not a pre-registered read; flagged for follow-up (does it
+appear later, and does it depend on the init's trump encoding?).
+
+**Other battery reads at 400k** (seed means):
+
+| rung | pick % | alone % | leaster % | t0 trump lead % | called-suit lead % |
+|---|---|---|---|---|---|
+| 1 | 49.9 | 24.9 | 0.3 | 1.1 | 62.0 |
+| 2 | 49.5 | 24.5 | 0.5 | 1.5 | 44.0 |
+| 3 | 42.4 | 26.7 | 3.0 | 0.0 | 55.4 |
+| 4 | 47.1 | 25.6 | 0.6 | 0.0 | 48.4 |
+| 5 | 44.4 | 25.0 | 2.4 | 1.8 | 49.6 |
+| 6 | 48.3 | 26.9 | 0.5 | 3.0 | 53.5 |
+| 7 | 48.6 | 22.9 | 0.8 | 3.7 | 52.6 |
+
+- Defender trick-0 trump leads stay low everywhere (≤ 4%); the two
+  perceiver arms are highest at 3.0–3.7%, matching the recall
+  lineage's theta_0 (3.4–4.1%, policy_iteration `CERT_BARS` note), and
+  the no-aux informed arms never lead trump at trick 0 at all.
+- The MLP leads the called suit most often (~60% from 50k on); the
+  token arms settle at 44–55%.
+- Aux-head reads (aux arms only) improve slightly with the perceiver
+  readout: seen-trump accuracy 87.8 (rung 5) → 89.9 / 89.4 (6 / 7).
 
 ---
 
@@ -225,3 +374,12 @@ completes first (≈ 1.6 days in).
   `.venv` was built with `uv sync --frozen --extra dev`; its training
   suite passed (505) before launch, and the aux-only commit `df815c5`
   passed the recall/golden tests on its own.
+- **2026-11-02 07:23** — COMPLETE (`ABLATION COMPLETE` in
+  `launch.out`): 20 trained cells + the reused release cell, 126
+  PANEL-A, 21 PANEL-B and 168 convention reads, 0 failed. Report
+  rebuilt on main (`sheepshead.research.recall_ablation_report`, with
+  end labels de-overlapped in the figure); §4 filled. Headline: release
+  +0.171 ± 0.016 over the MLP; aux heads the largest step (+0.160);
+  perceiver readout −0.098 without the bilinear pointer, +0.113 with
+  it, netting to parity with `full-recall`; bilinear speeds convention
+  onset (~50k episodes) but not the 400k convention level.
