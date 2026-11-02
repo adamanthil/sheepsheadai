@@ -6,10 +6,9 @@ interface SegmentedProps {
   options: string[];
   value: number;
   onChange: (index: number) => void;
-  disabled?: boolean;
 }
 
-function Segmented({ options, value, onChange, disabled }: SegmentedProps) {
+function Segmented({ options, value, onChange }: SegmentedProps) {
   return (
     <div
       className={styles.segmented}
@@ -21,7 +20,6 @@ function Segmented({ options, value, onChange, disabled }: SegmentedProps) {
           type="button"
           className={`${styles.segBtn} ${i === value ? styles.segActive : ""}`}
           onClick={() => onChange(i)}
-          disabled={disabled}
         >
           {o}
         </button>
@@ -92,9 +90,7 @@ export default function RulesPanel({
       </div>
 
       <div className={styles.group}>
-        <div className={styles.groupLabel}>
-          {inline ? "All pass" : "When everyone passes"}
-        </div>
+        <div className={styles.groupLabel}>When everyone passes</div>
         <Segmented
           options={["Leasters", "Doublers"]}
           value={allPassIndex}

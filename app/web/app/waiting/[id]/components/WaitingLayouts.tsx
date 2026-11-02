@@ -1,6 +1,7 @@
-import React from "react";
-import { ds, Wordmark } from "../../../../lib/ds";
-import SeatCard, { type SeatInfo } from "./SeatCard";
+import React, { useState } from "react";
+import { MiniCardMark, ds, Wordmark } from "../../../../lib/ds";
+import { SeatChip, SeatTile, type SeatInfo } from "./Seat";
+import WaitingMenu from "./WaitingMenu";
 import styles from "../page.module.css";
 
 export interface WaitingLayoutProps {
@@ -9,11 +10,8 @@ export interface WaitingLayoutProps {
   hostName: string | null;
   seatItems: SeatInfo[];
   humanCount: number;
-  seatedCount: number;
   error: string | null;
   isHost: boolean;
-  confirmClose: boolean;
-  setConfirmClose: (v: boolean) => void;
   chooseSeat: (seat: number) => void;
   removePlayer: (clientId: string) => void;
   startGame: () => void;
@@ -23,142 +21,188 @@ export interface WaitingLayoutProps {
   rules: React.ReactNode;
 }
 
-function leaveLinkFor(onLeave: () => void) {
-  const leaveLink = (label: string, className: string) => (
-    // Not a navigation: onClick always preventDefault()s and delegates to
-    // onLeave(). The href only supplies link semantics (status bar,
-    // middle-click), so next/link would add a router it never uses.
-    // eslint-disable-next-line @next/next/no-html-link-for-pages
-    <a
-      className={className}
-      href="/"
-      onClick={(e) => {
-        e.preventDefault();
-        onLeave();
-      }}
-    >
-      {label}
-    </a>
-  );
-  return leaveLink;
+interface MobileWaitingLayoutProps extends WaitingLayoutProps {
+  chatOpen: boolean;
+  setChatOpen: (open: boolean) => void;
+  chatUnread: boolean;
 }
 
-export function MobileWaitingLayout(props: WaitingLayoutProps) {
+/** Which seat's player the host is about to remove, while it is still
+ * removable (they may have left meanwhile). */
+function useRemoving(seatItems: SeatInfo[]) {
+  const [seat, setSeat] = useState<number | null>(null);
+  const removing =
+    seatItems.find((s) => s.seat === seat && s.removableId) ?? null;
+  return [removing, (s: SeatInfo | null) => setSeat(s?.seat ?? null)] as const;
+}
+
+/** The host's confirmation before removing a player, under the seats. */
+function RemoveConfirm({
+  seat,
+  onRemove,
+  onCancel,
+}: {
+  seat: SeatInfo;
+  onRemove: (clientId: string) => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className={styles.removeConfirm}>
+      <span className={styles.removePrompt}>
+        Remove {seat.name} from the table?
+      </span>
+      <button
+        type="button"
+        className={`${ds.btn} ${ds.btnSm}`}
+        onClick={() => {
+          onCancel();
+          if (seat.removableId) onRemove(seat.removableId);
+        }}
+      >
+        Remove
+      </button>
+      <button
+        type="button"
+        className={`${ds.btn} ${ds.btnGhost} ${ds.btnSm}`}
+        onClick={onCancel}
+      >
+        Cancel
+      </button>
+    </div>
+  );
+}
+
+function waitingForHost(hostName: string | null) {
+  return hostName
+    ? `Waiting for ${hostName} to deal…`
+    : "Waiting for the host to deal…";
+}
+
+export function MobileWaitingLayout(props: MobileWaitingLayoutProps) {
   const {
     roomName,
     shortId,
     hostName,
     seatItems,
-    seatedCount,
     error,
     isHost,
-    confirmClose,
-    setConfirmClose,
     chooseSeat,
     startGame,
     closeTable,
+    onLeave,
     chat,
     rules,
+    chatOpen,
+    setChatOpen,
+    chatUnread,
   } = props;
-  const leaveLink = leaveLinkFor(props.onLeave);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [removing, setRemoving] = useRemoving(seatItems);
+
+  if (chatOpen) {
+    return (
+      <div className={styles.chatScreen}>
+        <div className={styles.chatHead}>
+          <button
+            type="button"
+            className={styles.back}
+            onClick={() => setChatOpen(false)}
+          >
+            ← Back
+          </button>
+          <div className={styles.chatTitle}>{roomName}</div>
+          <span className={styles.chatHeadSpacer} />
+        </div>
+        <div className={styles.chatBody}>{chat}</div>
+      </div>
+    );
+  }
+
   return (
-    /* ---------- MOBILE ---------- */
     <div className={styles.mob}>
-      <div className={styles.mobScroll}>
-        <div className={styles.mobHead}>
-          <div className={ds.overline} style={{ fontSize: 9 }}>
-            Waiting Room · {shortId}
-          </div>
-          {leaveLink("Leave", styles.leaveLink)}
-        </div>
-        <div className={styles.mobTitleRow}>
-          <h1 className={styles.mobTitle}>{roomName}</h1>
-          <div className={styles.mobSeated}>
-            <div className={styles.mobSeatedNum}>
-              {seatedCount}
-              <span className={styles.statOf}>/5</span>
-            </div>
-            <div className={ds.overline} style={{ fontSize: 9, marginTop: 2 }}>
-              seated
-            </div>
-          </div>
-        </div>
+      <div className={styles.mobHead}>
+        <MiniCardMark h={20} />
+        <h1 className={styles.mobRoom}>{roomName}</h1>
+        <button
+          type="button"
+          className={`${styles.iconBtn} ${chatUnread ? styles.dot : ""}`}
+          onClick={() => setMenuOpen(true)}
+          aria-label={
+            chatUnread ? "Waiting room menu, new messages" : "Waiting room menu"
+          }
+          aria-haspopup="dialog"
+        >
+          <svg viewBox="0 0 20 20" aria-hidden="true">
+            <path d="M3.5 6h13M3.5 10h13M3.5 14h13" />
+          </svg>
+        </button>
+      </div>
 
+      <div className={styles.mobBody}>
         {error && <div className={styles.error}>{error}</div>}
-
-        <div>
-          <div className={ds.overline} style={{ fontSize: 9, marginBottom: 8 }}>
-            Seats{hostName ? ` · Host: ${hostName}` : ""}
+        <section>
+          <div className={styles.sectionHead}>
+            <span className={`${ds.overline} ${styles.sectionTitle}`}>
+              Seats
+            </span>
+            {seatItems.some((s) => s.takeable && !s.isYou) && (
+              <span className={styles.hint}>Tap an AI seat to sit there</span>
+            )}
           </div>
-          <div className={styles.mobSeatList}>
+          <div className={styles.seatStrip}>
             {seatItems.map((s) => (
-              <SeatCard
+              <SeatChip
                 key={s.seat}
                 seat={s}
-                variant="row"
                 onTake={chooseSeat}
-                onRemove={props.removePlayer}
+                onRemove={setRemoving}
               />
             ))}
           </div>
-        </div>
-
-        <div>
-          <div className={ds.overline} style={{ fontSize: 9, marginBottom: 8 }}>
-            Game Mode
+          {removing && (
+            <RemoveConfirm
+              seat={removing}
+              onRemove={props.removePlayer}
+              onCancel={() => setRemoving(null)}
+            />
+          )}
+        </section>
+        <section>
+          <div className={styles.sectionHead}>
+            <span className={`${ds.overline} ${styles.sectionTitle}`}>
+              House rules
+            </span>
           </div>
           {rules}
-        </div>
-
-        <div>
-          <div className={ds.overline} style={{ fontSize: 9, marginBottom: 8 }}>
-            Table Chat
-          </div>
-          <div className={styles.mobChatWrap}>{chat}</div>
-        </div>
+        </section>
       </div>
 
-      <div className={styles.mobActionBar}>
+      <div className={styles.mobFoot}>
         {isHost ? (
-          <>
-            <button className={`${ds.btn} ${ds.btnAccent}`} onClick={startGame}>
-              Deal cards →
-            </button>
-            <div className={styles.mobActionRow}>
-              {confirmClose ? (
-                <>
-                  <button
-                    className={`${ds.btn} ${ds.btnSm}`}
-                    style={{ flex: 1 }}
-                    onClick={closeTable}
-                  >
-                    Confirm
-                  </button>
-                  <button
-                    className={`${ds.btn} ${ds.btnGhost} ${ds.btnSm}`}
-                    style={{ flex: 1 }}
-                    onClick={() => setConfirmClose(false)}
-                  >
-                    Cancel
-                  </button>
-                </>
-              ) : (
-                <button
-                  className={`${ds.btn} ${ds.btnGhost} ${ds.btnSm} ${styles.dangerLink}`}
-                  style={{ flex: 1 }}
-                  onClick={() => setConfirmClose(true)}
-                >
-                  Close
-                </button>
-              )}
-            </div>
-          </>
+          <button
+            type="button"
+            className={`${ds.btn} ${ds.btnAccent} ${ds.btnLg} ${styles.deal}`}
+            onClick={startGame}
+          >
+            Deal cards →
+          </button>
         ) : (
-          <div className={styles.waitHint} style={{ textAlign: "center" }}>
-            Waiting for the host to deal…
-          </div>
+          <div className={styles.waitHint}>{waitingForHost(hostName)}</div>
         )}
       </div>
+
+      {menuOpen && (
+        <WaitingMenu
+          roomName={roomName}
+          shortId={shortId}
+          hostName={hostName}
+          chatUnread={chatUnread}
+          onShowChat={() => setChatOpen(true)}
+          onLeave={onLeave}
+          onCloseTable={isHost ? closeTable : null}
+          onClose={() => setMenuOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -172,21 +216,33 @@ export function DesktopWaitingLayout(props: WaitingLayoutProps) {
     humanCount,
     error,
     isHost,
-    confirmClose,
-    setConfirmClose,
     chooseSeat,
     startGame,
     closeTable,
+    onLeave,
     chat,
     rules,
   } = props;
-  const leaveLink = leaveLinkFor(props.onLeave);
+  const [confirmClose, setConfirmClose] = useState(false);
+  const [removing, setRemoving] = useRemoving(seatItems);
   return (
-    /* ---------- DESKTOP ---------- */
     <>
       <div className={styles.chrome}>
         <Wordmark size="sm" />
-        <div className={styles.chromeNav}>{leaveLink("Lobby ↗", ds.link)}</div>
+        {/* Not a navigation: onClick always preventDefault()s and delegates
+            to onLeave(). The href only supplies link semantics (status bar,
+            middle-click), so next/link would add a router it never uses. */}
+        {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+        <a
+          className={ds.link}
+          href="/"
+          onClick={(e) => {
+            e.preventDefault();
+            onLeave();
+          }}
+        >
+          Lobby ↗
+        </a>
       </div>
 
       <div className={styles.desk}>
@@ -225,17 +281,23 @@ export function DesktopWaitingLayout(props: WaitingLayoutProps) {
           <div className={ds.overline} style={{ marginBottom: 12 }}>
             The Table · 5 Seats
           </div>
-          <div className={styles.seatsGrid}>
+          <div className={styles.seatTiles}>
             {seatItems.map((s) => (
-              <SeatCard
+              <SeatTile
                 key={s.seat}
                 seat={s}
-                variant="card"
                 onTake={chooseSeat}
-                onRemove={props.removePlayer}
+                onRemove={setRemoving}
               />
             ))}
           </div>
+          {removing && (
+            <RemoveConfirm
+              seat={removing}
+              onRemove={props.removePlayer}
+              onCancel={() => setRemoving(null)}
+            />
+          )}
         </div>
 
         <div className={styles.twoCol}>
@@ -247,7 +309,7 @@ export function DesktopWaitingLayout(props: WaitingLayoutProps) {
           <div className={styles.actionLeft}>
             {isHost &&
               (confirmClose ? (
-                <div className={styles.confirmRow}>
+                <>
                   <button
                     className={`${ds.btn} ${ds.btnSm}`}
                     onClick={closeTable}
@@ -260,7 +322,7 @@ export function DesktopWaitingLayout(props: WaitingLayoutProps) {
                   >
                     Cancel
                   </button>
-                </div>
+                </>
               ) : (
                 <button
                   className={`${ds.btn} ${ds.btnGhost} ${ds.btnSm} ${styles.dangerLink}`}
@@ -270,22 +332,16 @@ export function DesktopWaitingLayout(props: WaitingLayoutProps) {
                 </button>
               ))}
           </div>
-          <div className={styles.actionRight}>
-            {isHost ? (
-              <>
-                <button
-                  className={`${ds.btn} ${ds.btnAccent} ${ds.btnLg}`}
-                  onClick={startGame}
-                >
-                  Deal cards →
-                </button>
-              </>
-            ) : (
-              <div className={styles.waitHint}>
-                Waiting for the host to deal…
-              </div>
-            )}
-          </div>
+          {isHost ? (
+            <button
+              className={`${ds.btn} ${ds.btnAccent} ${ds.btnLg}`}
+              onClick={startGame}
+            >
+              Deal cards →
+            </button>
+          ) : (
+            <div className={styles.waitHint}>{waitingForHost(hostName)}</div>
+          )}
         </div>
       </div>
     </>

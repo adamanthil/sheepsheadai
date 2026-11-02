@@ -1,0 +1,79 @@
+/* ---- Desktop tile ---- */
+.tile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  height: 68px;
+  padding: 0 12px;
+  box-sizing: border-box;
+  background: var(--bg-card);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+}
+.yours {
+  border-color: var(--ink);
+}
+.who {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.name {
+  font-family: var(--font-display);
+  font-size: 20px;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sub {
+  font-family: var(--font-ui);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.you {
+  color: var(--ink);
+  font-weight: 600;
+}
+.remove {
+  color: var(--accent-2);
+}
+
+/* ---- Mobile strip seat ---- */
+.chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 6px 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+}
+button.chip {
+  cursor: pointer;
+}
+button.chip:focus-visible {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: -2px;
+}
+.chipName {
+  max-width: 100%;
+  font-family: var(--font-display);
+  font-size: 16px;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

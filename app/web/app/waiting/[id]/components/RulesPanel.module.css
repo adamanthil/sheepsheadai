@@ -64,6 +64,3 @@
   color: var(--bg-page);
   font-weight: 600;
 }
-.segBtn:disabled {
-  cursor: not-allowed;
-}

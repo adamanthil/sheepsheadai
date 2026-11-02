@@ -46,17 +46,14 @@ export async function createTableAndDeal(
 
   if (opts.takeSeat) {
     const seatCard = page
-      .locator('[class*="card"]')
-      .filter({ hasText: new RegExp(`^Seat ${opts.takeSeat}`) })
-      .first();
+      .locator('[class*="tile"]')
+      .filter({ hasText: `Seat ${opts.takeSeat}` });
     // Wait for the seat grid to render before deciding anything — count()
     // does not auto-wait, so checking the button straight away races the
     // table fetch and silently skips the seat change.
     await expect(seatCard).toBeVisible();
     if (!((await seatCard.textContent()) ?? "").includes(playerName)) {
-      await seatCard
-        .getByRole("button", { name: /Take this seat|Take over/ })
-        .click();
+      await seatCard.getByRole("button", { name: "Take over" }).click();
       await expect(seatCard).toContainText(playerName);
     }
   }

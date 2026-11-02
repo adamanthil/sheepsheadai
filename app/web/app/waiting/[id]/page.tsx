@@ -6,11 +6,12 @@ import type { TableSummary } from "../../../lib/types";
 import { apiFetch } from "../../../lib/api";
 import { useTableSocket } from "../../../lib/hooks/useTableSocket";
 import { useChatMutes } from "../../../lib/hooks/useChatMutes";
+import { useChatUnread } from "../../../lib/hooks/useChatUnread";
 import { STORAGE_KEYS } from "../../../lib/storage";
 import styles from "./page.module.css";
 import { ChatPanel } from "../../components/chat";
 import { RemovePlayerButton } from "../../components/RemovePlayerButton";
-import type { SeatInfo } from "./components/SeatCard";
+import type { SeatInfo } from "./components/Seat";
 import { ds, useIsMobile } from "../../../lib/ds";
 import {
   DesktopWaitingLayout,
@@ -51,7 +52,8 @@ export default function WaitingRoom() {
   const [allPassMode, setAllPassMode] = useState<AllPassMode>("leasters"); // "leasters" (default) or "doublers"
   const [scoringMode, setScoringMode] = useState<number>(1); // 1 = Double on the Bump (default), 0 = Symmetric
   const [callout, setCallout] = useState<string | null>(null);
-  const [confirmClose, setConfirmClose] = useState(false);
+  // Mobile only: the chat is a full screen opened from the menu.
+  const [chatOpen, setChatOpen] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -226,17 +228,19 @@ export default function WaitingRoom() {
     const out: SeatInfo[] = [];
     for (let i = 1; i <= 5; i++) {
       const isAI = Boolean(table.seatIsAI?.[String(i)]);
+      const occupant = table.seatOccupants[String(i)];
       out.push({
         seat: i,
-        name: table.seats[String(i)] || null,
+        name: table.seats[String(i)] ?? "",
         isAI,
+        isYou: !!clientId && occupant === clientId,
         account: table.seatAccount?.[String(i)] ?? null,
-        removableId: isAI ? null : removableId(table.seatOccupants[String(i)]),
+        removableId: isAI ? null : removableId(occupant),
         takeable: Boolean(table.seatTakeable?.[String(i)]),
       });
     }
     return out;
-  }, [table, removableId]);
+  }, [table, removableId, clientId]);
 
   const isMobile = useIsMobile();
   const mutes = useChatMutes(params?.id);
@@ -245,14 +249,15 @@ export default function WaitingRoom() {
     .toUpperCase()}`;
   const roomName = table?.name || params?.id || "Table";
   const hostName = table?.host || null;
-  const humanCount = seatItems.filter((s) => !!s.name && !s.isAI).length;
-  const seatedCount = seatItems.filter((s) => !!s.name).length;
+  const humanCount = seatItems.filter((s) => !s.isAI).length;
+  const visibleChat = mutes.visible(chatMessages);
+  const chatUnread = useChatUnread(visibleChat, clientId, chatOpen);
 
   // Anyone can mute another player's chat for themselves; the host can
   // also remove them.
   const chat = (
     <ChatPanel
-      messages={mutes.visible(chatMessages)}
+      messages={visibleChat}
       onSendMessage={sendChatMessage}
       muted={mutes.muted}
       onUnmute={mutes.unmute}
@@ -299,11 +304,8 @@ export default function WaitingRoom() {
     hostName,
     seatItems,
     humanCount,
-    seatedCount,
     error,
     isHost,
-    confirmClose,
-    setConfirmClose,
     chooseSeat,
     removePlayer: (target: string) => void kickPlayer(target),
     startGame,
@@ -317,7 +319,12 @@ export default function WaitingRoom() {
     <div className={styles.root}>
       {callout && <div className={styles.callout}>{callout}</div>}
       {isMobile ? (
-        <MobileWaitingLayout {...layoutProps} />
+        <MobileWaitingLayout
+          {...layoutProps}
+          chatOpen={chatOpen}
+          setChatOpen={setChatOpen}
+          chatUnread={chatUnread}
+        />
       ) : (
         <DesktopWaitingLayout {...layoutProps} />
       )}

@@ -1,21 +1,21 @@
 import { expect, test } from "@playwright/test";
 import { createTable, joinInNewPage } from "./helpers";
 
-// The host removes a player, from their seat card or from one of their
+// The host removes a player, from their seat or from one of their
 // chat messages; the removed player is sent home with a notice.
 
 test("host removes a player from their seat", async ({ browser, page }) => {
   const tableId = await createTable(page, "Host", "e2e-kick-seat");
   const pest = await joinInNewPage(browser, tableId, "Pest");
 
-  const seatCard = page
-    .locator('[class*="card"]')
-    .filter({ hasText: "Pest" })
-    .first();
-  await seatCard.getByRole("button", { name: "Remove" }).click();
-  await seatCard.getByRole("button", { name: "Remove" }).click();
+  const seat = page.locator('[class*="tile"]').filter({ hasText: "Pest" });
+  await seat.getByRole("button", { name: "Remove" }).click();
+  await page
+    .locator('[class*="removeConfirm"]')
+    .getByRole("button", { name: "Remove" })
+    .click();
 
-  await expect(seatCard).toHaveCount(0);
+  await expect(seat).toHaveCount(0);
   await pest.waitForURL((url) => url.pathname === "/");
   await expect(
     pest.getByText("The host removed you from that table."),
