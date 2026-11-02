@@ -278,6 +278,44 @@ seed means at each composite stage:
   early); rung 5 real at 200k, 350k, 400k; rung 6 real at 150k and
   400k; rung 7 real at 300k, 350k, 400k.
 
+**Improvement rate.** The same curves taken relative to each seed's
+150k read, so every curve starts at zero and its slope is the rung's
+rate of improvement:
+
+![PANEL-A gain since 150k](figures/arch_ablation_202610_panelA_gain.png)
+
+`notebooks/figures/arch_ablation_202610_panelA_gain.png` (+ `.svg`).
+Per-seed gains, seed mean ± seed SE (descriptive; no pre-registered
+rule on gains):
+
+| rung | arch | start (150k) | gain 150k→250k | gain 250k→400k | gain 150k→400k |
+|---|---|---|---|---|---|
+| 1 | `onehot-recall` | −0.358 | +0.139 ± 0.007 | +0.055 ± 0.042 | +0.194 ± 0.047 |
+| 2 | `pooled-recall-uninformed-noaux` | −0.702 | +0.103 ± 0.041 | +0.294 ± 0.068 | +0.397 ± 0.085 |
+| 3 | `pooled-recall-noaux` | −0.450 | +0.067 ± 0.047 | +0.193 ± 0.020 | +0.260 ± 0.047 |
+| 4 | `full-recall-noaux` | −0.533 | +0.201 ± 0.132 | +0.165 ± 0.114 | +0.366 ± 0.120 |
+| 5 | `full-recall` | −0.268 | +0.107 ± 0.038 | +0.153 ± 0.034 | +0.260 ± 0.017 |
+| 6 | `perceiver-recall-nobilinear` | −0.384 | +0.156 ± 0.054 | +0.122 ± 0.032 | +0.278 ± 0.024 |
+| 7 | `perceiver-recall` | −0.301 | +0.138 ± 0.031 | +0.170 ± 0.021 | +0.308 ± 0.009 |
+
+- **Gain mostly tracks how far behind an arm starts.** The two largest
+  gains belong to the two lowest starters: rung 2 (−0.70 at 150k,
+  +0.40) and rung 4 (−0.53, +0.37). Rung 4's spread (± 0.12) is one
+  seed: s1042 started at −0.78 and recovered +0.58. Read these as
+  catch-up, not as faster learners; they still finish at or below
+  the MLP.
+- **The MLP has the flattest late rate:** +0.055 over 250k→400k against
+  at least +0.12 for every token arm. It front-loads (its early gain
+  is the most consistent, ± 0.007) and is the arm most likely to fall
+  further behind past 400k (§4.2 bullet 2).
+- **Among the aux arms the release improves fastest and most
+  consistently** (+0.308 ± 0.009 overall; +0.170 late, the highest
+  aux-arm late rate). It starts 0.03 behind `full-recall` and finishes
+  level with it.
+- Every gain is relative to a single noisy 150k composite (seed SD
+  0.02–0.22 at 150k), so small differences between rates are not
+  resolved.
+
 ## 4.3 Conventions
 
 Convention battery, seed means (4 × 1,000 greedy self-play games per
