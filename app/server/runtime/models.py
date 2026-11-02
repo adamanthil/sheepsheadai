@@ -70,7 +70,6 @@ class Table:
     name: str
     status: str = "open"  # open | playing | finished
     rules: Dict[str, Any] = field(default_factory=dict)
-    fill_with_ai: bool = True
     host_client_id: Optional[str] = None
     # time.monotonic() stamps for the idle sweep (runtime.lifecycle): a
     # table never dealt expires some time after creation, and a finished
@@ -257,7 +256,6 @@ class Table:
             "name": self.name,
             "status": self.status,
             "rules": self.rules,
-            "fillWithAI": self.fill_with_ai,
             "scoreMultiplier": self.score_multiplier,
             "passOutCount": self.pass_out_count,
             "seats": seats_named,

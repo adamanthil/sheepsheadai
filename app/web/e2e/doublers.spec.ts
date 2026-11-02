@@ -56,7 +56,6 @@ test("host picks doublers and the table badges it", async ({ page }) => {
   await expect(doublers).toHaveClass(/segActive/);
   await panel.screenshot({ path: "test-results/rules-doublers.png" });
 
-  await page.getByRole("button", { name: /Fill (empty )?with AI/ }).click();
   await page.getByRole("button", { name: "Deal cards →" }).click();
   await page.waitForURL(/\/table\//);
 

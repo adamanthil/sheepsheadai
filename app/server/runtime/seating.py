@@ -55,11 +55,10 @@ def may_reclaim_seat(table: Table, conn: ClientConn, seat: int) -> bool:
     )
 
 
-def lowest_non_human_seat(table: Table) -> Optional[int]:
-    """Return the lowest seat index that is either empty or occupied by an AI."""
+def lowest_ai_seat(table: Table) -> Optional[int]:
+    """Return the lowest seat an AI holds, or None if every seat is human."""
     for i in range(1, 6):
-        occ = table.seats.get(i)
-        if not occ or is_ai_occupant(table, occ):
+        if is_ai_occupant(table, table.seats.get(i)):
             return i
     return None
 

@@ -12,7 +12,7 @@ test("lobby lists each table's game mode", async ({ page, browser }) => {
   ] as const;
   for (const [name, rules] of seeded) {
     const created = await api.request.post("/api/tables", {
-      data: { name, fillWithAI: true, rules },
+      data: { name, rules },
     });
     expect(created.ok()).toBeTruthy();
   }

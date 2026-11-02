@@ -8,6 +8,7 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from server.runtime.models import Table
+from server.runtime.occupants import seat_ai_in_every_seat
 
 # DoS backstop: hard ceiling on concurrently open tables. Each table holds an
 # in-memory Game plus (once started) its own PPOAgent, so unbounded creation
@@ -35,7 +36,6 @@ class TableManager:
     async def create_table(
         self,
         name: str,
-        fill_with_ai: bool,
         rules: Dict[str, Any],
         creator_ip: Optional[str] = None,
         creator_player_id: Optional[str] = None,
@@ -65,11 +65,11 @@ class TableManager:
             table = Table(
                 id=tid,
                 name=name,
-                fill_with_ai=fill_with_ai,
                 rules=rules,
                 creator_ip=creator_ip,
                 creator_player_id=creator_player_id,
             )
+            seat_ai_in_every_seat(table)
             self.tables[tid] = table
             return table
 

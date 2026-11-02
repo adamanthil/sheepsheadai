@@ -18,7 +18,6 @@ const looseTable = z.looseObject({
   status: z.enum(["open", "playing", "finished"]),
   name: z.string(),
   host: z.string().nullable(),
-  fillWithAI: z.boolean(),
   initialNames: z.record(z.string(), z.string()),
   initialSeatOrder: z.array(z.string()),
   resultsHistory: z.array(z.looseObject({})),

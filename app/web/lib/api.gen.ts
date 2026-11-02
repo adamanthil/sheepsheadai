@@ -402,23 +402,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/tables/{table_id}/fill_ai": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Fill Ai */
-        post: operations["fill_ai_api_tables__table_id__fill_ai_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/tables/{table_id}/join": {
         parameters: {
             query?: never;
@@ -1029,11 +1012,6 @@ export interface components {
         };
         /** CreateTableRequest */
         CreateTableRequest: {
-            /**
-             * Fillwithai
-             * @default true
-             */
-            fillWithAI: boolean;
             /** Name */
             name: string;
             rules?: components["schemas"]["RulesInput"];
@@ -1042,8 +1020,6 @@ export interface components {
         CreateTableResponse: {
             /** Closingafterhand */
             closingAfterHand: boolean;
-            /** Fillwithai */
-            fillWithAI: boolean;
             /** Host */
             host: string | null;
             /** Host Key */
@@ -1353,8 +1329,6 @@ export interface components {
         TablePublic: {
             /** Closingafterhand */
             closingAfterHand: boolean;
-            /** Fillwithai */
-            fillWithAI: boolean;
             /** Host */
             host: string | null;
             /** Id */
@@ -2143,41 +2117,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OkResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    fill_ai_api_tables__table_id__fill_ai_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                table_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["RedealRequest"] | null;
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TablePublic"];
                 };
             };
             /** @description Validation Error */

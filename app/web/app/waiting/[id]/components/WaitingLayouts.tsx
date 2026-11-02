@@ -10,14 +10,12 @@ export interface WaitingLayoutProps {
   seatItems: SeatInfo[];
   humanCount: number;
   seatedCount: number;
-  emptyCount: number;
   error: string | null;
   isHost: boolean;
   confirmClose: boolean;
   setConfirmClose: (v: boolean) => void;
   chooseSeat: (seat: number) => void;
   removePlayer: (clientId: string) => void;
-  fillAI: () => void;
   startGame: () => void;
   closeTable: () => void;
   onLeave: () => void;
@@ -57,7 +55,6 @@ export function MobileWaitingLayout(props: WaitingLayoutProps) {
     confirmClose,
     setConfirmClose,
     chooseSeat,
-    fillAI,
     startGame,
     closeTable,
     chat,
@@ -128,13 +125,6 @@ export function MobileWaitingLayout(props: WaitingLayoutProps) {
               Deal cards →
             </button>
             <div className={styles.mobActionRow}>
-              <button
-                className={`${ds.btn} ${ds.btnGhost} ${ds.btnSm}`}
-                style={{ flex: 1 }}
-                onClick={fillAI}
-              >
-                Fill with AI
-              </button>
               {confirmClose ? (
                 <>
                   <button
@@ -180,13 +170,11 @@ export function DesktopWaitingLayout(props: WaitingLayoutProps) {
     hostName,
     seatItems,
     humanCount,
-    emptyCount,
     error,
     isHost,
     confirmClose,
     setConfirmClose,
     chooseSeat,
-    fillAI,
     startGame,
     closeTable,
     chat,
@@ -257,14 +245,6 @@ export function DesktopWaitingLayout(props: WaitingLayoutProps) {
 
         <div className={styles.actionBar}>
           <div className={styles.actionLeft}>
-            {isHost && (
-              <button
-                className={`${ds.btn} ${ds.btnGhost} ${ds.btnSm}`}
-                onClick={fillAI}
-              >
-                Fill empty with AI
-              </button>
-            )}
             {isHost &&
               (confirmClose ? (
                 <div className={styles.confirmRow}>
@@ -293,11 +273,6 @@ export function DesktopWaitingLayout(props: WaitingLayoutProps) {
           <div className={styles.actionRight}>
             {isHost ? (
               <>
-                {emptyCount > 0 && (
-                  <div className={styles.waitHint}>
-                    Waiting on {emptyCount} more, or fill with AI
-                  </div>
-                )}
                 <button
                   className={`${ds.btn} ${ds.btnAccent} ${ds.btnLg}`}
                   onClick={startGame}

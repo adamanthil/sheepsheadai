@@ -58,7 +58,7 @@ from server.runtime.seating import (
     cancel_disconnect_task,
     home_seat,
     is_ai_occupant,
-    lowest_non_human_seat,
+    lowest_ai_seat,
     may_reclaim_seat,
     pick_join_ai_seat,
     replace_ai_with_human_and_reserve,
@@ -111,7 +111,6 @@ async def create_table(request: Request, req: CreateTableRequest):
     try:
         table = await tables.create_table(
             req.name,
-            req.fillWithAI,
             req.rules.model_dump(),
             creator_ip=client_ip(request),
             creator_player_id=str(identity.id) if identity else None,
@@ -213,26 +212,16 @@ async def join_table(request: Request, table_id: str, req: JoinTableRequest):
             else:
                 await replace_ai_with_human_and_reserve(table, ai_seat, client_id)
         else:
-            seat_to_take: Optional[int] = None
-            if table.host_client_id == client_id:
-                if not table.seats.get(5) or is_ai_occupant(table, table.seats.get(5)):
-                    seat_to_take = 5
-            if seat_to_take is None:
-                seat_to_take = lowest_non_human_seat(table)
-
+            # Every seat holds an AI or a human: the host sits at 5, anyone
+            # else takes over the lowest AI seat.
+            seat_to_take = (
+                5
+                if table.host_client_id == client_id
+                and is_ai_occupant(table, table.seats.get(5))
+                else lowest_ai_seat(table)
+            )
             if seat_to_take is not None:
-                prev_occ = table.seats.get(seat_to_take)
-                if is_ai_occupant(table, prev_occ):
-                    await replace_ai_with_human_and_reserve(
-                        table, seat_to_take, client_id
-                    )
-                else:
-                    table.seats[seat_to_take] = client_id
-                    conn.seat = seat_to_take
-                    await post_presence_notice(
-                        table, conn, f"joined and took seat {seat_to_take}"
-                    )
-                    await broadcast_table_update(table)
+                await replace_ai_with_human_and_reserve(table, seat_to_take, client_id)
             else:
                 await post_presence_notice(table, conn, "joined the table")
 
@@ -297,10 +286,9 @@ async def choose_seat(
                 raise HTTPException(status_code=409, detail="not_your_seat")
         conn.home_occupant = None
 
-        for i in range(1, 6):
-            if table.seats[i] == req.client_id:
-                table.seats[i] = None
-                break
+        # Moving between seats before the deal: the AI the player took
+        # their old seat from sits back down in it.
+        give_seat_to_ai(table, conn)
 
         prev_occ = table.seats.get(req.seat)
         table.seats[req.seat] = req.client_id

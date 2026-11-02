@@ -132,20 +132,6 @@ export default function WaitingRoom() {
     setTable(t);
   }
 
-  async function fillAI() {
-    const res = await apiFetch(`/api/tables/${params?.id}/fill_ai`, {
-      method: "POST",
-      body: JSON.stringify({ client_id: clientId }),
-    });
-    if (!res.ok) {
-      const j = await res.json().catch(() => ({}));
-      setError(j?.detail || "Failed to fill seats with AI");
-      return;
-    }
-    const t = await res.json();
-    setTable(t);
-  }
-
   async function updatePartnerMode(newMode: number) {
     try {
       const res = await apiFetch(`/api/tables/${params?.id}/rules`, {
@@ -261,7 +247,6 @@ export default function WaitingRoom() {
   const hostName = table?.host || null;
   const humanCount = seatItems.filter((s) => !!s.name && !s.isAI).length;
   const seatedCount = seatItems.filter((s) => !!s.name).length;
-  const emptyCount = seatItems.filter((s) => !s.name).length;
 
   // Anyone can mute another player's chat for themselves; the host can
   // also remove them.
@@ -315,14 +300,12 @@ export default function WaitingRoom() {
     seatItems,
     humanCount,
     seatedCount,
-    emptyCount,
     error,
     isHost,
     confirmClose,
     setConfirmClose,
     chooseSeat,
     removePlayer: (target: string) => void kickPlayer(target),
-    fillAI,
     startGame,
     closeTable,
     onLeave: () => router.push("/"),

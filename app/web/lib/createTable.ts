@@ -33,7 +33,6 @@ export async function createAndJoinTable({
     method: "POST",
     body: JSON.stringify({
       name,
-      fillWithAI: true,
       rules: {
         partnerMode: 1,
         allPassMode: "leasters",

@@ -12,9 +12,8 @@ from typing import Optional
 
 from server.runtime.models import ClientConn, Occupant, Table
 
-# Name pool for auto-generated AI occupants (disconnect replacement and
-# table auto-fill). Each call site keeps its own indexing scheme (time-
-# indexed in allocate_ai_occupant, seat-indexed in server.api.games).
+# Name pool for auto-generated AI occupants: seat-indexed for the AIs a
+# table opens with, time-indexed for any allocated later.
 AI_NAME_POOL = ("Dan", "Kyle", "John", "Trevor", "Tim", "Tom")
 
 
@@ -25,6 +24,17 @@ def allocate_ai_occupant(display_name: Optional[str] = None) -> Occupant:
         display_name=display_name or AI_NAME_POOL[int(time.time()) % len(AI_NAME_POOL)],
         is_ai=True,
     )
+
+
+def seat_ai_in_every_seat(table: Table) -> None:
+    """Seat an AI in every empty seat: a table opens full of AIs, and
+    players take seats over from them. Caller holds ``table.state_lock``
+    or owns a table nobody else can see yet."""
+    for seat in range(1, 6):
+        if not table.seats[seat]:
+            occ = allocate_ai_occupant(AI_NAME_POOL[(seat - 1) % len(AI_NAME_POOL)])
+            table.occupants[occ.id] = occ
+            table.seats[seat] = occ.id
 
 
 def give_seat_to_ai(table: Table, conn: ClientConn) -> Optional[int]:

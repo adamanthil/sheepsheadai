@@ -30,7 +30,6 @@ class RulesUpdate(BaseModel):
 
 class CreateTableRequest(BaseModel):
     name: str
-    fillWithAI: bool = True
     rules: RulesInput = Field(default_factory=RulesInput)
 
     @field_validator("name")
@@ -342,7 +341,6 @@ class TablePublic(BaseModel):
     name: str
     status: Literal["open", "playing", "finished"]
     rules: RulesInput
-    fillWithAI: bool
     # Stake the hand in progress is being played for: 1 normally, doubling
     # with each consecutive passed-out deal at a doublers table, up to a cap.
     scoreMultiplier: int = 1

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import uuid
-
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from server.api.auth import PlayerIdentity, current_player
@@ -28,8 +26,6 @@ from server.runtime.dealing import (
 )
 from server.runtime.lifecycle import finish_hand, is_draining
 from server.runtime.manager import tables
-from server.runtime.models import Occupant
-from server.runtime.occupants import AI_NAME_POOL
 from server.runtime.rules import plays_doublers
 from server.runtime.turn_timer import cancel_turn_timer
 from server.runtime.views import (
@@ -45,39 +41,6 @@ from sheepshead.agent.observation import observation_for
 from sheepshead.game import ACTION_LOOKUP
 
 router = APIRouter()
-
-
-def _fill_empty_seats_with_ai(table) -> None:
-    """Populate every empty seat with a fresh AI occupant."""
-    for i in range(1, 6):
-        if not table.seats[i]:
-            occ_id = str(uuid.uuid4())
-            display_name = AI_NAME_POOL[(i - 1) % len(AI_NAME_POOL)]
-            table.occupants[occ_id] = Occupant(
-                id=occ_id, display_name=display_name, is_ai=True
-            )
-            table.seats[i] = occ_id
-
-
-@router.post("/api/tables/{table_id}/fill_ai", response_model=TablePublic)
-@limiter.limit(HOST_ACTIONS)
-async def fill_ai(
-    request: Request,
-    table_id: str,
-    req: RedealRequest | None = None,
-    identity: PlayerIdentity = Depends(current_player),
-):
-    try:
-        table = tables.get_table(table_id)
-    except KeyError as e:
-        raise HTTPException(status_code=404, detail="table_not_found") from e
-
-    require_host(table, req.client_id if req else None, identity)
-    async with table.state_lock:
-        _fill_empty_seats_with_ai(table)
-
-    await broadcast_table_update(table)
-    return table.to_public_dict()
 
 
 @router.post("/api/tables/{table_id}/start", response_model=TablePublic)
@@ -102,9 +65,6 @@ async def start_game(
         # build two Games for one table.
         if table.status != "open":
             raise HTTPException(status_code=400, detail="already_started")
-
-        if table.fill_with_ai:
-            _fill_empty_seats_with_ai(table)
 
         if not all(table.seats[i] for i in range(1, 6)):
             raise HTTPException(status_code=400, detail="not_enough_players")

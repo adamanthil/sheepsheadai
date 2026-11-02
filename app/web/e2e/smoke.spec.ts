@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { createTableAndDeal } from "./helpers";
 
-// Happy path: create a table, fill the remaining seats with AI, deal, then
+// Happy path: create a table (AIs hold the other seats), deal, then
 // act whenever the UI offers a decision until this player has played a card
 // into a trick. Exercises the REST create/join/start flow, the table
 // websocket, the AI turn loop, and hand persistence end to end.

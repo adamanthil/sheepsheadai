@@ -32,7 +32,7 @@ export async function createTable(
 }
 
 /**
- * Create a table, fill the empty seats with AI, and deal — landing on the
+ * Create a table and deal (every other seat holds an AI) — landing on the
  * table view. Seat assignment is not deterministic; pass `takeSeat` to sit
  * in a specific seat before dealing (seat 1 holds the first pick decision).
  */
@@ -61,7 +61,6 @@ export async function createTableAndDeal(
     }
   }
 
-  await page.getByRole("button", { name: /Fill (empty )?with AI/ }).click();
   await page.getByRole("button", { name: "Deal cards →" }).click();
   await page.waitForURL(/\/table\//);
 }
