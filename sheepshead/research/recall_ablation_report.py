@@ -85,6 +85,7 @@ RUNG_COLORS = (
     "#008300",
     "#6250d6",
 )
+LABEL_GAP_PT = 10
 INK, INK_MUTED, SURFACE = "#1f1f1e", "#6b6a63", "#fcfcfb"
 
 
@@ -257,6 +258,7 @@ def plot_panel_a(rows: list[dict], out: Path) -> bool:
     )
     ax.set_facecolor(SURFACE)
     drew = False
+    ends: list[tuple[float, float, int]] = []
     for rung, arch in enumerate(LADDER, start=1):
         color = RUNG_COLORS[rung - 1]
         by_seed: dict[int, dict[int, float]] = {}
@@ -281,18 +283,30 @@ def plot_panel_a(rows: list[dict], out: Path) -> bool:
         ]
         xk = [x / 1000 for x in stages]
         ax.plot(xk, mean, color=color, lw=2, marker="o", ms=5, label=f"{rung} {arch}")
+        ends.append((xk[-1], mean[-1], rung))
+    if not drew:
+        plt.close(fig)
+        return False
+    # Direct labels at the curve ends, nudged apart where endpoints nearly
+    # coincide (the y offset is in points so the gap survives any scale).
+    ends.sort(key=lambda e: e[1])
+    lo, hi = ax.get_ylim()
+    points_per_unit = fig.get_size_inches()[1] * 72 * 0.85 / (hi - lo)
+    placed: list[float] = []
+    for x, y, rung in ends:
+        pt = y * points_per_unit
+        if placed and pt < placed[-1] + LABEL_GAP_PT:
+            pt = placed[-1] + LABEL_GAP_PT
+        placed.append(pt)
         ax.annotate(
             f"{rung}",
-            (xk[-1], mean[-1]),
-            xytext=(6, 0),
+            (x, y),
+            xytext=(6, pt - y * points_per_unit),
             textcoords="offset points",
             va="center",
             fontsize=9,
             color=INK,
         )
-    if not drew:
-        plt.close(fig)
-        return False
     ax.set_xlabel(
         "bootstrap episodes (thousands); each point a 3-checkpoint composite",
         color=INK_MUTED,
