@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { STORAGE_KEYS } from "../../../lib/storage";
 import { useCountdown } from "../../../lib/hooks/useCountdown";
 import { useChatMutes } from "../../../lib/hooks/useChatMutes";
+import { useChatUnread } from "../../../lib/hooks/useChatUnread";
 import { ds, useIsMobile, useMediaQuery } from "../../../lib/ds";
 import styles from "./page.module.css";
 import { isAiSeat, nameForSeat } from "./utils/seatMath";
@@ -149,21 +150,11 @@ export default function TablePage() {
   const [showMenu, setShowMenu] = useState(false);
   const [showCheatSheet, setShowCheatSheet] = useState(false);
 
-  // Chat's unread dot counts only what other players type, never the game
-  // log. The first batch is the history the table had when we arrived, and
-  // opening the chat reads everything in it.
-  const playerMessages = mutes
-    .visible(chatMessages)
-    .filter((m) => m.type === "player" && m.author_id !== clientId).length;
-  const [seenMessages, setSeenMessages] = useState<number | null>(null);
-  if (
-    chatMessages.length > 0 &&
-    (seenMessages === null ||
-      (showMobileLog && seenMessages !== playerMessages))
-  ) {
-    setSeenMessages(playerMessages);
-  }
-  const chatUnread = seenMessages !== null && playerMessages > seenMessages;
+  const chatUnread = useChatUnread(
+    mutes.visible(chatMessages),
+    clientId,
+    showMobileLog,
+  );
 
   const isYourTurn = !!lastState && computeIsYourTurn(lastState);
   const isHost = lastState ? computeIsHost(lastState) : false;

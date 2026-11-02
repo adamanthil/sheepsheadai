@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useState } from "react";
 import { ds } from "../../../../lib/ds";
 import type { CloseControls, LeaveControls } from "./TableHeader";
-import styles from "./TableMenu.module.css";
+import BottomSheet, { SheetIcon } from "../../../components/BottomSheet";
+import styles from "../../../components/BottomSheet.module.css";
 
 interface TableMenuProps {
   roomName: string;
@@ -20,15 +21,6 @@ const ICONS = {
   close: "M7.5 7.5l5 5M12.5 7.5l-5 5",
 };
 
-function Icon({ d, ring }: { d: string; ring?: boolean }) {
-  return (
-    <svg viewBox="0 0 20 20" aria-hidden="true">
-      {ring && <circle cx="10" cy="10" r="7" />}
-      <path d={d} />
-    </svg>
-  );
-}
-
 /** Mobile table menu: a bottom sheet holding what the action bar and the
  * header's Leave used to: Scores, Leave, and the host's Close table, each
  * of which can wait for the hand to end. */
@@ -42,26 +34,12 @@ export default function TableMenu({
   onClose,
 }: TableMenuProps) {
   const [open, setOpen] = useState<"leave" | "close" | null>(null);
-  const sheetRef = useRef<HTMLDivElement>(null);
-  // Read through a ref so the page's every re-render (each state message)
-  // doesn't re-run the effect and pull focus back to the first row.
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-
-  useEffect(() => {
-    sheetRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCloseRef.current();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
 
   let leaveRows: React.ReactNode;
   if (leave.canLeaveAfterHand && leave.leavingAfterHand) {
     leaveRows = (
       <div className={styles.row}>
-        <Icon d={ICONS.leave} />
+        <SheetIcon d={ICONS.leave} />
         <span className={styles.armed}>Leaving after this hand</span>
         <button
           type="button"
@@ -83,7 +61,7 @@ export default function TableMenu({
             leave.onLeaveAfterHand(true);
           }}
         >
-          <Icon d={ICONS.leave} />
+          <SheetIcon d={ICONS.leave} />
           <span className={styles.grow}>Leave after this hand</span>
         </button>
         <button
@@ -105,7 +83,7 @@ export default function TableMenu({
           leave.canLeaveAfterHand ? () => setOpen("leave") : leave.onLeave
         }
       >
-        <Icon d={ICONS.leave} />
+        <SheetIcon d={ICONS.leave} />
         <span className={styles.grow}>Leave table</span>
       </button>
     );
@@ -115,7 +93,7 @@ export default function TableMenu({
   if (close?.closingAfterHand) {
     closeRows = (
       <div className={`${styles.row} ${styles.danger}`}>
-        <Icon d={ICONS.close} ring />
+        <SheetIcon d={ICONS.close} ring />
         <span className={styles.armed}>Table ends after this hand</span>
         <button
           type="button"
@@ -138,7 +116,7 @@ export default function TableMenu({
               close.onCloseAfterHand(true);
             }}
           >
-            <Icon d={ICONS.close} ring />
+            <SheetIcon d={ICONS.close} ring />
             <span className={styles.grow}>End after this hand</span>
           </button>
         )}
@@ -147,7 +125,7 @@ export default function TableMenu({
           className={`${styles.row} ${styles.danger} ${close.handInPlay ? styles.sub : ""}`}
           onClick={close.onCloseTable}
         >
-          {!close.handInPlay && <Icon d={ICONS.close} ring />}
+          {!close.handInPlay && <SheetIcon d={ICONS.close} ring />}
           <span className={styles.grow}>
             {close.handInPlay ? "Close now" : "Confirm close"}
           </span>
@@ -161,7 +139,7 @@ export default function TableMenu({
         className={`${styles.row} ${styles.danger}`}
         onClick={() => setOpen("close")}
       >
-        <Icon d={ICONS.close} ring />
+        <SheetIcon d={ICONS.close} ring />
         <span className={styles.grow}>Close table</span>
         <span className={styles.note}>for everyone</span>
       </button>
@@ -169,53 +147,43 @@ export default function TableMenu({
   }
 
   return (
-    <>
-      <div className={styles.scrim} onClick={onClose} aria-hidden="true" />
-      <div
-        ref={sheetRef}
-        className={styles.sheet}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Table menu"
-      >
-        <div className={styles.grab} aria-hidden="true" />
-        <div className={styles.head}>
-          <div className={styles.titleRow}>
-            <span className={styles.title}>{roomName}</span>
-            {stakeBadge && (
-              <span className={`${ds.badge} ${ds.badgeAccent}`}>
-                {stakeBadge}
-              </span>
-            )}
-          </div>
-          {rulesBadge && (
-            <span className={`${ds.badge} ${ds.badgeQuiet} ${styles.rules}`}>
-              {rulesBadge}
+    <BottomSheet label="Table menu" onClose={onClose}>
+      <div className={styles.head}>
+        <div className={styles.titleRow}>
+          <span className={styles.title}>{roomName}</span>
+          {stakeBadge && (
+            <span className={`${ds.badge} ${ds.badgeAccent}`}>
+              {stakeBadge}
             </span>
           )}
         </div>
-        <button
-          type="button"
-          className={styles.row}
-          onClick={() => {
-            onClose();
-            onShowScores();
-          }}
-        >
-          <Icon d={ICONS.scores} />
-          <span className={styles.grow}>Scores</span>
-        </button>
-        <div className={styles.rule} />
-        {leaveRows}
-        {closeRows}
-        <button
-          type="button"
-          className={`${styles.row} ${styles.cancel}`}
-          onClick={onClose}
-        >
-          <span className={styles.grow}>Back to the table</span>
-        </button>
+        {rulesBadge && (
+          <span className={`${ds.badge} ${ds.badgeQuiet} ${styles.rules}`}>
+            {rulesBadge}
+          </span>
+        )}
       </div>
-    </>
+      <button
+        type="button"
+        className={styles.row}
+        onClick={() => {
+          onClose();
+          onShowScores();
+        }}
+      >
+        <SheetIcon d={ICONS.scores} />
+        <span className={styles.grow}>Scores</span>
+      </button>
+      <div className={styles.rule} />
+      {leaveRows}
+      {closeRows}
+      <button
+        type="button"
+        className={`${styles.row} ${styles.cancel}`}
+        onClick={onClose}
+      >
+        <span className={styles.grow}>Back to the table</span>
+      </button>
+    </BottomSheet>
   );
 }
