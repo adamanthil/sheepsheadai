@@ -40,7 +40,7 @@ import {
   useCallout,
   useStagedActions,
 } from "./hooks";
-import GameOverBanner from "./components/GameOverBanner";
+import HandSummaryBanner from "./components/HandSummaryBanner";
 import ScoresOverlay from "./components/ScoresOverlay";
 import CheatSheet from "../../how-to-play/CheatSheet";
 import TableHeader from "./components/TableHeader";
@@ -472,7 +472,7 @@ export default function TablePage() {
       {/* Held back while the final trick is shown and collected, so the
           banner doesn't cover the last cards played. */}
       {!departure && view.is_done && view.final && !trickOnShow && (
-        <GameOverBanner
+        <HandSummaryBanner
           final={view.final}
           table={table}
           onRedeal={redeal}

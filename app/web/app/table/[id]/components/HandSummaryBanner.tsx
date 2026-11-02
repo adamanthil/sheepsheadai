@@ -2,9 +2,9 @@ import React, { useState } from "react";
 import { ds } from "../../../../lib/ds";
 import HandSummary, { SeatGrid } from "./HandSummary";
 import type { FinalState, TableView } from "../../../../lib/types";
-import styles from "./GameOverBanner.module.css";
+import styles from "./HandSummaryBanner.module.css";
 
-interface GameOverBannerProps {
+interface HandSummaryBannerProps {
   final: FinalState;
   table: TableView;
   onRedeal: () => void;
@@ -14,7 +14,7 @@ interface GameOverBannerProps {
   onLeave: () => void;
 }
 
-export default function GameOverBanner({
+export default function HandSummaryBanner({
   final,
   table,
   onRedeal,
@@ -22,7 +22,7 @@ export default function GameOverBanner({
   isHost,
   onCloseTable,
   onLeave,
-}: GameOverBannerProps) {
+}: HandSummaryBannerProps) {
   const [confirmClose, setConfirmClose] = useState(false);
   const isLeaster = final.mode === "leaster";
 
@@ -30,7 +30,7 @@ export default function GameOverBanner({
     <div className={styles.overlay}>
       <div className={styles.banner}>
         <div className={styles.header}>
-          {isLeaster ? "Game Over · Leaster" : "Game Over"}
+          {isLeaster ? "Hand Summary · Leaster" : "Hand Summary"}
         </div>
         <HandSummary final={final} table={table} />
         <SeatGrid
