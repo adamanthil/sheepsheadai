@@ -15,6 +15,8 @@ blank, so this can be rerun at any point):
   formed deal by deal.
 - ``notebooks/figures/arch_ablation_202610_panelA.png`` (+ .svg): PANEL-A
   learning curves, seed mean per rung with the individual seeds faint.
+- ``notebooks/figures/arch_ablation_202610_panelA_gain.png`` (+ .svg): the
+  same curves as gain since each seed's first read (improvement rate).
 
     uv run python -m sheepshead.research.recall_ablation_report
 """
@@ -54,6 +56,7 @@ NOTEBOOKS = Path("notebooks")
 RESULTS_CSV = NOTEBOOKS / "arch_ablation_202610.csv"
 DELTAS_CSV = NOTEBOOKS / "arch_ablation_202610_deltas.csv"
 FIGURE = NOTEBOOKS / "figures" / "arch_ablation_202610_panelA.png"
+GAIN_FIGURE = NOTEBOOKS / "figures" / "arch_ablation_202610_panelA_gain.png"
 
 PANELS = (("PANEL-A", "panelA", PANEL_A_STAGES), ("PANEL-B", "panelB", PANEL_B_STAGES))
 CONVENTION_KEYS = (
@@ -252,7 +255,10 @@ def write_csv(path: Path, rows: list[dict]) -> None:
     print(f"wrote {path}: {len(rows)} rows")
 
 
-def plot_panel_a(rows: list[dict], out: Path) -> bool:
+def plot_panel_a(rows: list[dict], out: Path, *, gain: bool = False) -> bool:
+    """PANEL-A curves per rung. With ``gain``, each seed's series is taken
+    relative to its first read, so every curve starts at zero and its slope
+    is the rung's improvement rate."""
     fig, ax = plt.subplots(
         figsize=(10, 5.8), constrained_layout=True, facecolor=SURFACE
     )
@@ -268,6 +274,11 @@ def plot_panel_a(rows: list[dict], out: Path) -> bool:
         if not by_seed:
             continue
         drew = True
+        if gain:
+            by_seed = {
+                seed: {x: v - series[min(series)] for x, v in series.items()}
+                for seed, series in by_seed.items()
+            }
         for series in by_seed.values():
             xs = sorted(series)
             ax.plot(
@@ -287,19 +298,30 @@ def plot_panel_a(rows: list[dict], out: Path) -> bool:
     if not drew:
         plt.close(fig)
         return False
-    # Direct labels at the curve ends, nudged apart where endpoints nearly
-    # coincide (the y offset is in points so the gap survives any scale).
+    # Direct labels at the curve ends: endpoints that coincide share one
+    # label ("3, 5"); the rest are nudged apart where they nearly coincide
+    # (the y offset is in points so the gap survives any scale).
     ends.sort(key=lambda e: e[1])
     lo, hi = ax.get_ylim()
     points_per_unit = fig.get_size_inches()[1] * 72 * 0.85 / (hi - lo)
+    groups: list[list[tuple[float, float, int]]] = []
+    for end in ends:
+        if groups and (end[1] - groups[-1][-1][1]) * points_per_unit < (
+            LABEL_GAP_PT / 2
+        ):
+            groups[-1].append(end)
+        else:
+            groups.append([end])
     placed: list[float] = []
-    for x, y, rung in ends:
+    for group in groups:
+        x = group[0][0]
+        y = float(np.mean([e[1] for e in group]))
         pt = y * points_per_unit
         if placed and pt < placed[-1] + LABEL_GAP_PT:
             pt = placed[-1] + LABEL_GAP_PT
         placed.append(pt)
         ax.annotate(
-            f"{rung}",
+            ", ".join(str(e[2]) for e in sorted(group, key=lambda e: e[2])),
             (x, y),
             xytext=(6, pt - y * points_per_unit),
             textcoords="offset points",
@@ -311,17 +333,35 @@ def plot_panel_a(rows: list[dict], out: Path) -> bool:
         "bootstrap episodes (thousands); each point a 3-checkpoint composite",
         color=INK_MUTED,
     )
-    ax.set_ylabel("score per hand vs PANEL-A (seed mean; seeds faint)", color=INK_MUTED)
-    ax.set_title(
-        "Recall-contract architecture ladder: bootstrap learning curves", color=INK
-    )
+    if gain:
+        first = min(PANEL_A_STAGES) // 1000
+        ax.axhline(0, color="#c3c2b7", lw=1)
+        ax.set_ylabel(
+            f"PANEL-A gain since the {first}k read (seed mean; seeds faint)",
+            color=INK_MUTED,
+        )
+        ax.set_title(
+            "Recall-contract architecture ladder: bootstrap improvement", color=INK
+        )
+    else:
+        ax.set_ylabel(
+            "score per hand vs PANEL-A (seed mean; seeds faint)", color=INK_MUTED
+        )
+        ax.set_title(
+            "Recall-contract architecture ladder: bootstrap learning curves", color=INK
+        )
     ax.grid(axis="y", color="#e4e3dd", lw=0.8)
     for side in ("top", "right"):
         ax.spines[side].set_visible(False)
     for side in ("left", "bottom"):
         ax.spines[side].set_color("#c3c2b7")
     ax.tick_params(colors=INK_MUTED)
-    ax.legend(loc="lower right", fontsize=9, frameon=False, labelcolor=INK)
+    ax.legend(
+        loc="upper left" if gain else "lower right",
+        fontsize=9,
+        frameon=False,
+        labelcolor=INK,
+    )
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, dpi=160, facecolor=SURFACE)
     fig.savefig(out.with_suffix(".svg"), facecolor=SURFACE)
@@ -337,6 +377,7 @@ def main(argv: list[str] | None = None) -> int:
     write_csv(RESULTS_CSV, rows)
     write_csv(DELTAS_CSV, delta_rows())
     plot_panel_a(rows, FIGURE)
+    plot_panel_a(rows, GAIN_FIGURE, gain=True)
     return 0
 
 
