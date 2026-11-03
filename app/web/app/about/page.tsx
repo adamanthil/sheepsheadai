@@ -13,16 +13,19 @@ export default function AboutPage() {
         <div className={ds.headRule} />
         <p>
           Sheepshead AI is a passion project created by Andrew Bender, a
-          software engineer from Milwaukee. It was built primarily as a showcase
-          for a reinforcement learning project to train a smart and flexible
-          neural network that is an expert Sheepshead player. You can read about
-          the details of the project here: (insert blog link)
+          software engineer from Milwaukee. It was built as a showcase for a
+          reinforcement learning project to train a neural network to be an
+          expert Sheepshead player. The AI was trained by playing copies of
+          itself with only the rules of the game. All strategy, such as leading
+          trump as the partner and called suit as a defender, emerged entirely
+          because it is the best way to win. You can read about the details of
+          the project here: (Coming soon)
         </p>
         <p>
-          I hope you enjoy playing Sheepshead on the site. I'm curious how well
-          the AI agent's skill compares to real people, and the only way to find
-          that out is with real people playing games here! If you like it,
-          please share it with your friends.
+          I hope you enjoy playing Sheepshead on the site. One of the goals is
+          to learn how the AI's skill compares to real people, and the only way
+          to find that out is with real people playing games here! If you like
+          it, please share it with your friends.
         </p>
         <p>Feel free to send any comments to feedback@sheepshead.ai.</p>
         <div className={`${ds.overline} ${styles.sectionHead}`}>Support</div>
