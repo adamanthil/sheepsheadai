@@ -191,3 +191,30 @@ jobs:
               --label org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }} \
               --cache-from type=gha,scope=web --cache-to type=gha,scope=web,mode=max --push app/web
           fi
+
+  # Ssh to the box, whose deploy key can run only app/scripts/deploy.sh.
+  # Inert until the repository variable DEPLOY_ENABLED is "true", which the
+  # operator sets once the box is provisioned and the production
+  # environment holds DEPLOY_HOST, DEPLOY_SSH_KEY and DEPLOY_KNOWN_HOSTS.
+  deploy:
+    needs: images
+    if: vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+    steps:
+      - name: deploy over ssh
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          ARGS: ${{ needs.images.outputs.sha }} ${{ needs.images.outputs.api }} ${{ needs.images.outputs.web }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          install -m 600 /dev/null ~/.ssh/deploy_key
+          printf '%s\n' "$KEY" > ~/.ssh/deploy_key
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes \
+            "deploy@$HOST" "$ARGS"
