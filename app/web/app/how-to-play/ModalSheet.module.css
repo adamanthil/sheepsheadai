@@ -83,13 +83,15 @@
   stroke-linecap: round;
 }
 
-/* Phones get the whole screen. */
+/* Phones get the whole screen. Block layout, not the grid: a grid row would
+   hold the sheet to the screen's height, and a lesson taller than that
+   would spill past its background onto the see-through backdrop. */
 @media (max-width: 600px) {
   .dialog {
     padding: 0;
   }
   .dialog[open] {
-    place-items: stretch;
+    display: block;
   }
   .sheet {
     min-height: 100%;
