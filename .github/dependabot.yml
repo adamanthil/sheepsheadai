@@ -1,0 +1,10 @@
+# Moves the commit-SHA pins in .github/workflows/*.yml (and the trailing
+# "# vX.Y.Z" comments) in their own reviewed PRs, the same rule the compose
+# file applies to third-party images. Dependencies of the app and the
+# training code are deliberately not covered here.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
