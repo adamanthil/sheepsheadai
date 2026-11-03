@@ -1,0 +1,12 @@
+# Paths whose contents make up the api image's tag (app/scripts/deploy_tags.sh).
+# A commit touching none of them leaves the running api -- and live games --
+# alone. CI checks this covers the server's sheepshead import closure
+# (app/scripts/check_api_paths.py); extra entries are safe, missing ones are not.
+app/server
+pyproject.toml
+uv.lock
+sheepshead/__init__.py
+sheepshead/game.py
+sheepshead/agent
+sheepshead/rewards.py
+sheepshead/views.py

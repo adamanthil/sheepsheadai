@@ -49,6 +49,9 @@ jobs:
       # Lint and formatting live in the `lint` job; this one only proves the
       # sources parse under 3.14 before the suites below import them.
       - run: uv run python -m compileall -q app/server
+      # The api image tag hashes only app/deploy/api-paths.txt, so that list
+      # must cover everything the server imports or a deploy misses a restart.
+      - run: uv run python app/scripts/check_api_paths.py
       # Apply migrations to the service container (exercises graphile-migrate)
       # so the API-flow tests run against the real schema.
       - uses: actions/setup-node@v5
