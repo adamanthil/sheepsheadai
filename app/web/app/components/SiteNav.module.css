@@ -100,6 +100,10 @@
   color: var(--ink);
   text-decoration: none;
   white-space: nowrap;
+  /* Over the installed app's status-bar strip (.ios-pwa-status-bar,
+     z-index 10), whose 8px would otherwise cover the top of the ring. */
+  position: relative;
+  z-index: 11;
 }
 .account:hover .avatar {
   background: var(--accent-soft);
