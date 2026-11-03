@@ -1,0 +1,18 @@
+# Local override: build the api and web images from source instead of
+# pulling them from GHCR. Never use this on the production box (a torch
+# build on one vCPU can OOM the live api); CI builds the deployed images.
+#   docker compose --env-file app/deploy/.env.prod -f app/docker-compose.prod.yml \
+#     -f app/docker-compose.build.yml up -d --build
+# API_TAG and WEB_TAG must still be set (to anything, e.g. "local"): the
+# base file requires them before this one overrides the image names.
+
+services:
+  api:
+    image: sheepshead-api:local
+    build:
+      context: ..
+      dockerfile: app/server/Dockerfile
+
+  web:
+    image: sheepshead-web:local
+    build: ./web

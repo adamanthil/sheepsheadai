@@ -1,7 +1,15 @@
 # Production stack: caddy (TLS, same-origin routing) -> web + api -> postgres.
-# Configure via app/deploy/.env.prod (see docs/deploy.md), then from repo root:
-#   docker compose --env-file app/deploy/.env.prod -f app/docker-compose.prod.yml up -d
+# Two env files: app/deploy/.env.prod holds the human-owned secrets (see
+# docs/deploy.md); app/deploy/.env.deploy is written by app/scripts/deploy.sh
+# (image tags, model file and label, deployment sampling) -- never edit it.
+# Deploys run through deploy.sh; by hand, from the repo root:
+#   docker compose --env-file app/deploy/.env.prod \
+#     --env-file app/deploy/.env.deploy -f app/docker-compose.prod.yml up -d
 # (relative paths below resolve against this file's directory, app/)
+#
+# The api and web images are built in CI and pulled from GHCR, tagged by
+# content (app/scripts/deploy_tags.sh). To build them locally instead, add
+# -f app/docker-compose.build.yml. Never build on the production box.
 #
 # The api service is intentionally a single container with a single uvicorn
 # worker: all live game state is in-process. Do not scale it out.
@@ -54,9 +62,7 @@ services:
         condition: service_healthy
 
   api:
-    build:
-      context: ..
-      dockerfile: app/server/Dockerfile
+    image: ghcr.io/adamanthil/sheepshead-api:${API_TAG:?set API_TAG (deploy.sh writes it)}
     restart: unless-stopped
     logging: *logging
     stop_grace_period: 30s
@@ -84,7 +90,7 @@ services:
         condition: service_healthy
 
   web:
-    build: ./web
+    image: ghcr.io/adamanthil/sheepshead-web:${WEB_TAG:?set WEB_TAG (deploy.sh writes it)}
     restart: unless-stopped
     logging: *logging
 
