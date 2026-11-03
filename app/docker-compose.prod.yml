@@ -92,7 +92,7 @@ services:
       - web
 
   db-backup:
-    image: prodrigestivill/postgres-backup-local:17
+    image: prodrigestivill/postgres-backup-local:18-debian-d257e5d
     restart: unless-stopped
     environment:
       POSTGRES_HOST: postgres
