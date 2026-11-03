@@ -60,7 +60,7 @@ from sheepshead.game import (
 from sheepshead.research.scan_defender_trump_leads import load_scan_agent
 
 DEFAULT_MODEL = "runs/202609_recall_rc/final/release.pt"
-DEPLOY_KEY = "recall-rc-theta6"
+DEPLOY_KEY = "sheepsheadai-1.0-202610"
 
 Row = dict[str, Any]
 

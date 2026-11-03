@@ -10,7 +10,7 @@ offer. See notebooks/Model_Artifacts_Plan_202610.md.
 
     uv run python -m sheepshead.eval.fetch_models                # everything
     uv run python -m sheepshead.eval.fetch_models --role panel-a --role panel-b
-    uv run python -m sheepshead.eval.fetch_models --key recall-rc-theta6
+    uv run python -m sheepshead.eval.fetch_models --key sheepsheadai-1.0-202610
     uv run python -m sheepshead.eval.fetch_models --check        # verify only, no network
     uv run python -m sheepshead.eval.fetch_models --lint         # manifest shape (CI)
 """

@@ -110,7 +110,7 @@ def test_select_by_key_and_role():
     assert select(manifest, None, None) == list(manifest["artifacts"])
     assert select(manifest, ["v2-release"], ["deploy"]) == [
         "v2-release",
-        "recall-rc-theta6",
+        "sheepsheadai-1.0-202610",
     ]
     with pytest.raises(ArtifactError):
         select(manifest, ["no-such-key"], None)
