@@ -4,6 +4,13 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Rollback: build (if needed) and publish the images of an older commit.
+  # The test jobs still run first, on the dispatched branch's head.
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "commit to publish (default: the branch head)"
+        required: false
 
 jobs:
   # Exactly what `prek install` runs before each commit, over the whole tree:
@@ -127,3 +134,60 @@ jobs:
       - run: npm run build
         env:
           NEXT_PUBLIC_API_BASE: ""
+
+  # Production images, tagged by content (app/scripts/deploy_tags.sh), so a
+  # commit that does not touch a service's files reuses its existing image
+  # and the deploy leaves that service running. Built here, never on the box.
+  # See notebooks/CD_Deployment_Plan_202608.md section 6.2.
+  images:
+    needs: [lint, server, training, goldens, web]
+    if: >-
+      (github.event_name == 'push'
+         && github.ref == format('refs/heads/{0}', github.event.repository.default_branch))
+      || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      sha: ${{ steps.tags.outputs.sha }}
+      api: ${{ steps.tags.outputs.api }}
+      web: ${{ steps.tags.outputs.web }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - id: tags
+        run: app/scripts/deploy_tags.sh | tee -a "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # Separate cache scopes keep the two builds from evicting each other's
+      # layers. The source label links each package to this repository.
+      - name: build api if missing
+        env:
+          IMG: ghcr.io/${{ github.repository_owner }}/sheepshead-api:${{ steps.tags.outputs.api }}
+        run: |
+          if docker manifest inspect "$IMG" >/dev/null 2>&1; then
+            echo "$IMG exists; skipping the build"
+          else
+            docker buildx build -f app/server/Dockerfile -t "$IMG" \
+              --label org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }} \
+              --cache-from type=gha,scope=api --cache-to type=gha,scope=api,mode=max --push .
+          fi
+      # NEXT_PUBLIC_API_BASE stays at the Dockerfile's empty default:
+      # same-origin behind Caddy.
+      - name: build web if missing
+        env:
+          IMG: ghcr.io/${{ github.repository_owner }}/sheepshead-web:${{ steps.tags.outputs.web }}
+        run: |
+          if docker manifest inspect "$IMG" >/dev/null 2>&1; then
+            echo "$IMG exists; skipping the build"
+          else
+            docker buildx build -t "$IMG" \
+              --label org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }} \
+              --cache-from type=gha,scope=web --cache-to type=gha,scope=web,mode=max --push app/web
+          fi
