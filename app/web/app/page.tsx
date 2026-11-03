@@ -254,6 +254,8 @@ export default function HomePage() {
             Play live with friends, strangers, and a deep neural network.
           </p>
 
+          {/* The outlined button and its time on desktop, a plain link on a
+              phone: CSS picks one, so there is no viewport JS. */}
           <div className={styles.howTo}>
             <Link
               href="/how-to-play"
@@ -261,7 +263,15 @@ export default function HomePage() {
             >
               How to play →
             </Link>
-            <span className={styles.createHint}>about 3 minutes</span>
+            <span className={`${styles.createHint} ${styles.howToHint}`}>
+              about 3 minutes
+            </span>
+            <Link
+              href="/how-to-play"
+              className={`${ds.link} ${styles.howToLink}`}
+            >
+              How to play
+            </Link>
           </div>
 
           {error && <div className={styles.error}>{error}</div>}

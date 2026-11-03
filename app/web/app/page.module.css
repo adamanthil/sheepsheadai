@@ -106,6 +106,10 @@
 .howToBtn {
   text-decoration: none;
 }
+.howToLink {
+  display: none;
+  font-size: 13px;
+}
 
 /* A phone gets a centred title page over the form: the band gives way to
    its cards, the wordmark stacks, and the lede keeps its second sentence. */
@@ -150,6 +154,13 @@
   .howTo {
     justify-content: center;
     margin-top: 0;
+  }
+  .howToBtn,
+  .howToHint {
+    display: none;
+  }
+  .howToLink {
+    display: inline;
   }
 }
 
