@@ -162,6 +162,18 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ inputs.ref || github.sha }}
+          # The ancestry check below needs the default branch's history.
+          fetch-depth: ${{ github.event_name == 'workflow_dispatch' && 0 || 1 }}
+      # The test jobs above ran on the dispatched branch's head, not on
+      # `ref`, so only publish (and deploy) a commit that is already on the
+      # default branch, i.e. one that passed CI when it was pushed there.
+      - name: require a commit from the default branch
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          DEFAULT: ${{ github.event.repository.default_branch }}
+        run: |
+          git merge-base --is-ancestor HEAD "origin/$DEFAULT" ||
+            { echo "$(git rev-parse HEAD) is not on $DEFAULT; refusing to publish" >&2; exit 1; }
       - id: tags
         run: app/scripts/deploy_tags.sh | tee -a "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
