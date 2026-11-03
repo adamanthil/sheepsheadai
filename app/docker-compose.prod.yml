@@ -11,10 +11,18 @@
 # caddy (dropping every websocket) or postgres as a side effect of an
 # unrelated deploy. Bump a pin in its own commit.
 
+# Docker's json-file logs otherwise grow without bound on the box's disk.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
 services:
   postgres:
     image: postgres:18.6
     restart: unless-stopped
+    logging: *logging
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-sheepshead}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in the env file}
@@ -32,6 +40,7 @@ services:
   migrate:
     image: node:22.23.4-alpine
     profiles: ["tools"]
+    logging: *logging
     working_dir: /db
     volumes:
       - ./db:/db
@@ -47,6 +56,7 @@ services:
       context: ..
       dockerfile: app/server/Dockerfile
     restart: unless-stopped
+    logging: *logging
     stop_grace_period: 30s
     environment:
       SHEEPSHEAD_MODEL_PATH: /models/model.pt
@@ -74,10 +84,12 @@ services:
   web:
     build: ./web
     restart: unless-stopped
+    logging: *logging
 
   caddy:
     image: caddy:2.11.7
     restart: unless-stopped
+    logging: *logging
     ports:
       - "80:80"
       - "443:443"
@@ -94,6 +106,7 @@ services:
   db-backup:
     image: prodrigestivill/postgres-backup-local:18-debian-d257e5d
     restart: unless-stopped
+    logging: *logging
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_DB: sheepshead
