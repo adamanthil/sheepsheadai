@@ -105,13 +105,19 @@ def test_verify_managed_checks_only_manifest_files(release, tmp_path):
     verify_managed(models / "unlisted.pt", models)
 
 
-def test_select_by_key_and_role():
-    manifest = load_manifest()
-    assert select(manifest, None, None) == list(manifest["artifacts"])
-    assert select(manifest, ["v2-release"], ["deploy"]) == [
-        "v2-release",
-        "sheepsheadai-1.0-202610",
-    ]
+def test_select_by_key_and_role(tmp_path: Path):
+    # A synthetic manifest: the committed one's keys change with every model
+    # release, and its shape is already covered by test_committed_manifest_lints_clean.
+    manifest = _manifest(tmp_path)
+    panelist = copy.deepcopy(manifest["artifacts"]["toy"])
+    del panelist["sampling"]
+    panelist.update(asset="panelist.pt", roles=["panel-a"])
+    manifest["artifacts"]["panelist"] = panelist
+
+    assert select(manifest, None, None) == ["toy", "panelist"]
+    # Named keys first, then each role's matches, without repeats.
+    assert select(manifest, ["panelist"], ["deploy"]) == ["panelist", "toy"]
+    assert select(manifest, ["toy"], ["deploy"]) == ["toy"]
     with pytest.raises(ArtifactError):
         select(manifest, ["no-such-key"], None)
     with pytest.raises(ArtifactError):
