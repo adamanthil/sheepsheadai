@@ -314,7 +314,9 @@ export default function HomePage() {
         <div className={styles.lobby}>
           <div className={`${ds.headRule} ${styles.lobbyHead}`}>
             <h2 className={styles.lobbyTitle}>The Lobby</h2>
-            <div className={ds.overline}>{tables.length} tables · live</div>
+            <div className={ds.overline}>
+              {tables.length} {tables.length === 1 ? "table" : "tables"} · live
+            </div>
           </div>
 
           <div className={styles.colHead}>
