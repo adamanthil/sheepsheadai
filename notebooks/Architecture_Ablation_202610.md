@@ -359,14 +359,11 @@ for the bootstrap endpoint.**
   convention battery adds the timing, which the panel (first read
   150k) cannot see.
 
-**Unexplained: informed-init no-aux arms never learn partner trump
-lead.** Rungs 3 and 4 sit at 0–1% at every checkpoint on every seed
+**Informed-init no-aux arms never learn partner trump lead** (explained
+in §4.4). Rungs 3 and 4 sit at 0–1% at every checkpoint on every seed
 (one 9% read), while the MLP (59%), the *uninformed* pooled arm (63%)
 and every aux arm (73–94%) learn it. The only difference between rungs
-2 and 3 is the card-embedding init, so within the bootstrap the
-informed init without aux supervision coincides with the partner
-never finding this convention (3 seeds × 2 arms; mechanism untested). Not a pre-registered read; flagged for follow-up (does it
-appear later, and does it depend on the init's trump encoding?).
+2 and 3 is the card-embedding init.
 
 **Other battery reads at 400k** (seed means):
 
@@ -388,6 +385,102 @@ appear later, and does it depend on the init's trump encoding?).
   token arms settle at 44–55%.
 - Aux-head reads (aux arms only) improve slightly with the perceiver
   readout: seen-trump accuracy 87.8 (rung 5) → 89.9 / 89.4 (6 / 7).
+
+## 4.4 Partner identity (post-hoc, 2026-11-02)
+
+Not pre-registered: run after §4.3 surfaced the rung 3/4 failure.
+Operator hypothesis: the network does not represent the secret partner
+unless forced to distinguish it, which is why aux heads were added.
+
+**Why this needs an exact card match.** The observation never states
+the seat's own partnership: `partner_rel` stays 0 until the partner is
+revealed (`game.py`, `get_state_dict`), so a secret partner gets the
+same `actor_role` token as a defender. It must infer its role by
+matching `called_card_id` against `hand_ids` (called-ace mode) or by
+holding JD (JD mode). The informed init (`encoder.py`,
+`_build_informed_card_init`) encodes cards by suit, rank strength and
+points only, so a called ace and the 10 of its suit, or JD and JH,
+start with near-identical embeddings.
+
+**Instrument.** `python -m sheepshead.research.partner_identity_probe`
+on every cell's 400k checkpoint: 3,000 greedy self-play games on seeded
+deals shared by every cell (`DEAL_SEED` 20261102). Results in
+`notebooks/arch_ablation_202610_partner_identity.csv`.
+
+1. Embedding geometry: for AC, AS, AH and JD, cosine to the nearest
+   other card's embedding, at init (a fresh agent under the cell's
+   seed) and trained.
+2. Linear probe: logistic regression for "am I the secret partner" on
+   the encoder output (every 2-D tensor concatenated), at non-picker
+   play nodes while the partner is unrevealed; trained on games 0–2099,
+   scored on 2100–2999.
+3. Trump-lead rates at non-picker lead nodes holding trump and fail
+   while the partner is unrevealed, by role, mode and trick.
+
+Seed means (per-seed values in the CSV):
+
+| rung | arch | nearest-card cos (init → 400k) | probe AUC | AUC called | AUC JD | partner trump lead % | defender trump lead % |
+|---|---|---|---|---|---|---|---|
+| 1 | `onehot-recall` | — | 0.952 | 0.891 | 0.998 | 59.1 | 2.2 |
+| 2 | `pooled-recall-uninformed-noaux` | 0.52 → 0.51 | 0.957 | 0.894 | 1.000 | 63.5 | 2.0 |
+| 3 | `pooled-recall-noaux` | 0.997 → 0.990 | **0.697** | **0.699** | **0.672** | **0.6** | **0.4** |
+| 4 | `full-recall-noaux` | 0.997 → 0.992 | **0.847** | **0.835** | **0.852** | **0.9** | **0.4** |
+| 5 | `full-recall` | 0.997 → 0.989 | 0.984 | 0.971 | 0.996 | 73.9 | 1.7 |
+| 6 | `perceiver-recall-nobilinear` | 0.997 → 0.989 | 0.997 | 0.994 | 1.000 | 92.0 | 4.3 |
+| 7 | `perceiver-recall` | 0.997 → 0.989 | 0.982 | 0.956 | 0.999 | 78.8 | 5.5 |
+
+Nearest neighbours under the informed init: AC/AS/AH → 10C/10S/10H
+(cos 0.996), JD → JH (0.998). Under the uninformed init they are
+unrelated cards (cos ~0.5; seed means 0.47–0.56).
+
+**Reading: the operator hypothesis holds, and the mechanism is the
+informed init.**
+
+- **The informed init makes the partner cards nearly indistinguishable
+  from their neighbours, and 400k episodes of training do not separate
+  them** (0.997 → 0.989–0.992 in every informed arm, aux or not). The
+  aux arms solve identity downstream of the embedding, not by moving it.
+- **Without aux heads, informed-init arms do not represent their own
+  partnership.** The probe drops from 0.95–1.00 AUC to 0.70 (rung 3)
+  and 0.85 (rung 4); balanced accuracy 0.56 and 0.68 against 0.85–0.99
+  elsewhere. The failure holds in JD mode too (0.67 / 0.85 vs ≥ 0.998
+  for every other rung), where identity is a single fixed card. Rung 4's
+  transformer recovers part of it; rung 3's pools barely do.
+- **Rungs 3 and 4 follow one blanket rule: a non-picker never leads
+  trump.** Partner and defender trump-lead rates are both below 1% on
+  every seed (partner 0.6 / 0.9%, defender 0.4 / 0.4%). Every other rung
+  separates the roles: partners 59–92%, defenders 1.7–5.5%. If a network
+  cannot tell partner from defender, never leading trump is the best
+  single policy for both, because defenders leading trump is the costly
+  error. The near-zero defender trump-lead rate of rungs 3 and 4 in §4.3
+  is the same failure, not better defense.
+- **Why the MLP and the uninformed arm learn it anyway.** The MLP sees
+  `called_card_onehot` beside the one-hot hand, so the match is one
+  ReLU unit per card. Random 16-d embeddings leave every card distinct
+  (nearest cos ~0.5), so a pooled hand and the called-card token can
+  express the match. Both still read called-ace identity less cleanly
+  than JD identity (AUC 0.89 vs ~1.00): matching two inputs is harder
+  than detecting one fixed card.
+- **Aux heads restore it under the informed init.** The secret-partner
+  aux head is trained on exactly this label (seat holds the called
+  card), and every aux arm probes at 0.96–1.00. This is the cleanest
+  evidence in the study for what the aux heads contribute, and plausibly
+  part of the +0.160 rung-5 step (not measured separately).
+
+**Partner mode matters for the convention itself.** Partner trump lead
+is near-universal in JD mode for every arm that represents identity
+(92–98%) but much lower and seed-variable in called-ace mode (18–27% for
+rungs 1–2, 51–84% for 5–7; e.g. rung 5 at 89 / 56 / 9% across seeds).
+The perceiver arms' higher defender trump leads (4–6%) are concentrated
+in called-ace mode (7–10% vs ~1% in JD mode).
+
+**Instrument note.** The convention battery (`eval.health_probe.
+greedy_health_probe`) calls `random.seed(seed)` but `Game` deals from
+its own `random.Random()` unless given `seed=`, so the battery's deals
+are OS-entropy and differ across cells and reruns. It adds noise, not
+bias; this probe uses seeded deals, and its rung 3/4 partner trump-lead
+rates (0.6 / 0.9%) reproduce the battery's (0.3 / 0.5%). The battery
+itself is unchanged here because the training program depends on it.
 
 ---
 
@@ -421,3 +514,10 @@ appear later, and does it depend on the init's trump encoding?).
   perceiver readout −0.098 without the bilinear pointer, +0.113 with
   it, netting to parity with `full-recall`; bilinear speeds convention
   onset (~50k episodes) but not the 400k convention level.
+- **2026-11-02** — §4.4 partner-identity probe (post-hoc, operator
+  request): `research/partner_identity_probe.py`, 3,000 seeded greedy
+  games per cell at 400k. Informed init keeps partner cards at cos
+  ≥ 0.99 to their neighbours; without aux heads the encoder does not
+  represent partnership (probe AUC 0.70 / 0.85) and both roles stop
+  leading trump. Found the convention battery's deals are unseeded
+  (instrument note in §4.4).
