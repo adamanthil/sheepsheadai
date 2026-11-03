@@ -44,6 +44,8 @@ services:
     working_dir: /db
     volumes:
       - ./db:/db
+      # Every deploy runs this; the cache makes its npm ci local work.
+      - npm-cache:/root/.npm
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-sheepshead}:${POSTGRES_PASSWORD:?}@postgres:5432/sheepshead
     command: sh -c "npm ci --no-audit --no-fund && npx graphile-migrate migrate"
@@ -125,5 +127,6 @@ services:
 
 volumes:
   pgdata:
+  npm-cache:
   caddy_data:
   caddy_config:
