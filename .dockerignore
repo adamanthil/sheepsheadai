@@ -1,0 +1,10 @@
+# Build context for app/server/Dockerfile (the only image built from the repo
+# root). An allowlist matching its COPY lines: a local build must not upload
+# runs/, models/, .venv or env files, and the image must not depend on them.
+*
+!pyproject.toml
+!uv.lock
+!sheepshead
+!app/server
+**/__pycache__
+**/.pytest_cache
