@@ -1,7 +1,32 @@
 # Continuous Deployment to sheepshead.ai — Plan (August 2026, revised October 2026)
 
-**Status (2026-10-27): PLAN ONLY — no code written, no server
-provisioned.** Revised twice on 10-27: once after the `202609_recall_rc`
+**Status (2026-11-02): REPO SIDE IMPLEMENTED (§9 steps 2–7, 9's job
+and 10); box not provisioned, nothing pushed.** Steps 0 and 1 were
+already done. Departures from the text below:
+
+* The `deploy` job is committed now but skipped unless the repository
+  variable `DEPLOY_ENABLED` is `true`, so pushes stay green before the
+  box exists (instead of landing the job after provisioning).
+* `images` also needs the `goldens` job, which postdates this plan.
+* Pins: postgres 18.6, caddy 2.11.7, node 22.23.4-alpine (migrate and
+  the web Dockerfile), python 3.14.10-slim, uv 0.13.7,
+  postgres-backup-local `18-debian-d257e5d` (immutable tag); CI's
+  postgres service follows prod.
+* D4 is refined, not reversed: a root `.dockerignore` allowlists the
+  api Dockerfile's COPY sources and `app/web/.dockerignore` keeps the
+  host's node_modules out, so local builds work; CI images are
+  unchanged.
+* `deploy.sh` adds a `flock` (CI and hand deploys cannot overlap) and
+  tolerates a null `band`.
+* Prerelease: the Caddyfile serves `robots.txt` (Disallow: /) and
+  `X-Robots-Tag: noindex, nofollow` on every response; delete that
+  block at public launch.
+* Rehearsed locally (arm64 images, build override, `DOMAIN=localhost`):
+  migrations 000001–000008 apply and re-run as a no-op, the api loads
+  `recall-rc-theta6` (~350 MB RSS), `/health` reports
+  `sampling: "pick=0.5,partner=0.5,play=0.5 band=1"`.
+
+Earlier status (2026-10-27): plan only. Revised twice on 10-27: once after the `202609_recall_rc`
 program concluded (marked **[rev]**), then after an audit against the
 repository (marked **[audit]**). The audit fixed four defects in the
 deploy mechanics (floating third-party tags restarted by `pull`, a
