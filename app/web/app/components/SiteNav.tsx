@@ -4,10 +4,8 @@ import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAccount } from "../../lib/account";
+import { PATREON_URL } from "../../lib/links";
 import styles from "./SiteNav.module.css";
-
-/** Where the Donate link points until the Patreon page exists. */
-const DONATE_HREF = "/about#support";
 
 const SECTIONS: {
   href: string;
@@ -56,7 +54,13 @@ export default function SiteNav() {
           })}
         </div>
         <div className={styles.actions}>
-          <a href={DONATE_HREF} className={styles.donate} aria-label="Donate">
+          <a
+            href={PATREON_URL}
+            className={styles.donate}
+            aria-label="Donate on Patreon (opens in a new tab)"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
             <span className={styles.heart} aria-hidden="true">
               ♥
             </span>

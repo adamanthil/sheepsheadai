@@ -58,11 +58,6 @@ a.supportButton:focus-visible {
   outline: 2px solid var(--accent-soft);
   outline-offset: 2px;
 }
-.supportPending {
-  background: transparent;
-  color: var(--accent-2);
-  border: 1px dashed var(--accent-2);
-}
 .heart {
   font-family: var(--font-display);
   font-size: 16px;
