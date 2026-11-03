@@ -6,14 +6,13 @@ import type { TableSummary } from "../lib/types";
 import { apiFetch, storeSessionToken } from "../lib/api";
 import { STORAGE_KEYS } from "../lib/storage";
 import { createAndJoinTable } from "../lib/createTable";
-import { ds } from "../lib/ds";
+import { PlayingCard, ds } from "../lib/ds";
 import { allPassModeLabel, partnerModeLabel } from "../lib/rules";
 import { useIdentity } from "../lib/hooks/useIdentity";
 import Link from "next/link";
 import SiteNav from "./components/SiteNav";
 import AccountLine from "./components/home/AccountLine";
 import MastheadBand from "./components/home/MastheadBand";
-import Strapline from "./components/home/Strapline";
 import styles from "./page.module.css";
 
 /** How often the lobby refetches the table list while the tab is visible. */
@@ -224,20 +223,35 @@ export default function HomePage() {
       <div className={styles.grid}>
         {/* LEFT — hero + create */}
         <div className={styles.hero}>
-          <MastheadBand />
+          <div className={styles.band}>
+            <MastheadBand />
+          </div>
+          {/* On a phone the band's cards sit alone over the wordmark. */}
+          <div className={styles.heroCards} aria-hidden="true">
+            <div style={{ transform: "rotate(-9deg) translateY(3px)" }}>
+              <PlayingCard code="QC" w={34} />
+            </div>
+            <div style={{ zIndex: 1 }}>
+              <PlayingCard code="JD" w={34} />
+            </div>
+            <div style={{ transform: "rotate(9deg) translateY(3px)" }}>
+              <PlayingCard code="AH" w={34} />
+            </div>
+          </div>
 
           <div className={styles.wordmark}>
             <h1 className={styles.wordmarkTitle}>Sheepshead</h1>
             <div className={styles.wordmarkRow}>
               <em className={styles.wordmarkAI}>AI</em>
               <span className={styles.wordmarkRule} aria-hidden="true" />
-              <Strapline />
             </div>
           </div>
 
           <p className={styles.lede}>
-            A five‑handed, trick‑taking game from Wisconsin — played with
-            friends, strangers, and a deep‑learning AI.
+            <span className={styles.ledeLead}>
+              A five‑handed trick‑taking game from Wisconsin.
+            </span>
+            Play live with friends, strangers, and a deep neural network.
           </p>
 
           <div className={styles.howTo}>
@@ -253,9 +267,6 @@ export default function HomePage() {
           {error && <div className={styles.error}>{error}</div>}
 
           <div className={styles.startBlock}>
-            <div className={`${ds.headRule} ${styles.startHead}`}>
-              <div className={ds.overline}>Start a Table</div>
-            </div>
             <div className={styles.formRow}>
               <div className={styles.field}>
                 <label className={`${ds.overline} ${styles.fieldLabel}`}>
@@ -292,11 +303,10 @@ export default function HomePage() {
                 suppressHydrationWarning
                 style={{ touchAction: "manipulation" }}
               >
-                {creating ? "Creating…" : "Create table →"}
+                {creating ? "Creating…" : "Start a table →"}
               </button>
-              <span className={styles.createHint}>or join an open table</span>
+              <AccountLine />
             </div>
-            <AccountLine />
           </div>
         </div>
 

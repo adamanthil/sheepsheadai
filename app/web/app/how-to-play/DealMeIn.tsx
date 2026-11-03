@@ -12,7 +12,7 @@ const NO_TABLES: TableSummary[] = [];
 
 /** The lesson's closing call to action: opens a table with AI players under
  * the player's saved (or placeholder) name and goes to its waiting room,
- * exactly as the lobby's "Create table" does with untouched fields. */
+ * exactly as the lobby's "Start a table" does with untouched fields. */
 export default function DealMeIn({
   text,
   x,

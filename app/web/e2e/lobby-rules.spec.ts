@@ -37,7 +37,7 @@ test("a rule change in the waiting room reaches an open lobby", async ({
   // Tab 1: host the table and land in the waiting room.
   const nameInput = page.locator("label:has-text('Your name') + input");
   const tableInput = page.locator("label:has-text('Table name') + input");
-  const createButton = page.getByRole("button", { name: "Create table →" });
+  const createButton = page.getByRole("button", { name: "Start a table →" });
   await page.goto("/");
   await expect(createButton).toBeVisible();
   await expect

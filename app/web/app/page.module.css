@@ -40,6 +40,11 @@
   }
 }
 
+/* The masthead band's cards on their own, for a phone. */
+.heroCards {
+  display: none;
+}
+
 .wordmark {
   margin: 0;
 }
@@ -72,7 +77,7 @@
   background: var(--rule-strong);
   transform: translateY(-14px);
 }
-@media (max-width: 560px) {
+@media (max-width: 768px) {
   .wordmarkRule {
     display: none;
   }
@@ -82,9 +87,13 @@
   font-family: var(--font-ui);
   font-size: 18px;
   line-height: 1.5;
-  max-width: 470px;
+  max-width: 500px;
   color: var(--ink-soft);
   margin: 0;
+}
+/* One sentence to a line where both fit. */
+.ledeLead {
+  display: block;
 }
 
 /* The newcomer's way in, directly under the lede it follows from. */
@@ -96,6 +105,52 @@
 }
 .howToBtn {
   text-decoration: none;
+}
+
+/* A phone gets a centred title page over the form: the band gives way to
+   its cards, the wordmark stacks, and the lede keeps its second sentence. */
+@media (max-width: 768px) {
+  .hero {
+    padding-top: 30px;
+    gap: 14px;
+  }
+  .band {
+    display: none;
+  }
+  .heroCards {
+    display: flex;
+    justify-content: center;
+  }
+  .heroCards > div + div {
+    margin-left: -8px;
+  }
+  .wordmark {
+    text-align: center;
+  }
+  .wordmarkTitle {
+    font-size: 60px;
+  }
+  .wordmarkRow {
+    justify-content: center;
+    margin-top: 2px;
+  }
+  .wordmarkAI {
+    font-size: 44px;
+  }
+  .lede {
+    max-width: 300px;
+    text-wrap: balance;
+    margin: 0 auto;
+    font-size: 15px;
+    text-align: center;
+  }
+  .ledeLead {
+    display: none;
+  }
+  .howTo {
+    justify-content: center;
+    margin-top: 0;
+  }
 }
 
 .error {
@@ -111,6 +166,8 @@
 /* ---- Start a table ---- */
 .startBlock {
   margin-top: auto;
+  padding-top: 14px;
+  border-top: 2px solid var(--ink);
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -120,18 +177,14 @@
     margin-top: 8px;
   }
 }
-.startHead {
-  padding-top: 12px;
-}
 .formRow {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 28px;
   max-width: 520px;
 }
-@media (max-width: 480px) {
+@media (max-width: 768px) {
   .formRow {
-    grid-template-columns: 1fr;
     gap: 16px;
   }
 }
@@ -146,9 +199,19 @@
 .createRow {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
   margin-top: 8px;
   flex-wrap: wrap;
+}
+/* A full-width button, the account line centred under it. */
+@media (max-width: 768px) {
+  .createRow {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    margin-top: 4px;
+    text-align: center;
+  }
 }
 .createHint {
   font-family: var(--font-display);
@@ -266,4 +329,17 @@
   color: var(--muted);
   letter-spacing: 0.12em;
   text-transform: uppercase;
+}
+
+/* A phone's lobby: a smaller title, and no column heads over the rows. */
+@media (max-width: 768px) {
+  .lobby {
+    gap: 12px;
+  }
+  .lobbyTitle {
+    font-size: 30px;
+  }
+  .colHead {
+    display: none;
+  }
 }

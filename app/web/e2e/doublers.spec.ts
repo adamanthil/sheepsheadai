@@ -10,7 +10,7 @@ test("host picks doublers and the table badges it", async ({ page }) => {
 
   const nameInput = page.locator("label:has-text('Your name') + input");
   const tableInput = page.locator("label:has-text('Table name') + input");
-  const createButton = page.getByRole("button", { name: "Create table →" });
+  const createButton = page.getByRole("button", { name: "Start a table →" });
   await expect(createButton).toBeVisible();
   await expect
     .poll(

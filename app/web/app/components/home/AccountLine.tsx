@@ -6,7 +6,7 @@ import { ds } from "../../../lib/ds";
 import { useAccount } from "../../../lib/account";
 import styles from "./AccountLine.module.css";
 
-/** One line under the create form: who this device plays as, and the way
+/** One line beside the start button: who this device plays as, and the way
  * into the optional account. Guests are never nagged beyond this line. */
 export default function AccountLine() {
   const { me } = useAccount();
@@ -16,11 +16,10 @@ export default function AccountLine() {
   if (!account) {
     return (
       <div className={styles.line}>
-        Playing as a guest.{" "}
+        Playing as a guest ·{" "}
         <Link href="/account" className={ds.link}>
-          Sign in or create an account
-        </Link>{" "}
-        to keep your name and stats on any device.
+          Sign in
+        </Link>
       </div>
     );
   }

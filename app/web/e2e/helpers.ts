@@ -13,7 +13,7 @@ export async function createTable(
   // clobber values typed too early — refill until the create button enables.
   const nameInput = page.locator("label:has-text('Your name') + input");
   const tableInput = page.locator("label:has-text('Table name') + input");
-  const createButton = page.getByRole("button", { name: "Create table →" });
+  const createButton = page.getByRole("button", { name: "Start a table →" });
   await expect(createButton).toBeVisible();
   await expect
     .poll(
