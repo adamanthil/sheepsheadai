@@ -7,7 +7,7 @@ import styles from "./HandSummaryBanner.module.css";
 interface HandSummaryBannerProps {
   final: FinalState;
   table: TableView;
-  onRedeal: () => void;
+  onNextHand: () => void;
   onShowScores: () => void;
   isHost: boolean;
   onCloseTable: () => void;
@@ -17,7 +17,7 @@ interface HandSummaryBannerProps {
 export default function HandSummaryBanner({
   final,
   table,
-  onRedeal,
+  onNextHand,
   onShowScores,
   isHost,
   onCloseTable,
@@ -46,19 +46,22 @@ export default function HandSummaryBanner({
           />
         )}
         <div className={styles.buttons}>
-          {/* Only the host can redeal (the server refuses anyone else), and
-              not at a table closing after this hand. */}
+          {/* Only the host can deal the next hand (the server refuses anyone
+              else), and not at a table closing after this hand. */}
           {table.closingAfterHand ? (
             <span className={styles.waitingHost}>Closing the table…</span>
           ) : isHost ? (
-            <button className={`${ds.btn} ${ds.btnAccent}`} onClick={onRedeal}>
-              Redeal →
+            <button
+              className={`${ds.btn} ${ds.btnAccent}`}
+              onClick={onNextHand}
+            >
+              Next hand →
             </button>
           ) : (
             <span className={styles.waitingHost}>
               {table.host
-                ? `Waiting for ${table.host} to redeal…`
-                : "Waiting for the host to redeal…"}
+                ? `Waiting for ${table.host} to deal the next hand…`
+                : "Waiting for the host to deal the next hand…"}
             </span>
           )}
           <button className={`${ds.btn} ${ds.btnGhost}`} onClick={onShowScores}>

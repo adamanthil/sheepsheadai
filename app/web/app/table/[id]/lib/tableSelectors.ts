@@ -110,8 +110,8 @@ export function computeKind(
 }
 
 // Seat 1 always picks first and leads the first trick, so the dealer — the
-// player to its right — is always seat 5. The deal still passes left: each
-// redeal rotates every occupant down a seat, seat 1's into seat 5.
+// player to its right — is always seat 5. The deal still passes left:
+// each new hand rotates every occupant down a seat, seat 1's into seat 5.
 export const DEALER_SEAT = 5;
 
 export function buildSeats(

@@ -116,7 +116,7 @@ export default function TablePage() {
     closeTable,
     setCloseAfterHand,
     setLeaveAfterHand,
-    redeal,
+    nextHand,
     takeSeat,
     kickPlayer,
     sendChatMessage,
@@ -466,7 +466,7 @@ export default function TablePage() {
         <HandSummaryBanner
           final={view.final}
           table={table}
-          onRedeal={redeal}
+          onNextHand={nextHand}
           onShowScores={() => setShowScores(true)}
           isHost={isHost}
           onCloseTable={closeTable}

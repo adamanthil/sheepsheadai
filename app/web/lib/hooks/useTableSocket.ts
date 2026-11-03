@@ -53,7 +53,7 @@ export interface UseTableSocketReturn {
   setCloseAfterHand: (on: boolean) => Promise<void>;
   /** Leave the table once the hand in play ends, or not. */
   setLeaveAfterHand: (on: boolean) => Promise<void>;
-  redeal: () => Promise<void>;
+  nextHand: () => Promise<void>;
   /** Spectator only: take over the AI at ``seat``. */
   takeSeat: (seat: number) => Promise<void>;
   /** Host only: remove a player (by client id) from the table. */
@@ -318,7 +318,7 @@ export function useTableSocket(
     [postAfterHand],
   );
 
-  const redeal = useCallback(async () => {
+  const nextHand = useCallback(async () => {
     if (!tableId || !clientId) return;
     try {
       await apiFetch(`/api/tables/${tableId}/redeal`, {
@@ -330,8 +330,8 @@ export function useTableSocket(
         body: JSON.stringify({ client_id: clientId }),
       });
     } catch (err) {
-      console.warn("redeal POST failed", err);
-      callbacksRef.current?.onError?.("Redeal failed: network error");
+      console.warn("next hand POST failed", err);
+      callbacksRef.current?.onError?.("Next hand failed: network error");
     }
   }, [tableId, clientId]);
 
@@ -411,7 +411,7 @@ export function useTableSocket(
     closeTable,
     setCloseAfterHand,
     setLeaveAfterHand,
-    redeal,
+    nextHand,
     takeSeat,
     kickPlayer,
     sendChatMessage,

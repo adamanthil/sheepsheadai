@@ -26,7 +26,7 @@ test("a guest leaves once the hand ends, onto its final scores", async ({
   await expect(guest.getByRole("button", { name: "Rejoin" })).toBeVisible();
   await expect(guest.getByText("Connection rejected")).toHaveCount(0);
   // The host plays on.
-  await expect(page.getByRole("button", { name: "Redeal →" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Next hand →" })).toBeVisible();
 });
 
 test("the host ends the table once the hand ends", async ({ page }) => {
@@ -43,7 +43,9 @@ test("the host ends the table once the hand ends", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Lobby" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Rejoin" })).toHaveCount(0);
   // The game-over banner never shows, so the final hand is summarized here,
-  // and its Redeal is never offered.
+  // and its Next hand is never offered.
   await expect(page.getByText(/^Last hand/)).toBeVisible();
-  await expect(page.getByRole("button", { name: "Redeal →" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Next hand →" })).toHaveCount(
+    0,
+  );
 });
