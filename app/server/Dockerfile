@@ -6,9 +6,9 @@
 # SHEEPSHEAD_MODEL_PATH (e.g. -v ./models/pfsp-swish-30m.pt:/models/model.pt
 # and SHEEPSHEAD_MODEL_PATH=/models/model.pt).
 
-FROM python:3.14-slim
+FROM python:3.14.10-slim
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+COPY --from=ghcr.io/astral-sh/uv:0.13.7 /uv /uvx /usr/local/bin/
 
 WORKDIR /app
 ENV UV_COMPILE_BYTECODE=1 \
