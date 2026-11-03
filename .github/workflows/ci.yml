@@ -12,6 +12,11 @@ on:
         description: "commit to publish (default: the branch head)"
         required: false
 
+# The repository default hands every job a read-write GITHUB_TOKEN. Only the
+# images job needs more (packages: write), and it grants that itself.
+permissions:
+  contents: read
+
 jobs:
   # Exactly what `prek install` runs before each commit, over the whole tree:
   # ruff format/check and basedpyright. The server extra is needed too --
