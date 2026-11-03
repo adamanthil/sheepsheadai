@@ -274,7 +274,8 @@ prek run <hook-id>     # one hook, e.g. `prek run basedpyright`
 
 See [docs/deploy.md](docs/deploy.md) — single-VPS Docker Compose stack
 (Caddy TLS + web + api + Postgres + nightly backups). The API is a single
-process by design; the runbook covers deploys, drains, and restores.
+process by design; pushes to `main` deploy themselves, and the runbook
+covers rollbacks, provisioning, and restores.
 
 ---
 
