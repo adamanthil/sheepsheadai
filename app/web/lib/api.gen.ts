@@ -1161,6 +1161,8 @@ export interface components {
             db: boolean;
             /** Model */
             model: string;
+            /** Sampling */
+            sampling: string;
             /** Status */
             status: string;
         };

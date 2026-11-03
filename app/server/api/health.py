@@ -7,6 +7,7 @@ from fastapi import APIRouter
 
 from server.api.schemas import HealthResponse
 from server.config import get_settings
+from server.services.ai_sampling import SamplingSpec
 from server.services.persistence.pool import DB_UNAVAILABLE, get_db_pool
 
 logger = logging.getLogger(__name__)
@@ -30,8 +31,10 @@ async def health():
     # RuntimeError: the pool is not initialised (lifespan has not run).
     except (RuntimeError, *DB_UNAVAILABLE):
         logger.warning("health check: database unreachable", exc_info=True)
+    settings = get_settings()
     return {
         "status": "ok",
         "db": db_ok,
-        "model": get_settings().sheepshead_model_label,
+        "model": settings.sheepshead_model_label,
+        "sampling": SamplingSpec.from_settings(settings).label(),
     }

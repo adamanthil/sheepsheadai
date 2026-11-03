@@ -1747,6 +1747,10 @@
             "title": "Model",
             "type": "string"
           },
+          "sampling": {
+            "title": "Sampling",
+            "type": "string"
+          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -1755,7 +1759,8 @@
         "required": [
           "status",
           "db",
-          "model"
+          "model",
+          "sampling"
         ],
         "title": "HealthResponse",
         "type": "object"

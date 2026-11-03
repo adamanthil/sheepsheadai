@@ -34,6 +34,7 @@ async def test_health_endpoint(app):
     body = resp.json()
     assert body["status"] == "ok"
     assert body["model"] == "test-model"
+    assert body["sampling"] == "argmax"
     # ASGITransport does not run the lifespan, so no pool is initialised and
     # the endpoint must degrade gracefully rather than 500.
     assert body["db"] is False

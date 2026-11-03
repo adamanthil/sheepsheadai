@@ -399,6 +399,9 @@ class HealthResponse(BaseModel):
     status: str
     db: bool
     model_label: str = Field(alias="model")
+    # The deployment sampling (SamplingSpec.label()), so a re-temper is
+    # verifiable from outside like a model swap.
+    sampling: str
 
     model_config = ConfigDict(populate_by_name=True)
 
