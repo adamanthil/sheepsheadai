@@ -102,7 +102,10 @@ gracefully.
 
 ## One-time provisioning
 
-On the box (Ubuntu 24.04 LTS):
+On the box (Ubuntu 26.04 LTS). 26.04 ships the Rust rewrites of coreutils
+and sudo by default; `deploy.sh` has been run against them (`sha256sum -c`,
+`mktemp -p`, `seq`). If a GNU-only flag ever bites, `apt install
+coreutils-from-gnu` switches back.
 
 1. A `deploy` user in the `docker` group; ssh key-only auth; root login
    off.
