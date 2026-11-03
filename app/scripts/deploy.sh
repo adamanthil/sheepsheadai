@@ -30,6 +30,14 @@ if [ -z "${DEPLOY_REEXEC:-}" ]; then
   DEPLOY_REEXEC=1 exec app/scripts/deploy.sh "$SHA" "$API_TAG" "$WEB_TAG"
 fi
 
+# The tree is now at $SHA, so the tags are derivable: refuse a pair that
+# deploy_tags.sh would not produce here (stale or hand-mangled arguments
+# would otherwise run this commit's code against another commit's image).
+want=$(app/scripts/deploy_tags.sh)
+have=$(printf 'api=%s\nweb=%s\nsha=%s' "$API_TAG" "$WEB_TAG" "$SHA")
+[ "$want" = "$have" ] ||
+  { printf 'tags do not match %s:\n%s\n' "$SHA" "$want" >&2; exit 1; }
+
 COMPOSE=(docker compose --env-file app/deploy/.env.prod
   --env-file app/deploy/.env.deploy -f app/docker-compose.prod.yml)
 MODELS=/opt/sheepsheadai-models

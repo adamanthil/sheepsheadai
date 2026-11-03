@@ -21,7 +21,9 @@ see a "server restarting" notice and reconnect.
    only when that tag does not exist yet.
 2. The `deploy` job sshes to the box as `deploy`, whose key can run only
    `app/scripts/deploy.sh <sha> <api_tag> <web_tag>`.
-3. `deploy.sh` checks out the commit, fetches and hash-checks the model
+3. `deploy.sh` checks out the commit, re-execs that commit's copy of
+   itself, verifies that the tags are what `deploy_tags.sh` produces for
+   that tree, fetches and hash-checks the model
    that `models/manifest.json` gives the `deploy` role, writes
    `app/deploy/.env.deploy`, pulls the two images, runs migrations, runs
    `docker compose up -d`, and checks that the api serves the expected
