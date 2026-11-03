@@ -68,7 +68,7 @@ async def ai_take_turns(table: Table) -> None:
             await asyncio.sleep(0.5)
         if table.game and table.game.is_done():
             # finish_hand records the hand before anyone is shown it ended:
-            # a redeal from the game-over banner would otherwise discard it.
+            # Next hand from the game-over banner would otherwise discard it.
             break
         await broadcast_table_state(table)
         if getattr(table.game, "was_trick_just_completed", False):

@@ -321,14 +321,16 @@ export function useTableSocket(
   const nextHand = useCallback(async () => {
     if (!tableId || !clientId) return;
     try {
-      await apiFetch(`/api/tables/${tableId}/redeal`, {
+      const res = await apiFetch(`/api/tables/${tableId}/next-hand`, {
         method: "POST",
         body: JSON.stringify({ client_id: clientId }),
       });
-      await apiFetch(`/api/tables/${tableId}/start`, {
-        method: "POST",
-        body: JSON.stringify({ client_id: clientId }),
-      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        callbacksRef.current?.onError?.(
+          `Next hand failed: ${j?.detail || res.status}`,
+        );
+      }
     } catch (err) {
       console.warn("next hand POST failed", err);
       callbacksRef.current?.onError?.("Next hand failed: network error");

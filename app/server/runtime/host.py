@@ -1,7 +1,7 @@
 """Host handoff: when the host leaves, the table gets a new one.
 
 Without this a table whose host disconnected could never be started,
-redealt, or closed again by anyone left at it.
+dealt on, or closed again by anyone left at it.
 """
 
 from __future__ import annotations

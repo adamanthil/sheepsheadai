@@ -1971,6 +1971,19 @@
         "title": "LoginRequest",
         "type": "object"
       },
+      "NextHandRequest": {
+        "properties": {
+          "client_id": {
+            "title": "Client Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_id"
+        ],
+        "title": "NextHandRequest",
+        "type": "object"
+      },
       "OkResponse": {
         "properties": {
           "ok": {
@@ -2007,23 +2020,6 @@
           "name"
         ],
         "title": "PlayerPublic",
-        "type": "object"
-      },
-      "RedealRequest": {
-        "properties": {
-          "client_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Client Id"
-          }
-        },
-        "title": "RedealRequest",
         "type": "object"
       },
       "RegisterRequest": {
@@ -3475,9 +3471,10 @@
         "summary": "Leave After Hand"
       }
     },
-    "/api/tables/{table_id}/redeal": {
+    "/api/tables/{table_id}/next-hand": {
       "post": {
-        "operationId": "redeal_api_tables__table_id__redeal_post",
+        "description": "Pass the deal to the next player and deal them a hand.\n\nOne step, so a refusal leaves the finished hand exactly as it was: the\nhost is told why and can try again, and no one's seat has moved.",
+        "operationId": "next_hand_api_tables__table_id__next_hand_post",
         "parameters": [
           {
             "in": "path",
@@ -3493,18 +3490,11 @@
           "content": {
             "application/json": {
               "schema": {
-                "anyOf": [
-                  {
-                    "$ref": "#/components/schemas/RedealRequest"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "title": "Req"
+                "$ref": "#/components/schemas/NextHandRequest"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -3528,7 +3518,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Redeal"
+        "summary": "Next Hand"
       }
     },
     "/api/tables/{table_id}/rules": {

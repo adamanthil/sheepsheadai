@@ -461,7 +461,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/tables/{table_id}/redeal": {
+    "/api/tables/{table_id}/next-hand": {
         parameters: {
             query?: never;
             header?: never;
@@ -470,8 +470,14 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Redeal */
-        post: operations["redeal_api_tables__table_id__redeal_post"];
+        /**
+         * Next Hand
+         * @description Pass the deal to the next player and deal them a hand.
+         *
+         *     One step, so a refusal leaves the finished hand exactly as it was: the
+         *     host is told why and can try again, and no one's seat has moved.
+         */
+        post: operations["next_hand_api_tables__table_id__next_hand_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1236,6 +1242,11 @@ export interface components {
             /** Password */
             password: string;
         };
+        /** NextHandRequest */
+        NextHandRequest: {
+            /** Client Id */
+            client_id: string;
+        };
         /** OkResponse */
         OkResponse: {
             /** Ok */
@@ -1247,11 +1258,6 @@ export interface components {
             name: string | null;
             /** Player Id */
             player_id: string;
-        };
-        /** RedealRequest */
-        RedealRequest: {
-            /** Client Id */
-            client_id?: string | null;
         };
         /** RegisterRequest */
         RegisterRequest: {
@@ -2237,7 +2243,7 @@ export interface operations {
             };
         };
     };
-    redeal_api_tables__table_id__redeal_post: {
+    next_hand_api_tables__table_id__next_hand_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -2246,9 +2252,9 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: {
+        requestBody: {
             content: {
-                "application/json": components["schemas"]["RedealRequest"] | null;
+                "application/json": components["schemas"]["NextHandRequest"];
             };
         };
         responses: {

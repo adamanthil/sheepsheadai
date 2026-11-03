@@ -6,8 +6,8 @@ from server.api.auth import PlayerIdentity, current_player
 from server.api.ratelimit import GAME_ACTIONS, HOST_ACTIONS, limiter
 from server.api.schemas import (
     ActionRequest,
+    NextHandRequest,
     OkResponse,
-    RedealRequest,
     StartGameRequest,
     TablePublic,
 )
@@ -26,6 +26,7 @@ from server.runtime.dealing import (
 )
 from server.runtime.lifecycle import finish_hand, is_draining
 from server.runtime.manager import tables
+from server.runtime.models import Table
 from server.runtime.rules import plays_doublers
 from server.runtime.turn_timer import cancel_turn_timer
 from server.runtime.views import (
@@ -38,7 +39,7 @@ from server.services.persistence.hand_setup import persist_started_game
 from server.services.persistence.pool import get_db_pool
 from server.services.persistence.snapshots import capture_post_state, capture_pre_state
 from sheepshead.agent.observation import observation_for
-from sheepshead.game import ACTION_LOOKUP
+from sheepshead.game import ACTION_LOOKUP, Game
 
 router = APIRouter()
 
@@ -65,35 +66,103 @@ async def start_game(
         # build two Games for one table.
         if table.status != "open":
             raise HTTPException(status_code=400, detail="already_started")
+        _require_full_table(table)
+        game = _deal(table)
 
-        if not all(table.seats[i] for i in range(1, 6)):
-            raise HTTPException(status_code=400, detail="not_enough_players")
+    await _announce_deal(table, game)
+    return table.to_public_dict()
 
-        if not table.host_client_id or all(
-            table.seats[i] != table.host_client_id for i in range(1, 6)
-        ):
-            raise HTTPException(status_code=400, detail="host_not_seated")
 
-        game = new_game_for_table(table)
-        table.game = game
-        table.status = "playing"
-        table.ever_dealt = True
-        table.hand_finished_at = None
-        table.results_counted = False
-        # A fresh hand is played for the base stake; only a passed-out
-        # doublers deal raises it, and only until that hand is played out.
-        table.doublings = 0
-        table.pass_out_count = 0
-        if not table.initial_seat_order:
-            table.initial_seat_order = [str(table.seats[i] or "") for i in range(1, 6)]
-            pub = table.to_public_dict()
-            for i in range(1, 6):
-                occ = table.seats[i]
-                if occ:
-                    table.initial_names[str(occ)] = pub["seats"][i]
+@router.post("/api/tables/{table_id}/next-hand", response_model=TablePublic)
+@limiter.limit(HOST_ACTIONS)
+async def next_hand(
+    request: Request,
+    table_id: str,
+    req: NextHandRequest,
+    identity: PlayerIdentity = Depends(current_player),
+):
+    """Pass the deal to the next player and deal them a hand.
 
-        refresh_table_agent(table)
+    One step, so a refusal leaves the finished hand exactly as it was: the
+    host is told why and can try again, and no one's seat has moved.
+    """
+    try:
+        table = tables.get_table(table_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="table_not_found")
 
+    if is_draining():
+        raise HTTPException(status_code=503, detail="server_restarting")
+    require_host(table, req.client_id, identity)
+
+    async with table.state_lock:
+        if table.settling:
+            raise HTTPException(status_code=409, detail="table_closing")
+        # Mid-hand this would throw away a live deal unrecorded, letting a
+        # host erase a losing hand. Also what a double-submit sees.
+        if table.hand_in_play:
+            raise HTTPException(status_code=409, detail="hand_in_progress")
+        # Only a hand finish_hand has recorded is followed by another.
+        if table.status != "finished" or table.game is None:
+            raise HTTPException(status_code=400, detail="no_hand_finished")
+        _require_full_table(table)
+        _pass_the_deal(table)
+        game = _deal(table)
+
+    await _announce_deal(table, game)
+    return table.to_public_dict()
+
+
+def _require_full_table(table: Table) -> None:
+    """Refuse a deal unless every seat is filled and the host holds one."""
+    if not all(table.seats[i] for i in range(1, 6)):
+        raise HTTPException(status_code=400, detail="not_enough_players")
+
+    if not table.host_client_id or all(
+        table.seats[i] != table.host_client_id for i in range(1, 6)
+    ):
+        raise HTTPException(status_code=400, detail="host_not_seated")
+
+
+def _pass_the_deal(table: Table) -> None:
+    """Rotate every occupant down a seat, seat 1's into seat 5.
+
+    The dealer is always seat 5, so this passes the deal to the left.
+    """
+    old = {i: table.seats[i] for i in range(1, 6)}
+    for i in range(1, 6):
+        occ = old[i % 5 + 1]
+        table.seats[i] = occ
+        if occ and occ in table.clients:
+            table.clients[occ].seat = i
+
+
+def _deal(table: Table) -> Game:
+    """Deal a fresh hand at the table. Caller holds ``state_lock``."""
+    game = new_game_for_table(table)
+    table.game = game
+    table.status = "playing"
+    table.ever_dealt = True
+    table.hand_finished_at = None
+    table.results_counted = False
+    # A fresh hand is played for the base stake; only a passed-out
+    # doublers deal raises it, and only until that hand is played out.
+    table.doublings = 0
+    table.pass_out_count = 0
+    if not table.initial_seat_order:
+        table.initial_seat_order = [str(table.seats[i] or "") for i in range(1, 6)]
+        pub = table.to_public_dict()
+        for i in range(1, 6):
+            occ = table.seats[i]
+            if occ:
+                table.initial_names[str(occ)] = pub["seats"][i]
+
+    refresh_table_agent(table)
+    return game
+
+
+async def _announce_deal(table: Table, game: Game) -> None:
+    """Show everyone the new hand, set the AI moving, and record it."""
     await broadcast_table_update(table)
     await broadcast_table_state(table)
     schedule_ai_turns(table, initial_delay=2.0)
@@ -101,52 +170,6 @@ async def start_game(
     pool = get_db_pool()
     await ensure_game_table(pool, table.id, table.name, plays_doublers(table.rules))
     await persist_started_game(pool, table, game)
-
-    return table.to_public_dict()
-
-
-@router.post("/api/tables/{table_id}/redeal", response_model=TablePublic)
-@limiter.limit(HOST_ACTIONS)
-async def redeal(
-    request: Request,
-    table_id: str,
-    req: RedealRequest | None = None,
-    identity: PlayerIdentity = Depends(current_player),
-):
-    try:
-        table = tables.get_table(table_id)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="table_not_found")
-
-    require_host(table, req.client_id if req else None, identity)
-
-    # Redeal is the between-hands step. Mid-hand it would throw away a
-    # live deal unrecorded, letting a host erase a losing hand.
-    if table.hand_in_play:
-        raise HTTPException(status_code=409, detail="hand_in_progress")
-
-    async with table.state_lock:
-        old = {i: table.seats[i] for i in range(1, 6)}
-        new_map = {
-            1: old[2],
-            2: old[3],
-            3: old[4],
-            4: old[5],
-            5: old[1],
-        }
-        for i in range(1, 6):
-            table.seats[i] = new_map[i]
-            occ = new_map[i]
-            if occ and occ in table.clients:
-                table.clients[occ].seat = i
-
-        table.game = None
-        table.status = "open"
-        table.results_counted = False
-        table.doublings = 0
-        table.pass_out_count = 0
-
-    return table.to_public_dict()
 
 
 @router.post("/api/tables/{table_id}/action", response_model=OkResponse)

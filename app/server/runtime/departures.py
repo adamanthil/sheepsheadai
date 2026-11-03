@@ -2,8 +2,8 @@
 
 A player who leaves mid-hand forfeits it to the AI; one who leaves between
 hands can be dealt into the next one before they get the chance if the host
-redeals first. Asking ahead closes that gap: the server unseats them the
-moment the hand ends, before any redeal can reach their seat.
+deals it first. Asking ahead closes that gap: the server unseats them the
+moment the hand ends, before the next hand can reach their seat.
 
 A passed-out doublers deal is not the end of the hand -- the redeal is the
 same hand at double the stake -- so it does not set anyone off.

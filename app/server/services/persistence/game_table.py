@@ -15,9 +15,8 @@ async def ensure_game_table(
 ) -> None:
     """Create the game_table row on first start, refreshing its house rules.
 
-    ``is_doublers`` is re-stamped on every deal rather than only on insert:
-    the host can send the table back to the lobby (redeal) and change the
-    all-pass rule, and the row is meant to say what the table is playing now.
+    ``is_doublers`` is re-stamped on every deal rather than only on insert,
+    so the row always says what the table is playing now.
     """
     try:
         async with pool.acquire() as conn:

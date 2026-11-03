@@ -316,9 +316,8 @@ class SeatRequest(BaseModel):
     seat: int
 
 
-class RedealRequest(BaseModel):
-    # Host-triggered; require client_id for authorization
-    client_id: Optional[str] = None
+class NextHandRequest(BaseModel):
+    client_id: str
 
 
 class KickRequest(BaseModel):

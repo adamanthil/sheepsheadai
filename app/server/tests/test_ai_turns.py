@@ -92,8 +92,8 @@ async def test_ai_lead_waits_out_the_collect_animation(monkeypatch):
 
 
 async def test_hand_is_recorded_before_anyone_sees_it_end(monkeypatch):
-    # The game-over banner offers a redeal: were the ended hand shown before
-    # finish_hand records it, a redeal would discard the result.
+    # The game-over banner offers Next hand: were the ended hand shown
+    # before finish_hand records it, dealing on would discard the result.
     monkeypatch.setattr(
         dealing, "build_table_agent", lambda settings, table_id: StubAgent()
     )

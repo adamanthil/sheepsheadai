@@ -17,6 +17,7 @@ async def test_mutating_routes_require_token(app):
         cases = [
             client.post("/api/tables/x/seat", json={"client_id": "c", "seat": 1}),
             client.post("/api/tables/x/start", json={"client_id": "c"}),
+            client.post("/api/tables/x/next-hand", json={"client_id": "c"}),
             client.post(
                 "/api/tables/x/action", json={"client_id": "c", "action_id": 1}
             ),

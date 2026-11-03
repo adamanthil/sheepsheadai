@@ -139,7 +139,7 @@ async def join_table(request: Request, table_id: str, req: JoinTableRequest):
         raise HTTPException(status_code=404, detail="table_not_found") from e
 
     # Only a closing table refuses: between hands (status "finished" until
-    # the redeal) a player joins like any other time, taking a free seat.
+    # the next hand) a player joins like any other time, taking a free seat.
     if table.closed:
         raise HTTPException(status_code=400, detail="table_finished")
 

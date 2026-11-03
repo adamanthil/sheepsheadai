@@ -98,7 +98,7 @@ def record_hand_result(table: Table) -> None:
 
     Idempotent: a second call for the same hand is a no-op because
     ``results_counted`` is flipped on first call. Reset by ``start_game`` /
-    ``redeal`` for the next hand.
+    ``next_hand``.
     """
     if not table.game or table.results_counted:
         return

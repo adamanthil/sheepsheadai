@@ -41,7 +41,7 @@ class ClientConn:
     timeout_strikes: int = 0
     # The AI occupant that took this player's seat when the turn timer moved
     # them to spectator. While it holds a seat, that seat is the only one
-    # they may take (an occupant id, not a seat number: redeals rotate seats).
+    # they may take (an occupant id, not a seat number: each new hand rotates seats).
     home_occupant: Optional[str] = None
     # The player asked to leave once the hand in play ends
     # (runtime.departures); they are unseated before the next deal.
@@ -73,7 +73,7 @@ class Table:
     host_client_id: Optional[str] = None
     # time.monotonic() stamps for the idle sweep (runtime.lifecycle): a
     # table never dealt expires some time after creation, and a finished
-    # hand nobody redeals some time after it ended.
+    # hand nobody follows some time after it ended.
     created_at: float = field(default_factory=time.monotonic)
     ever_dealt: bool = False
     hand_finished_at: Optional[float] = None

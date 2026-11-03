@@ -122,9 +122,9 @@ async def finish_hand(table: Table) -> None:
     """
     table.status = "finished"
     record_hand_result(table)
-    # Before the finished state goes out: no one can redeal a hand they
-    # haven't seen end, so the leavers are gone before any redeal can
-    # reach their seats.
+    # Before the finished state goes out: no one can deal on from a hand
+    # they haven't seen end, so the leavers are gone before the next hand
+    # can reach their seats.
     await see_off_departures(table)
     await broadcast_table_state(table)
     if table.close_after_hand:
@@ -197,7 +197,7 @@ def schedule_autoclose_if_no_humans(table: Table, delay_seconds: float = 30.0) -
 # abandoned lobby or a table left on its final scores can't hold a slot
 # (and its creator's open-table allowance) indefinitely.
 LOBBY_EXPIRY_SECONDS = 20 * 60  # never dealt, this long after creation
-HAND_IDLE_SECONDS = 5 * 60  # finished hand not redealt for this long
+HAND_IDLE_SECONDS = 5 * 60  # finished hand not followed for this long
 SWEEP_INTERVAL_SECONDS = 30.0
 
 
