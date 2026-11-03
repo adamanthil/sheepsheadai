@@ -7,6 +7,20 @@
 
 	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
 
+	# PRERELEASE (playtest): keep the site out of search engines. robots.txt
+	# turns compliant crawlers away; X-Robots-Tag keeps any page a crawler
+	# does fetch (say, through a shared link) out of the index. Delete this
+	# block at public launch -- a Caddyfile change is a graceful reload.
+	header X-Robots-Tag "noindex, nofollow"
+	handle /robots.txt {
+		header Content-Type "text/plain; charset=utf-8"
+		respond <<ROBOTS
+			User-agent: *
+			Disallow: /
+
+			ROBOTS 200
+	}
+
 	@api path /api/* /ws/* /health /openapi.json
 	handle @api {
 		reverse_proxy api:9000
