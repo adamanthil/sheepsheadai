@@ -57,7 +57,7 @@ const BOARDS: {
     key: "vs_ai",
     label: "Vs AI",
     hands: "finished hands against only the AI",
-    defaultSort: "sph",
+    defaultSort: "total",
   },
 ];
 const DEFAULT_BOARD: LeaderboardBoard = "overall";
