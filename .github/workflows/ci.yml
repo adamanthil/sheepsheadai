@@ -233,5 +233,8 @@ jobs:
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
           install -m 600 /dev/null ~/.ssh/deploy_key
           printf '%s\n' "$KEY" > ~/.ssh/deploy_key
+          # Keepalives: the runner's NAT drops a connection idle for ~4
+          # minutes, and a fresh api image pull is silent for longer.
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes \
+            -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
             "deploy@$HOST" "$ARGS"
