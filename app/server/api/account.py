@@ -79,7 +79,7 @@ async def send_verification(account: Account) -> None:
     spawn(
         send_email(
             account.email,
-            "Confirm your Sheepshead account",
+            "Confirm your Sheepshead AI account",
             f"Hi {account.username},\n\nConfirm your email address to unlock "
             f"your stats and a place on the leaderboard:\n\n{link}\n\n"
             "The link expires in 24 hours. If you didn't create this "
@@ -247,7 +247,7 @@ async def _send_reset(email: str) -> None:
     link = f"{get_settings().public_base_url}/account/reset#token={token}"
     await send_email(
         account.email,
-        "Reset your Sheepshead password",
+        "Reset your Sheepshead AI password",
         f"Hi {account.username},\n\nChoose a new password here:\n\n{link}\n\n"
         "The link expires in 1 hour and signs you out everywhere else. If "
         "you didn't ask for this, ignore this email.",

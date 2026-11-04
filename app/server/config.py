@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     # (development, tests) messages and their links are logged instead of
     # sent; production refuses to boot without one.
     resend_api_key: str = ""
-    email_from: str = "Sheepshead <noreply@localhost>"
+    email_from: str = "Sheepshead AI <noreply@localhost>"
     # Origin of the web app, for links in emails (verify, password reset).
     public_base_url: str = "http://localhost:3000"
     env: str = "development"
