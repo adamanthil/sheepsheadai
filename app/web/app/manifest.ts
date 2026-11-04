@@ -7,7 +7,8 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "Sheepshead AI",
     short_name: "Sheepshead",
-    description: "Play Sheepshead vs AI or friends",
+    description:
+      "Play live with friends, strangers, and a deep neural network.",
     start_url: "/",
     display: "standalone",
     // No orientation lock: the table has a real desktop layout above 768px, so

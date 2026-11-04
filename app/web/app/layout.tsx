@@ -21,9 +21,23 @@ const jetbrainsMono = JetBrains_Mono({
   display: "swap",
 });
 
+const description =
+  "Play live with friends, strangers, and a deep neural network.";
+
 export const metadata = {
+  // Link previews need absolute image URLs; without this Next resolves
+  // opengraph-image against http://localhost:3000.
+  metadataBase: new URL("https://sheepshead.ai"),
   title: "Sheepshead AI",
-  description: "Play Sheepshead vs AI or friends",
+  description,
+  // The image itself comes from app/opengraph-image.tsx.
+  openGraph: {
+    type: "website",
+    siteName: "Sheepshead AI",
+    title: "Sheepshead AI",
+    description,
+  },
+  twitter: { card: "summary_large_image" },
   manifest: "/manifest.webmanifest",
   // Added to the Home Screen, the app launches without Safari's URL bar and
   // home-indicator chrome, which is worth ~90px of viewport — the table stage
