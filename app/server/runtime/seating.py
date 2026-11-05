@@ -9,6 +9,10 @@ from server.realtime.chat import post_presence_notice
 from server.runtime.ai_loop import schedule_ai_turns
 from server.runtime.models import ClientConn, Occupant, Table
 from server.runtime.occupants import allocate_ai_occupant
+from server.runtime.timing import (
+    DISCONNECT_GRACE_SECONDS,
+    LOBBY_DISCONNECT_GRACE_SECONDS,
+)
 
 
 def is_ai_occupant(table: Table, occ_id: Optional[str]) -> bool:
@@ -109,7 +113,11 @@ def schedule_ai_replacement_for_disconnected_human(
     async def _runner():
         try:
             # In waiting room (open), fill immediately; during play, wait 10s
-            delay = 0.0 if table.status == "open" else 10.0
+            delay = (
+                LOBBY_DISCONNECT_GRACE_SECONDS
+                if table.status == "open"
+                else DISCONNECT_GRACE_SECONDS
+            )
             if delay > 0:
                 await asyncio.sleep(delay)
             async with table.state_lock:

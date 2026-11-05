@@ -7,14 +7,10 @@ import time
 import pytest
 
 import server.runtime.lifecycle as lifecycle
-from server.runtime.lifecycle import (
-    HAND_IDLE_SECONDS,
-    LOBBY_EXPIRY_SECONDS,
-    idle_tables,
-    sweep_idle_tables,
-)
+from server.runtime.lifecycle import idle_tables, sweep_idle_tables
 from server.runtime.manager import tables
 from server.runtime.models import ClientConn, Table
+from server.runtime.timing import HAND_IDLE_SECONDS, LOBBY_EXPIRY_SECONDS
 
 
 class _Socket:

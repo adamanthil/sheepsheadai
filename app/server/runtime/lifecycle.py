@@ -14,6 +14,12 @@ from server.runtime.manager import tables
 from server.runtime.models import Table
 from server.runtime.settle import settle_hand
 from server.runtime.tasks import spawn
+from server.runtime.timing import (
+    ABANDONED_TABLE_SECONDS,
+    HAND_IDLE_SECONDS,
+    LOBBY_EXPIRY_SECONDS,
+    SWEEP_INTERVAL_SECONDS,
+)
 from server.runtime.views import record_hand_result
 from server.services.persistence.game_table import close_game_table
 from server.services.persistence.pool import get_db_pool
@@ -164,7 +170,9 @@ async def settle_all_for_restart(timeout: float = DRAIN_SETTLE_SECONDS) -> None:
             logging.error("drain: settling table %s failed", table.id, exc_info=result)
 
 
-def schedule_autoclose_if_no_humans(table: Table, delay_seconds: float = 30.0) -> None:
+def schedule_autoclose_if_no_humans(
+    table: Table, delay_seconds: float = ABANDONED_TABLE_SECONDS
+) -> None:
     """If there are no human players connected, schedule an auto-close after delay."""
 
     def any_human_connected() -> bool:
@@ -193,16 +201,13 @@ def schedule_autoclose_if_no_humans(table: Table, delay_seconds: float = 30.0) -
     table.autoclose_task = asyncio.create_task(_auto())
 
 
-# Idle sweep: tables close on these even with players connected, so an
-# abandoned lobby or a table left on its final scores can't hold a slot
-# (and its creator's open-table allowance) indefinitely.
-LOBBY_EXPIRY_SECONDS = 20 * 60  # never dealt, this long after creation
-HAND_IDLE_SECONDS = 5 * 60  # finished hand not followed for this long
-SWEEP_INTERVAL_SECONDS = 30.0
-
-
 def idle_tables(now: float) -> list[tuple[Table, str]]:
-    """Tables due to close at monotonic time ``now``, with the reason."""
+    """Tables due to close at monotonic time ``now``, with the reason.
+
+    These close even with players connected, so an abandoned lobby or a
+    table left on its final scores can't hold a slot (and its creator's
+    open-table allowance) indefinitely.
+    """
     due: list[tuple[Table, str]] = []
     for table in list(tables.tables.values()):
         if not table.ever_dealt and now - table.created_at >= LOBBY_EXPIRY_SECONDS:

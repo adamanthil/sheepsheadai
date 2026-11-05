@@ -64,6 +64,7 @@ from server.runtime.seating import (
     replace_ai_with_human_and_reserve,
     reserved_ai_ids,
 )
+from server.runtime.timing import NEW_TABLE_GRACE_SECONDS
 from server.services.persistence import accounts as accounts_db
 from server.services.persistence import players as players_db
 from server.services.persistence import sessions as sessions_db
@@ -126,7 +127,7 @@ async def create_table(request: Request, req: CreateTableRequest):
     # A table whose players never open a websocket would otherwise linger
     # forever: the other autoclose triggers live in the ws connect/disconnect
     # paths. Give it a generous window to acquire its first connection.
-    schedule_autoclose_if_no_humans(table, delay_seconds=300.0)
+    schedule_autoclose_if_no_humans(table, delay_seconds=NEW_TABLE_GRACE_SECONDS)
     return {**table.to_public_dict(), "host_key": table.host_key}
 
 

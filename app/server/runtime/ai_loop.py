@@ -9,14 +9,15 @@ from server.runtime.ai_move import ai_act_for_seat
 from server.runtime.dealing import redeal_passed_out_hand
 from server.runtime.lifecycle import finish_hand
 from server.runtime.models import Table
+from server.runtime.timing import (
+    AI_PASS_PAUSE_SECONDS,
+    AI_PLAY_PAUSE_SECONDS,
+    THROW_IN_PAUSE_SECONDS,
+    TRICK_COLLECT_SECONDS,
+)
 from server.runtime.turn_timer import arm_turn_timer
 from server.runtime.views import get_actor_seat
 from server.services.persistence.games import fire_game_hooks
-
-# How long the table client spends on a completed trick: a 2.0s look at the
-# finished trick, then a 1.3s collect animation (see useTrickAnimation.ts).
-# The next card must not land underneath it.
-TRICK_COLLECT_SECONDS = 3.3
 
 
 async def ai_take_turns(table: Table) -> None:
@@ -61,11 +62,11 @@ async def ai_take_turns(table: Table) -> None:
             await broadcast_table_state(table)
             # Beat before the new deal's first bid, so the throw-in callout
             # is readable rather than being overrun by the next PICK.
-            await asyncio.sleep(1.2)
+            await asyncio.sleep(THROW_IN_PAUSE_SECONDS)
             continue
 
         if isinstance(action_str, str) and action_str.startswith("PLAY "):
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(AI_PLAY_PAUSE_SECONDS)
         if table.game and table.game.is_done():
             # finish_hand records the hand before anyone is shown it ended:
             # Next hand from the game-over banner would otherwise discard it.
@@ -75,7 +76,7 @@ async def ai_take_turns(table: Table) -> None:
             await asyncio.sleep(TRICK_COLLECT_SECONDS)
         else:
             if isinstance(action_str, str) and action_str == "PASS":
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(AI_PASS_PAUSE_SECONDS)
 
     # If game ended via AI actions, mark finished, tally results, broadcast.
     if table.game and table.game.is_done():

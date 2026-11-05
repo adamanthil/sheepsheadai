@@ -5,6 +5,8 @@ from functools import lru_cache
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from server.runtime.timing import TURN_TIMEOUT_SECONDS
+
 
 class Settings(BaseSettings):
     sheepshead_model_path: str
@@ -40,7 +42,7 @@ class Settings(BaseSettings):
     sheepshead_max_tables_per_ip: int = 5
     # Seconds a human has to move before the AI moves for them
     # (server.runtime.turn_timer).
-    sheepshead_turn_timeout_seconds: float = 120.0
+    sheepshead_turn_timeout_seconds: float = TURN_TIMEOUT_SECONDS
     # Transactional email via Resend (server.services.email). With no key
     # (development, tests) messages and their links are logged instead of
     # sent; production refuses to boot without one.

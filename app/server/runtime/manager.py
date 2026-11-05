@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 
 from server.runtime.models import Table
 from server.runtime.occupants import seat_ai_in_every_seat
+from server.runtime.timing import STALE_CLIENT_SECONDS
 
 # DoS backstop: hard ceiling on concurrently open tables. Each table holds an
 # in-memory Game plus (once started) its own PPOAgent, so unbounded creation
@@ -87,10 +88,6 @@ class TableManager:
 
 
 tables = TableManager()
-
-# A disconnected, unseated client keeps its reclaim rights this long; after
-# that its ClientConn (and any AI seat reservation) is swept.
-STALE_CLIENT_SECONDS = 30 * 60
 
 
 def prune_table_state(table: Table) -> None:

@@ -5,9 +5,10 @@ from __future__ import annotations
 import types
 
 from server.runtime import ai_loop, dealing, lifecycle, turn_timer
-from server.runtime.ai_loop import TRICK_COLLECT_SECONDS, ai_take_turns
+from server.runtime.ai_loop import ai_take_turns
 from server.runtime.dealing import new_game_for_table
 from server.runtime.models import ClientConn, Occupant, Table
+from server.runtime.timing import TRICK_COLLECT_SECONDS
 from server.runtime.views import get_actor_seat
 
 

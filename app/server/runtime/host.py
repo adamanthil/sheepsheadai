@@ -13,9 +13,7 @@ from server.realtime.broadcast import broadcast_table_state, broadcast_table_upd
 from server.realtime.chat import add_chat_message, broadcast_chat_append
 from server.runtime.models import ClientConn, Table
 from server.runtime.tasks import spawn
-
-# Same grace as a disconnected player's seat, so a page refresh keeps host.
-HOST_HANDOFF_GRACE_SECONDS = 10.0
+from server.runtime.timing import HOST_HANDOFF_GRACE_SECONDS
 
 
 def _successor(table: Table, excluding: set[str]) -> Optional[ClientConn]:

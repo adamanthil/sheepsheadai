@@ -33,6 +33,7 @@ from server.runtime.seating import (
     pick_join_ai_seat,
     schedule_ai_replacement_for_disconnected_human,
 )
+from server.runtime.timing import FIRST_AI_MOVE_DELAY_SECONDS
 from server.runtime.turn_timer import cancel_turn_timer
 from server.runtime.views import (
     get_actor_seat,
@@ -205,7 +206,7 @@ async def _announce_deal(table: Table, game: Game) -> None:
     """Show everyone the new hand, set the AI moving, and record it."""
     await broadcast_table_update(table)
     await broadcast_table_state(table)
-    schedule_ai_turns(table, initial_delay=2.0)
+    schedule_ai_turns(table, initial_delay=FIRST_AI_MOVE_DELAY_SECONDS)
 
     pool = get_db_pool()
     await ensure_game_table(pool, table.id, table.name, plays_doublers(table.rules))

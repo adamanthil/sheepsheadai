@@ -30,10 +30,9 @@ from server.runtime.dealing import redeal_passed_out_hand
 from server.runtime.models import ClientConn, Table
 from server.runtime.occupants import give_seat_to_ai
 from server.runtime.tasks import spawn
+from server.runtime.timing import MAX_TIMEOUT_STRIKES
 from server.runtime.views import get_actor_seat
 from server.services.persistence.games import fire_game_hooks
-
-MAX_TIMEOUT_STRIKES = 3
 
 
 def turn_timeout_seconds() -> float:
