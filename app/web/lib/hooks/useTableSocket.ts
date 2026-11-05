@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import type { ChatMessage, TableStateMsg, TableView } from "../types";
 import { apiFetch, wsSubprotocols, wsUrl } from "../api";
 import { STORAGE_KEYS } from "../storage";
 import { parseWsMessage } from "../wsMessages";
 import { diffCallouts } from "../callouts";
+import { applyPendingMove, isPredicted, type PendingMove } from "../optimistic";
 
 export interface TableSocketCallbacks {
   onTrickComplete?: (cards: string[], winner: number) => void;
@@ -39,6 +40,9 @@ export interface UseTableSocketReturn {
   connectionState: ConnectionState;
   /** Set once the player is off the table but kept on its final scores. */
   departure: Departure | null;
+  /** The table as drawn: the server's last state, with this player's own
+   * move laid over it from the moment it is sent until the server shows it
+   * (or refuses it). */
   lastState: TableStateMsg | null;
   /** Local-clock ms when the acting human's turn runs out, or null. */
   turnDeadline: number | null;
@@ -46,7 +50,8 @@ export interface UseTableSocketReturn {
   turnSeconds: number | null;
   actionLookup: Record<string, string>;
   chatMessages: ChatMessage[];
-  /** POST one action. Resolves true when the server accepted it. */
+  /** POST one action, shown at once where it can be predicted. Resolves
+   * true when the server accepted it. */
   takeAction: (actionId: number) => Promise<boolean>;
   closeTable: () => Promise<void>;
   /** Host only: close the table once the hand in play ends, or not. */
@@ -77,9 +82,16 @@ export function useTableSocket(
   const [turnSeconds, setTurnSeconds] = useState<number | null>(null);
   const [actionLookup, setActionLookup] = useState<Record<string, string>>({});
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [pending, setPending] = useState<PendingMove | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const callbacksRef = useRef(callbacks);
   callbacksRef.current = callbacks;
+  // Read by takeAction when a move is sent, to predict it from the state
+  // and labels on screen at that moment.
+  const lastStateRef = useRef(lastState);
+  lastStateRef.current = lastState;
+  const actionLookupRef = useRef(actionLookup);
+  actionLookupRef.current = actionLookup;
 
   // Fetch action lookup on mount
   useEffect(() => {
@@ -187,6 +199,10 @@ export function useTableSocket(
 
             return msg;
           });
+          // A state from any other move than the one we predicted from
+          // replaces the prediction: it holds our move, or a refusal or a
+          // timeout move is on its way.
+          setPending((p) => (p && msg.moveSeq !== p.baseSeq ? null : p));
         } else if (data.type === "table_closed") {
           // Ended at the host's word after a hand: stay on the final scores.
           if (data.reason === "host_closed_after_hand") {
@@ -283,12 +299,25 @@ export function useTableSocket(
   const takeAction = useCallback(
     async (actionId: number) => {
       if (!clientId || !tableId) return false;
+      const base = lastStateRef.current;
+      const label = actionLookupRef.current[String(actionId)];
+      const move: PendingMove | null =
+        base?.moveSeq !== undefined && label && isPredicted(label)
+          ? { label, baseSeq: base.moveSeq }
+          : null;
+      if (move) setPending(move);
+      // Refused or lost: back to what the server last showed. An accepted
+      // move stays drawn until the state holding it arrives.
+      const withdraw = () => {
+        if (move) setPending((p) => (p === move ? null : p));
+      };
       try {
         const res = await apiFetch(`/api/tables/${tableId}/action`, {
           method: "POST",
           body: JSON.stringify({ client_id: clientId, action_id: actionId }),
         });
         if (!res.ok) {
+          withdraw();
           const j = await res.json().catch(() => ({}));
           callbacksRef.current?.onError?.(
             `Action failed: ${j?.detail || res.status}`,
@@ -297,6 +326,7 @@ export function useTableSocket(
         }
         return true;
       } catch (err) {
+        withdraw();
         console.warn("action POST failed", err);
         callbacksRef.current?.onError?.("Action failed: network error");
         return false;
@@ -432,12 +462,23 @@ export function useTableSocket(
     }
   }, []);
 
+  // The prediction is drawn only over the state it was made from.
+  const predicting = pending !== null && lastState?.moveSeq === pending.baseSeq;
+  const shownState = useMemo(
+    () =>
+      predicting && lastState && pending
+        ? applyPendingMove(lastState, pending.label)
+        : lastState,
+    [predicting, lastState, pending],
+  );
+
   return {
     connected,
     connectionState,
     departure,
-    lastState,
-    turnDeadline,
+    lastState: shownState,
+    // The clock stops with the move made.
+    turnDeadline: predicting ? null : turnDeadline,
     turnSeconds,
     actionLookup,
     chatMessages,

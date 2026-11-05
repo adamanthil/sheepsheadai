@@ -92,6 +92,7 @@ export const wsMessageSchema = z.discriminatedUnion("type", [
     table: looseTable,
     yourSeat: z.number().nullable(),
     actorSeat: z.number().nullable(),
+    moveSeq: z.number().optional(),
     isHost: z.boolean(),
     state: tableState,
     view: gameView,

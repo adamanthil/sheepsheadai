@@ -93,6 +93,8 @@ export type TableStateMsg = {
   /** null for a spectator, who gets the public view only. */
   yourSeat: number | null;
   actorSeat: number | null;
+  /** Moves applied at the table so far; rises by one with each move. */
+  moveSeq?: number;
   isHost: boolean;
   state: {
     play_started?: number;

@@ -98,6 +98,9 @@ async def broadcast_table_state(table: Table) -> None:
             "table": table.to_public_dict(),
             "yourSeat": conn.seat,
             "actorSeat": actor_seat,
+            # Moves applied at this table so far: a client holding a
+            # predicted move drops it once a later move is shown.
+            "moveSeq": table.move_seq,
             "isHost": cid == table.host_client_id,
             "state": payload["state"],
             "view": payload["view"],
