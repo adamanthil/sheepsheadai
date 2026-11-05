@@ -1,16 +1,19 @@
 import path from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 
-// End-to-end smoke harness. Requires Docker (an ephemeral Postgres is started
-// by e2e/global-setup.ts) unless E2E_DATABASE_URL points at a migrated
-// database. Run from app/web: `npm run e2e`.
+// End-to-end harness. Requires Docker (a throwaway Postgres is started by
+// e2e/database.mjs) unless E2E_DATABASE_URL points at a reachable database,
+// which is migrated and used as is. Run from app/web: `npm run e2e`.
 
 const repoRoot = path.resolve(__dirname, "../..");
 const apiBase = "http://127.0.0.1:9100";
 
-export const E2E_DATABASE_URL =
+// Its own port, never the dev database's (docker-compose maps that to 5433):
+// a reachable database here is used as is, so a shared port would have the
+// suite migrate and fill the dev database.
+const E2E_DATABASE_URL =
   process.env.E2E_DATABASE_URL ??
-  "postgres://sheepshead:sheepshead@127.0.0.1:5433/sheepshead";
+  "postgres://sheepshead:sheepshead@127.0.0.1:5544/sheepshead";
 
 export default defineConfig({
   testDir: "./e2e",
@@ -18,7 +21,7 @@ export default defineConfig({
   retries: 0,
   workers: 1,
   reporter: [["list"]],
-  globalSetup: "./e2e/global-setup.ts",
+  globalTeardown: "./e2e/teardown.mjs",
   use: {
     baseURL: "http://127.0.0.1:3100",
     trace: "retain-on-failure",
@@ -26,8 +29,9 @@ export default defineConfig({
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: [
     {
+      // The database comes up first: webServers start before globalSetup.
       command:
-        "uv run -- python -m uvicorn server.app:create_app --factory --host 127.0.0.1 --port 9100",
+        "node app/web/e2e/database.mjs && uv run -- python -m uvicorn server.app:create_app --factory --host 127.0.0.1 --port 9100",
       cwd: repoRoot,
       url: `${apiBase}/health`,
       timeout: 240_000,
