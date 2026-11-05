@@ -3473,7 +3473,7 @@
     },
     "/api/tables/{table_id}/next-hand": {
       "post": {
-        "description": "Pass the deal to the next player and deal them a hand.\n\nOne step, so a refusal leaves the finished hand exactly as it was: the\nhost is told why and can try again, and no one's seat has moved.",
+        "description": "Pass the deal to the next player and deal them a hand.\n\nOne step, so a refusal leaves the finished hand exactly as it was: the\nhost is told why and can try again, and no one's seat has moved.\n\nA host who isn't seated is sat back down first: dealing on means they\nmean to play. The AI may hold their seat because their phone slept on\nthe hand summary (and this request beat their reconnect), or the turn\nclock moved them out, or host passed to someone watching.",
         "operationId": "next_hand_api_tables__table_id__next_hand_post",
         "parameters": [
           {

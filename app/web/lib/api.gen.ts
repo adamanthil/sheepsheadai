@@ -476,6 +476,11 @@ export interface paths {
          *
          *     One step, so a refusal leaves the finished hand exactly as it was: the
          *     host is told why and can try again, and no one's seat has moved.
+         *
+         *     A host who isn't seated is sat back down first: dealing on means they
+         *     mean to play. The AI may hold their seat because their phone slept on
+         *     the hand summary (and this request beat their reconnect), or the turn
+         *     clock moved them out, or host passed to someone watching.
          */
         post: operations["next_hand_api_tables__table_id__next_hand_post"];
         delete?: never;
