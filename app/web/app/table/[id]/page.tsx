@@ -156,6 +156,34 @@ export default function TablePage() {
     showMobileLog,
   );
 
+  // The after-hand choices (leave, or as host close) show the moment they
+  // are made, ahead of the server's table_update; a refusal puts the
+  // server's value back, with the reason shown. A choice is dropped once
+  // the server agrees, so later changes from the server show as they come.
+  const serverLeaving =
+    !!lastState?.yourSeat &&
+    !!lastState.table.seatLeavingAfterHand[String(lastState.yourSeat)];
+  const serverClosing = !!lastState?.table.closingAfterHand;
+  const [leaveChoice, setLeaveChoice] = useState<boolean | null>(null);
+  const [closeChoice, setCloseChoice] = useState<boolean | null>(null);
+  useEffect(() => {
+    setLeaveChoice((c) => (c === serverLeaving ? null : c));
+  }, [serverLeaving]);
+  useEffect(() => {
+    setCloseChoice((c) => (c === serverClosing ? null : c));
+  }, [serverClosing]);
+  const chooseAfterHand =
+    (
+      setChoice: (on: boolean | null) => void,
+      request: (on: boolean) => Promise<boolean>,
+    ) =>
+    (on: boolean) => {
+      setChoice(on);
+      void request(on).then((ok) => {
+        if (!ok) setChoice(null);
+      });
+    };
+
   const isYourTurn = !!lastState && computeIsYourTurn(lastState);
   const isHost = lastState ? computeIsHost(lastState) : false;
 
@@ -264,10 +292,7 @@ export default function TablePage() {
   // chat authors (the only place an unseated spectator shows up).
   const removeControl = (target: string | null | undefined, name: string) =>
     isHost && target && target !== clientId ? (
-      <RemovePlayerButton
-        name={name}
-        onRemove={() => void kickPlayer(target)}
-      />
+      <RemovePlayerButton name={name} onRemove={() => kickPlayer(target)} />
     ) : null;
   const seatControls = (seat: number) =>
     isAiSeat(seat, table)
@@ -395,7 +420,7 @@ export default function TablePage() {
     <SpectatorBar
       table={table}
       actorName={nameForSeat(actorSeat, table)}
-      onTakeSeat={(seat) => void takeSeat(seat)}
+      onTakeSeat={takeSeat}
       isMobile={isMobile}
       secondsLeft={secondsLeft}
       homeOccupant={lastState.homeOccupant}
@@ -484,17 +509,16 @@ export default function TablePage() {
 
   const leave = {
     canLeaveAfterHand: handInPlay && yourSeat !== null && !departure,
-    leavingAfterHand:
-      yourSeat !== null && !!table.seatLeavingAfterHand[String(yourSeat)],
+    leavingAfterHand: leaveChoice ?? serverLeaving,
     onLeave: () => router.push("/"),
-    onLeaveAfterHand: (on: boolean) => void setLeaveAfterHand(on),
+    onLeaveAfterHand: chooseAfterHand(setLeaveChoice, setLeaveAfterHand),
   };
   const close = isHost
     ? {
         handInPlay,
-        closingAfterHand: table.closingAfterHand,
-        onCloseAfterHand: (on: boolean) => void setCloseAfterHand(on),
-        onCloseTable: () => void closeTable(),
+        closingAfterHand: closeChoice ?? serverClosing,
+        onCloseAfterHand: chooseAfterHand(setCloseChoice, setCloseAfterHand),
+        onCloseTable: closeTable,
       }
     : null;
 

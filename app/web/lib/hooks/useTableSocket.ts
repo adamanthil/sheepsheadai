@@ -60,16 +60,19 @@ export interface UseTableSocketReturn {
   /** POST one action, shown at once where it can be predicted. Resolves
    * true when the server accepted it. */
   takeAction: (actionId: number) => Promise<boolean>;
-  closeTable: () => Promise<void>;
+  // The table requests below resolve true when the server accepted them;
+  // a refusal or network error is reported through onError and resolves
+  // false.
+  closeTable: () => Promise<boolean>;
   /** Host only: close the table once the hand in play ends, or not. */
-  setCloseAfterHand: (on: boolean) => Promise<void>;
+  setCloseAfterHand: (on: boolean) => Promise<boolean>;
   /** Leave the table once the hand in play ends, or not. */
-  setLeaveAfterHand: (on: boolean) => Promise<void>;
-  nextHand: () => Promise<void>;
+  setLeaveAfterHand: (on: boolean) => Promise<boolean>;
+  nextHand: () => Promise<boolean>;
   /** Spectator only: take over the AI at ``seat``. */
-  takeSeat: (seat: number) => Promise<void>;
+  takeSeat: (seat: number) => Promise<boolean>;
   /** Host only: remove a player (by client id) from the table. */
-  kickPlayer: (targetClientId: string) => Promise<void>;
+  kickPlayer: (targetClientId: string) => Promise<boolean>;
   sendChatMessage: (message: string) => void;
 }
 
@@ -366,117 +369,66 @@ export function useTableSocket(
     [tableId, clientId],
   );
 
-  const closeTable = useCallback(async () => {
-    if (!tableId || !clientId) return;
-    try {
-      await apiFetch(`/api/tables/${tableId}/close`, {
-        method: "POST",
-        body: JSON.stringify({ client_id: clientId }),
-      });
-    } catch (err) {
-      console.warn("close POST failed", err);
-      callbacksRef.current?.onError?.("Close failed: network error");
-    }
-  }, [tableId, clientId]);
-
-  const postAfterHand = useCallback(
-    async (path: string, on: boolean, what: string) => {
-      if (!tableId || !clientId) return;
+  /** POST a table request; false (with the reason shown) when it failed.
+   * ``what`` names it in the error, e.g. "Close failed: not_host". */
+  const post = useCallback(
+    async (path: string, body: object, what: string): Promise<boolean> => {
+      if (!tableId || !clientId) return false;
       try {
         const res = await apiFetch(`/api/tables/${tableId}/${path}`, {
           method: "POST",
-          body: JSON.stringify({ client_id: clientId, on }),
+          body: JSON.stringify({ client_id: clientId, ...body }),
         });
         if (!res.ok) {
           const j = await res.json().catch(() => ({}));
           callbacksRef.current?.onError?.(
-            `${what} failed: ${j?.detail || res.status}`,
+            `${what}: ${j?.detail || res.status}`,
           );
+          return false;
         }
+        return true;
       } catch (err) {
         console.warn(`${path} POST failed`, err);
-        callbacksRef.current?.onError?.(`${what} failed: network error`);
+        callbacksRef.current?.onError?.(`${what}: network error`);
+        return false;
       }
     },
     [tableId, clientId],
+  );
+
+  const closeTable = useCallback(
+    () => post("close", {}, "Close failed"),
+    [post],
   );
 
   const setLeaveAfterHand = useCallback(
-    (on: boolean) => postAfterHand("leave_after_hand", on, "Leave"),
-    [postAfterHand],
+    (on: boolean) => post("leave_after_hand", { on }, "Leave failed"),
+    [post],
   );
 
   const setCloseAfterHand = useCallback(
-    (on: boolean) => postAfterHand("close_after_hand", on, "Close"),
-    [postAfterHand],
+    (on: boolean) => post("close_after_hand", { on }, "Close failed"),
+    [post],
   );
 
-  const nextHand = useCallback(async () => {
-    if (!tableId || !clientId) return;
-    try {
-      const res = await apiFetch(`/api/tables/${tableId}/next-hand`, {
-        method: "POST",
-        body: JSON.stringify({ client_id: clientId }),
-      });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        callbacksRef.current?.onError?.(
-          `Next hand failed: ${j?.detail || res.status}`,
-        );
-      }
-    } catch (err) {
-      console.warn("next hand POST failed", err);
-      callbacksRef.current?.onError?.("Next hand failed: network error");
-    }
-  }, [tableId, clientId]);
+  const nextHand = useCallback(
+    () => post("next-hand", {}, "Next hand failed"),
+    [post],
+  );
 
   const takeSeat = useCallback(
-    async (seat: number) => {
-      if (!tableId || !clientId) return;
-      try {
-        const res = await apiFetch(`/api/tables/${tableId}/seat`, {
-          method: "POST",
-          body: JSON.stringify({ client_id: clientId, seat }),
-        });
-        if (!res.ok) {
-          const j = await res.json().catch(() => ({}));
-          callbacksRef.current?.onError?.(
-            `Couldn't take seat: ${j?.detail || res.status}`,
-          );
-        }
-      } catch (err) {
-        console.warn("seat POST failed", err);
-        callbacksRef.current?.onError?.("Couldn't take seat: network error");
-      }
-    },
-    [tableId, clientId],
+    (seat: number) => post("seat", { seat }, "Couldn't take seat"),
+    [post],
   );
 
   const kickPlayer = useCallback(
-    async (targetClientId: string) => {
-      if (!tableId || !clientId) return;
-      try {
-        const res = await apiFetch(`/api/tables/${tableId}/kick`, {
-          method: "POST",
-          body: JSON.stringify({
-            client_id: clientId,
-            target_client_id: targetClientId,
-          }),
-        });
-        if (!res.ok) {
-          const j = await res.json().catch(() => ({}));
-          callbacksRef.current?.onError?.(
-            `Couldn't remove player: ${j?.detail || res.status}`,
-          );
-        }
-      } catch (err) {
-        console.warn("kick POST failed", err);
-        callbacksRef.current?.onError?.(
-          "Couldn't remove player: network error",
-        );
-      }
-    },
-    [tableId, clientId],
+    (targetClientId: string) =>
+      post(
+        "kick",
+        { target_client_id: targetClientId },
+        "Couldn't remove player",
+      ),
+    [post],
   );
 
   const sendChatMessage = useCallback((message: string) => {

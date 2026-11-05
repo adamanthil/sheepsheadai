@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { ds } from "../../../../lib/ds";
+import { useBusy } from "../../../../lib/hooks/useBusy";
 import HandSummary, { SeatGrid } from "./HandSummary";
 import type { FinalState, TableView } from "../../../../lib/types";
 import styles from "./HandSummaryBanner.module.css";
@@ -7,10 +8,11 @@ import styles from "./HandSummaryBanner.module.css";
 interface HandSummaryBannerProps {
   final: FinalState;
   table: TableView;
-  onNextHand: () => void;
+  /** Resolves false when the server refused the deal. */
+  onNextHand: () => Promise<boolean>;
   onShowScores: () => void;
   isHost: boolean;
-  onCloseTable: () => void;
+  onCloseTable: () => Promise<boolean>;
   onLeave: () => void;
 }
 
@@ -24,6 +26,10 @@ export default function HandSummaryBanner({
   onLeave,
 }: HandSummaryBannerProps) {
   const [confirmClose, setConfirmClose] = useState(false);
+  // Both are held busy on success: the new deal (or the close) replaces
+  // this banner when the server's state arrives.
+  const dealing = useBusy();
+  const closing = useBusy();
   const isLeaster = final.mode === "leaster";
 
   return (
@@ -52,8 +58,10 @@ export default function HandSummaryBanner({
             <span className={styles.waitingHost}>Closing the table…</span>
           ) : isHost ? (
             <button
-              className={`${ds.btn} ${ds.btnAccent}`}
-              onClick={onNextHand}
+              className={`${ds.btn} ${ds.btnAccent} ${dealing.busy ? ds.btnBusy : ""}`}
+              onClick={() => dealing.run(onNextHand, { hold: true })}
+              disabled={dealing.busy}
+              aria-busy={dealing.busy}
             >
               Next hand →
             </button>
@@ -70,7 +78,12 @@ export default function HandSummaryBanner({
           {isHost ? (
             confirmClose ? (
               <>
-                <button className={ds.btn} onClick={onCloseTable}>
+                <button
+                  className={`${ds.btn} ${closing.busy ? ds.btnBusy : ""}`}
+                  onClick={() => closing.run(onCloseTable, { hold: true })}
+                  disabled={closing.busy}
+                  aria-busy={closing.busy}
+                >
                   Confirm close
                 </button>
                 <button

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { ds } from "../../../../lib/ds";
+import { useBusy } from "../../../../lib/hooks/useBusy";
 import type { CloseControls, LeaveControls } from "./TableHeader";
 import BottomSheet, { SheetIcon } from "../../../components/BottomSheet";
 import styles from "../../../components/BottomSheet.module.css";
@@ -34,6 +35,7 @@ export default function TableMenu({
   onClose,
 }: TableMenuProps) {
   const [open, setOpen] = useState<"leave" | "close" | null>(null);
+  const closing = useBusy();
 
   let leaveRows: React.ReactNode;
   if (leave.canLeaveAfterHand && leave.leavingAfterHand) {
@@ -122,8 +124,10 @@ export default function TableMenu({
         )}
         <button
           type="button"
-          className={`${styles.row} ${styles.danger} ${close.handInPlay ? styles.sub : ""}`}
-          onClick={close.onCloseTable}
+          className={`${styles.row} ${styles.danger} ${close.handInPlay ? styles.sub : ""} ${closing.busy ? ds.btnBusy : ""}`}
+          onClick={() => closing.run(close.onCloseTable, { hold: true })}
+          disabled={closing.busy}
+          aria-busy={closing.busy}
         >
           {!close.handInPlay && <SheetIcon d={ICONS.close} ring />}
           <span className={styles.grow}>

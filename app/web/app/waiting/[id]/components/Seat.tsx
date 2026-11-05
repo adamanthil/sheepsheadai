@@ -19,6 +19,8 @@ export interface SeatInfo {
 interface SeatProps {
   seat: SeatInfo;
   onTake: (seat: number) => void;
+  /** The viewer's move into this seat is on its way to the server. */
+  taking?: boolean;
   /** Asks to remove the seat's player; the layout confirms it. */
   onRemove: (seat: SeatInfo) => void;
 }
@@ -37,7 +39,7 @@ function avatar(seat: SeatInfo, size: number) {
 
 /** Desktop: one compact tile in the row of five. An AI seat offers Take
  * over; another player's seat offers the host Remove. */
-export function SeatTile({ seat, onTake, onRemove }: SeatProps) {
+export function SeatTile({ seat, onTake, taking, onRemove }: SeatProps) {
   const sub = [
     seat.isYou ? "You" : null,
     `Seat ${seat.seat}`,
@@ -59,8 +61,10 @@ export function SeatTile({ seat, onTake, onRemove }: SeatProps) {
       {seat.takeable && !seat.isYou && (
         <button
           type="button"
-          className={`${ds.btn} ${ds.btnGhost} ${ds.btnSm}`}
+          className={`${ds.btn} ${ds.btnGhost} ${ds.btnSm} ${taking ? ds.btnBusy : ""}`}
           onClick={() => onTake(seat.seat)}
+          disabled={taking}
+          aria-busy={taking}
         >
           Take over
         </button>
@@ -80,7 +84,7 @@ export function SeatTile({ seat, onTake, onRemove }: SeatProps) {
 
 /** Mobile: one seat in the strip of five. Tapping an AI seat sits there;
  * the host taps another player's seat to remove them. */
-export function SeatChip({ seat, onTake, onRemove }: SeatProps) {
+export function SeatChip({ seat, onTake, taking, onRemove }: SeatProps) {
   const body = (
     <>
       {avatar(seat, 42)}
@@ -94,8 +98,10 @@ export function SeatChip({ seat, onTake, onRemove }: SeatProps) {
     return (
       <button
         type="button"
-        className={styles.chip}
+        className={`${styles.chip} ${taking ? ds.btnBusy : ""}`}
         onClick={() => onTake(seat.seat)}
+        disabled={taking}
+        aria-busy={taking}
         aria-label={`Sit in ${seat.name}’s seat, seat ${seat.seat}`}
       >
         {body}

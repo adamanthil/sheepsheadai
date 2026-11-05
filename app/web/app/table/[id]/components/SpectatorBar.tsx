@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useState } from "react";
 import { ds } from "../../../../lib/ds";
+import { useBusy } from "../../../../lib/hooks/useBusy";
 import type { TableView } from "../../../../lib/types";
 import { formatClock } from "../lib/tableSelectors";
 import { isAiSeat, isTakeableSeat, nameForSeat } from "../utils/seatMath";
@@ -21,7 +22,8 @@ function TurnClock({ secondsLeft }: { secondsLeft: number | null }) {
 interface SpectatorBarProps {
   table: TableView;
   actorName: string;
-  onTakeSeat: (seat: number) => void;
+  /** Resolves false when the server refused the seat. */
+  onTakeSeat: (seat: number) => Promise<boolean>;
   isMobile: boolean;
   secondsLeft: number | null;
   /** Set when the turn clock moved this spectator out of a seat. */
@@ -33,6 +35,9 @@ interface SpectatorBarProps {
  * stands. A player the turn clock moved out is offered only their own seat
  * back while its AI still holds it (the server enforces both rules). */
 export default function SpectatorBar(props: SpectatorBarProps) {
+  // Held on success: the bar goes away when the seat's state arrives.
+  const taking = useBusy();
+  const [pressed, setPressed] = useState<number | null>(null);
   const homeSeat = [1, 2, 3, 4, 5].find(
     (s) =>
       props.homeOccupant &&
@@ -51,8 +56,13 @@ export default function SpectatorBar(props: SpectatorBarProps) {
   const seatButtons = aiSeats.map((seat) => (
     <button
       key={seat}
-      className={`${ds.btn} ${ds.btnAccent}`}
-      onClick={() => props.onTakeSeat(seat)}
+      className={`${ds.btn} ${ds.btnAccent} ${taking.busy && seat === pressed ? ds.btnBusy : ""}`}
+      onClick={() => {
+        setPressed(seat);
+        void taking.run(() => props.onTakeSeat(seat), { hold: true });
+      }}
+      disabled={taking.busy}
+      aria-busy={taking.busy && seat === pressed}
     >
       {seat === homeSeat
         ? `Take back seat ${seat}`

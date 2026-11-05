@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import type { TableSummary } from "../../../lib/types";
+import type { Rules, TableSummary } from "../../../lib/types";
 import { apiFetch } from "../../../lib/api";
 import { useTableSocket } from "../../../lib/hooks/useTableSocket";
+import { useBusy } from "../../../lib/hooks/useBusy";
 import { useChatMutes } from "../../../lib/hooks/useChatMutes";
 import { useChatUnread } from "../../../lib/hooks/useChatUnread";
 import { STORAGE_KEYS } from "../../../lib/storage";
@@ -126,99 +127,118 @@ export default function WaitingRoom() {
     if (params?.id) router.prefetch(`/table/${params.id}`);
   }, [params?.id, router]);
 
-  async function chooseSeat(seat: number) {
-    const res = await apiFetch(`/api/tables/${params?.id}/seat`, {
-      method: "POST",
-      body: JSON.stringify({ client_id: clientId, seat }),
+  const seating = useBusy();
+  const [seatPressed, setSeatPressed] = useState<number | null>(null);
+  function chooseSeat(seat: number) {
+    setSeatPressed(seat);
+    void seating.run(async () => {
+      const res = await apiFetch(`/api/tables/${params?.id}/seat`, {
+        method: "POST",
+        body: JSON.stringify({ client_id: clientId, seat }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        setError(j?.detail || "Seat selection failed");
+        return false;
+      }
+      setTable(await res.json());
+      return true;
     });
-    if (!res.ok) {
-      const j = await res.json().catch(() => ({}));
-      setError(j?.detail || "Seat selection failed");
-      return;
-    }
-    const t = await res.json();
-    setTable(t);
   }
 
-  async function updatePartnerMode(newMode: number) {
+  /** PATCH some of the table's rules; false (with the error shown) when the
+   * server refused. */
+  async function patchRules(
+    rules: Partial<Rules>,
+    what: string,
+  ): Promise<boolean> {
     try {
       const res = await apiFetch(`/api/tables/${params?.id}/rules`, {
         method: "PATCH",
-        body: JSON.stringify({
-          client_id: clientId,
-          rules: { partnerMode: newMode },
-        }),
+        body: JSON.stringify({ client_id: clientId, rules }),
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
-        setError(j?.detail || "Failed to update partner mode");
-        return;
+        setError(j?.detail || `Failed to update ${what}`);
+        return false;
       }
-      setPartnerMode(newMode);
+      return true;
     } catch {
-      setError("Failed to update partner mode");
+      setError(`Failed to update ${what}`);
+      return false;
     }
   }
 
-  async function updateAllPassMode(newMode: AllPassMode) {
-    try {
-      const res = await apiFetch(`/api/tables/${params?.id}/rules`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          client_id: clientId,
-          rules: { allPassMode: newMode },
-        }),
-      });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        setError(j?.detail || "Failed to update all-pass mode");
-        return;
-      }
-      setAllPassMode(newMode);
-    } catch {
-      setError("Failed to update all-pass mode");
-    }
+  // A rule switches the moment it is pressed and switches back if the
+  // server refuses. Nothing is sent before the session has loaded.
+  function updatePartnerMode(newMode: number) {
+    if (!clientId) return;
+    const previous = partnerMode;
+    setPartnerMode(newMode);
+    void patchRules(
+      { partnerMode: newMode as Rules["partnerMode"] },
+      "partner mode",
+    ).then((ok) => ok || setPartnerMode(previous));
   }
 
-  async function updateScoringMode(newMode: number) {
-    try {
-      const res = await apiFetch(`/api/tables/${params?.id}/rules`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          client_id: clientId,
-          rules: { doubleOnTheBump: newMode === 1 },
-        }),
-      });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        setError(j?.detail || "Failed to update scoring mode");
-        return;
-      }
-      setScoringMode(newMode);
-    } catch {
-      setError("Failed to update scoring mode");
-    }
+  function updateAllPassMode(newMode: AllPassMode) {
+    if (!clientId) return;
+    const previous = allPassMode;
+    setAllPassMode(newMode);
+    void patchRules({ allPassMode: newMode }, "all-pass mode").then(
+      (ok) => ok || setAllPassMode(previous),
+    );
   }
 
-  async function startGame() {
-    const res = await apiFetch(`/api/tables/${params?.id}/start`, {
-      method: "POST",
-      body: JSON.stringify({ client_id: clientId }),
-    });
-    if (!res.ok) {
-      const j = await res.json().catch(() => ({}));
-      setError(j?.detail || "Start failed");
-      return;
-    }
-    router.push(`/table/${params?.id}`);
+  function updateScoringMode(newMode: number) {
+    if (!clientId) return;
+    const previous = scoringMode;
+    setScoringMode(newMode);
+    void patchRules({ doubleOnTheBump: newMode === 1 }, "scoring mode").then(
+      (ok) => ok || setScoringMode(previous),
+    );
   }
 
-  async function closeTable() {
+  // Held busy on success: the table page replaces this one.
+  const starting = useBusy();
+  function startGame() {
+    void starting.run(
+      async () => {
+        const res = await apiFetch(`/api/tables/${params?.id}/start`, {
+          method: "POST",
+          body: JSON.stringify({ client_id: clientId }),
+        });
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          setError(j?.detail || "Start failed");
+          return false;
+        }
+        router.push(`/table/${params?.id}`);
+        return true;
+      },
+      { hold: true },
+    );
+  }
+
+  // Held busy on success: the table's close sends everyone to the lobby.
+  const closing = useBusy();
+  function closeTable() {
     if (!params?.id || !clientId) return;
-    await apiFetch(`/api/tables/${params?.id}/close`, {
-      method: "POST",
-      body: JSON.stringify({ client_id: clientId }),
-    });
+    void closing.run(
+      async () => {
+        const res = await apiFetch(`/api/tables/${params?.id}/close`, {
+          method: "POST",
+          body: JSON.stringify({ client_id: clientId }),
+        });
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          setError(j?.detail || "Close failed");
+          return false;
+        }
+        return true;
+      },
+      { hold: true },
+    );
   }
 
   // Host-only Remove for another human: on their seat, and on their chat
@@ -284,7 +304,7 @@ export default function WaitingRoom() {
             {target && (
               <RemovePlayerButton
                 name={name}
-                onRemove={() => void kickPlayer(target)}
+                onRemove={() => kickPlayer(target)}
               />
             )}
           </>
@@ -313,9 +333,12 @@ export default function WaitingRoom() {
     error,
     isHost,
     chooseSeat,
-    removePlayer: (target: string) => void kickPlayer(target),
+    takingSeat: seating.busy ? seatPressed : null,
+    removePlayer: kickPlayer,
     startGame,
+    starting: starting.busy,
     closeTable,
+    closing: closing.busy,
     onLeave: () => router.push("/"),
     chat,
     rules,

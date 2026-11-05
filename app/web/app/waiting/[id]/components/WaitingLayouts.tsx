@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { MiniCardMark, ds, Wordmark } from "../../../../lib/ds";
+import { useBusy } from "../../../../lib/hooks/useBusy";
 import { SeatChip, SeatTile, type SeatInfo } from "./Seat";
 import WaitingMenu from "./WaitingMenu";
 import styles from "../page.module.css";
@@ -13,9 +14,15 @@ export interface WaitingLayoutProps {
   error: string | null;
   isHost: boolean;
   chooseSeat: (seat: number) => void;
-  removePlayer: (clientId: string) => void;
+  /** The seat the viewer asked to move into, while that is in flight. */
+  takingSeat: number | null;
+  /** Resolves false when the server refused. */
+  removePlayer: (clientId: string) => Promise<boolean>;
   startGame: () => void;
+  /** Deal cards is waiting on the server (or the table page). */
+  starting: boolean;
   closeTable: () => void;
+  closing: boolean;
   onLeave: () => void;
   chat: React.ReactNode;
   rules: React.ReactNode;
@@ -43,9 +50,12 @@ function RemoveConfirm({
   onCancel,
 }: {
   seat: SeatInfo;
-  onRemove: (clientId: string) => void;
+  onRemove: (clientId: string) => Promise<boolean>;
   onCancel: () => void;
 }) {
+  // Held on success: the confirmation goes once the seat is no longer
+  // removable, when the server's update arrives.
+  const removing = useBusy();
   return (
     <div
       className={styles.removeConfirm}
@@ -57,11 +67,21 @@ function RemoveConfirm({
       </span>
       <button
         type="button"
-        className={`${ds.btn} ${ds.btnSm}`}
+        className={`${ds.btn} ${ds.btnSm} ${removing.busy ? ds.btnBusy : ""}`}
         onClick={() => {
-          onCancel();
-          if (seat.removableId) onRemove(seat.removableId);
+          const target = seat.removableId;
+          if (!target) return;
+          void removing.run(
+            async () => {
+              const ok = await onRemove(target);
+              if (!ok) onCancel();
+              return ok;
+            },
+            { hold: true },
+          );
         }}
+        disabled={removing.busy}
+        aria-busy={removing.busy}
       >
         Remove
       </button>
@@ -169,6 +189,7 @@ export function MobileWaitingLayout(props: MobileWaitingLayoutProps) {
                 key={s.seat}
                 seat={s}
                 onTake={chooseSeat}
+                taking={props.takingSeat === s.seat}
                 onRemove={setRemoving}
               />
             ))}
@@ -195,8 +216,10 @@ export function MobileWaitingLayout(props: MobileWaitingLayoutProps) {
         {isHost ? (
           <button
             type="button"
-            className={`${ds.btn} ${ds.btnAccent} ${ds.btnLg} ${styles.deal}`}
+            className={`${ds.btn} ${ds.btnAccent} ${ds.btnLg} ${styles.deal} ${props.starting ? ds.btnBusy : ""}`}
             onClick={startGame}
+            disabled={props.starting}
+            aria-busy={props.starting}
           >
             Deal cards →
           </button>
@@ -212,6 +235,7 @@ export function MobileWaitingLayout(props: MobileWaitingLayoutProps) {
           hostName={hostName}
           onLeave={onLeave}
           onCloseTable={isHost ? closeTable : null}
+          closing={props.closing}
           onClose={() => setMenuOpen(false)}
         />
       )}
@@ -299,6 +323,7 @@ export function DesktopWaitingLayout(props: WaitingLayoutProps) {
                 key={s.seat}
                 seat={s}
                 onTake={chooseSeat}
+                taking={props.takingSeat === s.seat}
                 onRemove={setRemoving}
               />
             ))}
@@ -323,8 +348,10 @@ export function DesktopWaitingLayout(props: WaitingLayoutProps) {
               (confirmClose ? (
                 <>
                   <button
-                    className={`${ds.btn} ${ds.btnSm}`}
+                    className={`${ds.btn} ${ds.btnSm} ${props.closing ? ds.btnBusy : ""}`}
                     onClick={closeTable}
+                    disabled={props.closing}
+                    aria-busy={props.closing}
                   >
                     Confirm close
                   </button>
@@ -346,8 +373,10 @@ export function DesktopWaitingLayout(props: WaitingLayoutProps) {
           </div>
           {isHost ? (
             <button
-              className={`${ds.btn} ${ds.btnAccent} ${ds.btnLg}`}
+              className={`${ds.btn} ${ds.btnAccent} ${ds.btnLg} ${props.starting ? ds.btnBusy : ""}`}
               onClick={startGame}
+              disabled={props.starting}
+              aria-busy={props.starting}
             >
               Deal cards →
             </button>

@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { ds } from "../../../../lib/ds";
 import BottomSheet, { SheetIcon } from "../../../components/BottomSheet";
 import styles from "../../../components/BottomSheet.module.css";
 
@@ -9,6 +10,8 @@ interface WaitingMenuProps {
   onLeave: () => void;
   /** Host only. */
   onCloseTable: (() => void) | null;
+  /** The close is waiting on the server. */
+  closing: boolean;
   onClose: () => void;
 }
 
@@ -25,6 +28,7 @@ export default function WaitingMenu({
   hostName,
   onLeave,
   onCloseTable,
+  closing,
   onClose,
 }: WaitingMenuProps) {
   const [confirmClose, setConfirmClose] = useState(false);
@@ -45,8 +49,10 @@ export default function WaitingMenu({
         (confirmClose ? (
           <button
             type="button"
-            className={`${styles.row} ${styles.danger}`}
+            className={`${styles.row} ${styles.danger} ${closing ? ds.btnBusy : ""}`}
             onClick={onCloseTable}
+            disabled={closing}
+            aria-busy={closing}
           >
             <SheetIcon d={ICONS.close} ring />
             <span className={styles.grow}>Confirm close</span>

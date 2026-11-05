@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Wordmark, MiniCardMark, ds } from "../../../../lib/ds";
+import { useBusy } from "../../../../lib/hooks/useBusy";
 import styles from "./TableHeader.module.css";
 
 /** Leaving the table: mid-hand, Leave first asks when. */
@@ -17,7 +18,9 @@ export interface CloseControls {
   handInPlay: boolean;
   closingAfterHand: boolean;
   onCloseAfterHand: (on: boolean) => void;
-  onCloseTable: () => void;
+  /** Resolves false when the server refused; on success the table's close
+   * takes everyone off the page. */
+  onCloseTable: () => Promise<boolean>;
 }
 
 interface TableHeaderProps {
@@ -222,6 +225,7 @@ function DesktopLeave({ leave }: { leave: LeaveControls }) {
 
 function DesktopClose({ close }: { close: CloseControls }) {
   const [confirming, setConfirming] = useState(false);
+  const closing = useBusy();
   if (close.closingAfterHand) {
     return (
       <span className={styles.choiceRow}>
@@ -253,8 +257,10 @@ function DesktopClose({ close }: { close: CloseControls }) {
         )}
         <button
           type="button"
-          className={`${styles.link} ${styles.danger}`}
-          onClick={close.onCloseTable}
+          className={`${styles.link} ${styles.danger} ${closing.busy ? ds.btnBusy : ""}`}
+          onClick={() => closing.run(close.onCloseTable, { hold: true })}
+          disabled={closing.busy}
+          aria-busy={closing.busy}
         >
           {close.handInPlay ? "Close now" : "Confirm close"}
         </button>

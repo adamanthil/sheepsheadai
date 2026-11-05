@@ -9,6 +9,7 @@ import { createAndJoinTable } from "../lib/createTable";
 import { PlayingCard, ds } from "../lib/ds";
 import { allPassModeLabel, partnerModeLabel } from "../lib/rules";
 import { useIdentity } from "../lib/hooks/useIdentity";
+import { useBusy } from "../lib/hooks/useBusy";
 import Link from "next/link";
 import SiteNav from "./components/SiteNav";
 import AccountLine from "./components/home/AccountLine";
@@ -130,12 +131,21 @@ export default function HomePage() {
           ? err.message
           : "Failed to create table. Please try again.";
       setError(errorMessage);
-    } finally {
+      // Only on failure: on success the button stays "Creating…" until the
+      // waiting room replaces this page.
       setCreating(false);
     }
   };
 
-  const join = async (tableId: string) => {
+  // Held on success: the waiting room replaces this page.
+  const joining = useBusy();
+  const [joinPressed, setJoinPressed] = useState<string | null>(null);
+  const join = (tableId: string) => {
+    setJoinPressed(tableId);
+    return joining.run(() => joinTable(tableId), { hold: true });
+  };
+
+  const joinTable = async (tableId: string): Promise<boolean> => {
     const resolvedDisplayName = displayName;
     setError(null);
 
@@ -148,7 +158,7 @@ export default function HomePage() {
         if (existing) {
           await persistTypedName(playerId, displayNameInput.trim());
           router.push(`/waiting/${tableId}`);
-          return;
+          return true;
         }
       }
 
@@ -178,12 +188,14 @@ export default function HomePage() {
       await persistIdentityFromJoin(data, typedName);
 
       router.push(`/waiting/${data.table.id}`);
+      return true;
     } catch (err) {
       const errorMessage =
         err instanceof Error
           ? err.message
           : "Failed to join table. Please try again.";
       setError(errorMessage);
+      return false;
     }
   };
 
@@ -387,8 +399,10 @@ export default function HomePage() {
                     <div className={styles.rowAction}>
                       {canJoin ? (
                         <button
-                          className={`${ds.btn} ${ds.btnSm}`}
+                          className={`${ds.btn} ${ds.btnSm} ${joining.busy && joinPressed === t.id ? ds.btnBusy : ""}`}
                           onClick={() => join(t.id)}
+                          disabled={joining.busy}
+                          aria-busy={joining.busy && joinPressed === t.id}
                         >
                           Join →
                         </button>
