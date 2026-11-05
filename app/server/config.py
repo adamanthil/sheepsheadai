@@ -5,7 +5,7 @@ from functools import lru_cache
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from server.runtime.timing import TURN_TIMEOUT_SECONDS
+from server.runtime.timing import DISCONNECT_GRACE_SECONDS, TURN_TIMEOUT_SECONDS
 
 
 class Settings(BaseSettings):
@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     # Seconds a human has to move before the AI moves for them
     # (server.runtime.turn_timer).
     sheepshead_turn_timeout_seconds: float = TURN_TIMEOUT_SECONDS
+    # Seconds a disconnected player's seat is held before the AI takes it
+    # (server.runtime.seating).
+    sheepshead_disconnect_grace_seconds: float = DISCONNECT_GRACE_SECONDS
     # Transactional email via Resend (server.services.email). With no key
     # (development, tests) messages and their links are logged instead of
     # sent; production refuses to boot without one.

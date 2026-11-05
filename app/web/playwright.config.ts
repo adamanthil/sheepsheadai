@@ -44,6 +44,8 @@ export default defineConfig({
         RATELIMIT_ENABLED: "false",
         // A short turn clock so specs that sit out turns finish quickly.
         SHEEPSHEAD_TURN_TIMEOUT_SECONDS: "2",
+        // And a short hold on a dropped player's seat, for the same reason.
+        SHEEPSHEAD_DISCONNECT_GRACE_SECONDS: "5",
       },
     },
     {

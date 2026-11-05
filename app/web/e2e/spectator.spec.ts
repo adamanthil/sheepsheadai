@@ -65,7 +65,7 @@ test("spectator takes over an AI seat mid-hand", async ({
   await expect(spectator.getByText(/^Watching/)).toBeVisible();
   await expect(spectator.getByText("No AI seats to take over")).toBeVisible();
 
-  // The scripted human drops; after the 10s grace an AI holds their seat.
+  // The scripted human drops; after the (e2e) 5s grace an AI holds their seat.
   humans[0].ws.close();
   const takeSeat = spectator.getByRole("button", { name: /^Take seat \d/ });
   await expect(takeSeat).toBeVisible({ timeout: 30_000 });
