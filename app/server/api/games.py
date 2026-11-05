@@ -26,8 +26,13 @@ from server.runtime.dealing import (
 )
 from server.runtime.lifecycle import finish_hand, is_draining
 from server.runtime.manager import tables
-from server.runtime.models import Table
+from server.runtime.models import ClientConn, Table
 from server.runtime.rules import plays_doublers
+from server.runtime.seating import (
+    home_seat,
+    pick_join_ai_seat,
+    schedule_ai_replacement_for_disconnected_human,
+)
 from server.runtime.turn_timer import cancel_turn_timer
 from server.runtime.views import (
     get_actor_seat,
@@ -67,6 +72,11 @@ async def start_game(
         if table.status != "open":
             raise HTTPException(status_code=400, detail="already_started")
         _require_full_table(table)
+        # The first deal waits for the host to sit down.
+        if not table.host_client_id or all(
+            table.seats[i] != table.host_client_id for i in range(1, 6)
+        ):
+            raise HTTPException(status_code=400, detail="host_not_seated")
         game = _deal(table)
 
     await _announce_deal(table, game)
@@ -85,6 +95,11 @@ async def next_hand(
 
     One step, so a refusal leaves the finished hand exactly as it was: the
     host is told why and can try again, and no one's seat has moved.
+
+    A host who isn't seated is sat back down first: dealing on means they
+    mean to play. The AI may hold their seat because their phone slept on
+    the hand summary (and this request beat their reconnect), or the turn
+    clock moved them out, or host passed to someone watching.
     """
     try:
         table = tables.get_table(table_id)
@@ -105,23 +120,48 @@ async def next_hand(
         # Only a hand finish_hand has recorded is followed by another.
         if table.status != "finished" or table.game is None:
             raise HTTPException(status_code=400, detail="no_hand_finished")
+        host = _seat_the_host(table)
         _require_full_table(table)
         _pass_the_deal(table)
         game = _deal(table)
 
+    # Seated by this request rather than a reconnect: if the socket
+    # doesn't come back, the AI takes the seat again after the usual grace.
+    if host is not None and not host.connected:
+        schedule_ai_replacement_for_disconnected_human(table, host.client_id)
     await _announce_deal(table, game)
     return table.to_public_dict()
 
 
+def _seat_the_host(table: Table) -> ClientConn | None:
+    """Sit an unseated host back down and return them, or None if the host
+    is already seated or every seat is held by another human (the hand is
+    then dealt with the host watching).
+
+    Their own seat if the AI holds it for them, else the first AI seat not
+    held for someone else. Caller holds ``state_lock``.
+    """
+    host = table.clients.get(table.host_client_id or "")
+    if host is None or host.seat is not None:
+        return None
+    seat = home_seat(table, host) or pick_join_ai_seat(table)
+    if seat is None:
+        return None
+    ai = table.seats[seat]
+    table.seats[seat] = host.client_id
+    host.seat = seat
+    host.home_occupant = None
+    host.timeout_strikes = 0
+    # The AI they displaced is the one that stands in for them next time.
+    if ai is not None:
+        table.reserved_ai_by_human[host.client_id] = ai
+    return host
+
+
 def _require_full_table(table: Table) -> None:
-    """Refuse a deal unless every seat is filled and the host holds one."""
+    """Refuse a deal unless every seat is filled."""
     if not all(table.seats[i] for i in range(1, 6)):
         raise HTTPException(status_code=400, detail="not_enough_players")
-
-    if not table.host_client_id or all(
-        table.seats[i] != table.host_client_id for i in range(1, 6)
-    ):
-        raise HTTPException(status_code=400, detail="host_not_seated")
 
 
 def _pass_the_deal(table: Table) -> None:
