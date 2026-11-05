@@ -4,7 +4,7 @@
 # eslint.config.mjs, tsconfig.json and node_modules the way `npm run lint`
 # does. The root .pre-commit-config.yaml carries the Python half.
 #
-# Both hooks skip rather than fail when node_modules is missing, so a fresh
+# All three skip rather than fail when node_modules is missing, so a fresh
 # clone that has not run `npm ci` can still commit. CI is the real backstop.
 repos:
   - repo: local
@@ -20,3 +20,12 @@ repos:
         entry: bash -c '[ -x node_modules/.bin/prettier ] || exit 0; exec node_modules/.bin/prettier --check "$@"' --
         language: system
         files: \.(ts|tsx|js|jsx|mjs|cjs)$
+
+      # lib/api.gen.ts is generated from openapi.json (npm run gen:api); the
+      # root config's openapi-schema hook keeps openapi.json itself current.
+      - id: api-types
+        name: api.gen.ts up to date
+        entry: bash -c '[ -x node_modules/.bin/openapi-typescript ] || exit 0; node_modules/.bin/openapi-typescript openapi.json -o lib/api.gen.ts --check >/dev/null || { echo "lib/api.gen.ts is out of date with openapi.json. Regenerate it:" >&2; echo "  cd app/web && npm run gen:api" >&2; exit 1; }'
+        language: system
+        files: ^(openapi\.json|lib/api\.gen\.ts)$
+        pass_filenames: false

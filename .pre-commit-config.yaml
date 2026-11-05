@@ -47,3 +47,17 @@ repos:
         types_or: [python, pyi]
         pass_filenames: false
         require_serial: true
+
+      # FastAPI builds the OpenAPI schema from the routes' signatures, the
+      # pydantic schemas and the routes' docstrings, so even a comment edit
+      # in server/api can change app/web/openapi.json. CI regenerates and
+      # diffs; this catches it at commit. The TS types generated from the
+      # schema are checked by app/web's api-types hook once openapi.json is
+      # staged.
+      - id: openapi-schema
+        name: openapi.json up to date
+        entry: uv run --frozen python app/scripts/export_openapi.py --check
+        language: system
+        files: ^app/(server|scripts)/.*\.py$
+        pass_filenames: false
+        require_serial: true
