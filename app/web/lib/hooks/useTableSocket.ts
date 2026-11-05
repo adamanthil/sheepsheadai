@@ -101,6 +101,8 @@ export function useTableSocket(
     if (!tableId || !clientId) return;
 
     let disposed = false;
+    // Set on a terminal close (kicked, refused): no reconnect of any kind.
+    let gaveUp = false;
     let attempt = 0;
     let timer: ReturnType<typeof setTimeout> | null = null;
 
@@ -116,7 +118,10 @@ export function useTableSocket(
         setConnectionState("connected");
       };
       socket.onclose = (e) => {
-        if (wsRef.current === socket) wsRef.current = null;
+        // A socket reconnectNow replaced while it was still closing: the
+        // new one owns the connection, so this close schedules nothing.
+        if (wsRef.current !== socket) return;
+        wsRef.current = null;
         if (disposed) return;
         if (e.code === TABLE_GONE_WS_CODE) {
           // The table closed while we were away: forget it so the lobby
@@ -126,6 +131,7 @@ export function useTableSocket(
           return;
         }
         if (TERMINAL_WS_CODES.has(e.code)) {
+          gaveUp = true;
           setConnectionState("failed");
           return;
         }
@@ -237,9 +243,35 @@ export function useTableSocket(
       };
     };
 
+    // Backgrounding a phone drops the socket, and the backoff may have
+    // grown while the page was frozen. Coming back to the page (or back
+    // online), reconnect at once rather than waiting out the backoff, so
+    // the seat is reclaimed before the player can act on stale state.
+    const reconnectNow = () => {
+      if (disposed || gaveUp || document.visibilityState !== "visible") return;
+      const ws = wsRef.current;
+      if (
+        ws &&
+        (ws.readyState === WebSocket.OPEN ||
+          ws.readyState === WebSocket.CONNECTING)
+      ) {
+        return;
+      }
+      if (timer) clearTimeout(timer);
+      timer = null;
+      attempt = 0;
+      connect();
+    };
+    document.addEventListener("visibilitychange", reconnectNow);
+    window.addEventListener("online", reconnectNow);
+    window.addEventListener("pageshow", reconnectNow);
+
     connect();
     return () => {
       disposed = true;
+      document.removeEventListener("visibilitychange", reconnectNow);
+      window.removeEventListener("online", reconnectNow);
+      window.removeEventListener("pageshow", reconnectNow);
       if (timer) clearTimeout(timer);
       try {
         wsRef.current?.close();
