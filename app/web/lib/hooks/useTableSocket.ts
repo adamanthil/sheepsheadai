@@ -7,7 +7,14 @@ import { diffCallouts } from "../callouts";
 import { applyPendingMove, isPredicted, type PendingMove } from "../optimistic";
 
 export interface TableSocketCallbacks {
-  onTrickComplete?: (cards: string[], winner: number) => void;
+  /** A trick was taken. ``shownForMs`` is how long it has already been on
+   * the table complete: the player's own last card was drawn before the
+   * server answered. 0 when the server's state is the first to show it. */
+  onTrickComplete?: (
+    cards: string[],
+    winner: number,
+    shownForMs: number,
+  ) => void;
   onPickerAnnounced?: (pickerName: string) => void;
   onLeaster?: () => void;
   onDoubler?: (multiplier: number, capped: boolean) => void;
@@ -92,6 +99,12 @@ export function useTableSocket(
   lastStateRef.current = lastState;
   const actionLookupRef = useRef(actionLookup);
   actionLookupRef.current = actionLookup;
+  // When the player's own predicted card completed the trick on screen: the
+  // move it was predicted from, and when. Matched against the state that
+  // confirms that move (the next moveSeq), so a stale one never applies.
+  const completedTrickRef = useRef<{ baseSeq: number; at: number } | null>(
+    null,
+  );
 
   // Fetch action lookup on mount
   useEffect(() => {
@@ -182,7 +195,16 @@ export function useTableSocket(
             const { trickComplete, phase } = diffCallouts(prev, msg);
 
             if (trickComplete) {
-              cbs?.onTrickComplete?.(trickComplete.cards, trickComplete.winner);
+              const shown = completedTrickRef.current;
+              const shownForMs =
+                shown && msg.moveSeq === shown.baseSeq + 1
+                  ? performance.now() - shown.at
+                  : 0;
+              cbs?.onTrickComplete?.(
+                trickComplete.cards,
+                trickComplete.winner,
+                shownForMs,
+              );
             }
 
             if (phase?.kind === "picker") {
@@ -306,10 +328,19 @@ export function useTableSocket(
           ? { label, baseSeq: base.moveSeq }
           : null;
       if (move) setPending(move);
+      const completesTrick =
+        base &&
+        move &&
+        label.startsWith("PLAY ") &&
+        applyPendingMove(base, label).view.current_trick.every((c) => c !== "");
+      completedTrickRef.current = completesTrick
+        ? { baseSeq: move.baseSeq, at: performance.now() }
+        : null;
       // Refused or lost: back to what the server last showed. An accepted
       // move stays drawn until the state holding it arrives.
       const withdraw = () => {
         if (move) setPending((p) => (p === move ? null : p));
+        completedTrickRef.current = null;
       };
       try {
         const res = await apiFetch(`/api/tables/${tableId}/action`, {

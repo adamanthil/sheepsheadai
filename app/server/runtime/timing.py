@@ -56,7 +56,9 @@ STALE_CLIENT_SECONDS = 30 * 60
 
 # How long the table client spends on a completed trick: a 2.0s look at the
 # finished trick, then a 1.3s collect animation (see useTrickAnimation.ts).
-# The next card must not land underneath it.
+# The next card must not land underneath it. The look counts from when the
+# trick was complete on the player's screen, which for their own last card
+# is before this server saw it, so the client finishes early, never late.
 TRICK_COLLECT_SECONDS = 3.3
 # Before the AI's first move of a fresh deal, so the hand can be read.
 FIRST_AI_MOVE_DELAY_SECONDS = 2.0
