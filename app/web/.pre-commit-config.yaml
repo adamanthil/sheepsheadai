@@ -21,6 +21,14 @@ repos:
         language: system
         files: \.(ts|tsx|js|jsx|mjs|cjs)$
 
+      # Unit tests touching the staged files: vitest follows imports, so a
+      # change to a module runs the tests that import it.
+      - id: vitest
+        name: vitest related
+        entry: bash -c '[ -x node_modules/.bin/vitest ] || exit 0; exec node_modules/.bin/vitest related --run --passWithNoTests "$@"' --
+        language: system
+        files: \.(ts|tsx)$
+
       # lib/api.gen.ts is generated from openapi.json (npm run gen:api); the
       # root config's openapi-schema hook keeps openapi.json itself current.
       - id: api-types
