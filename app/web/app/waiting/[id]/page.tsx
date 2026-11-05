@@ -120,6 +120,12 @@ export default function WaitingRoom() {
     }
   }, [lastState, params?.id, router]);
 
+  // The table page's code is fetched now, so Deal cards waits only on the
+  // server, not also on the next page.
+  useEffect(() => {
+    if (params?.id) router.prefetch(`/table/${params.id}`);
+  }, [params?.id, router]);
+
   async function chooseSeat(seat: number) {
     const res = await apiFetch(`/api/tables/${params?.id}/seat`, {
       method: "POST",
