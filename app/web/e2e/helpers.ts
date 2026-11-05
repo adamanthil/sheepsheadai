@@ -45,9 +45,9 @@ export async function createTableAndDeal(
   await createTable(page, playerName, tableName);
 
   if (opts.takeSeat) {
-    const seatCard = page
-      .locator('[class*="tile"]')
-      .filter({ hasText: `Seat ${opts.takeSeat}` });
+    const seatCard = page.getByRole("group", {
+      name: `Seat ${opts.takeSeat}`,
+    });
     // Wait for the seat grid to render before deciding anything — count()
     // does not auto-wait, so checking the button straight away races the
     // table fetch and silently skips the seat change.
@@ -60,6 +60,32 @@ export async function createTableAndDeal(
 
   await page.getByRole("button", { name: "Deal cards →" }).click();
   await page.waitForURL(/\/table\//);
+}
+
+/**
+ * From seat 1's first pick decision to its first lead: pick, go alone (so
+ * every card is a legal bury and no under-card step intervenes), and bury
+ * the first two cards. The e2e turn clock is 2s, so this keeps moving.
+ */
+export async function pickAloneAndBury(page: Page) {
+  await page.getByRole("button", { name: /Pick the blind/ }).click();
+  await page.getByRole("button", { name: "Go alone" }).click();
+  await expect(page.getByText("Bury 2 cards")).toBeVisible();
+  const playable = playableCards(page);
+  await playable.first().click();
+  await playable.first().click();
+  await page.getByRole("button", { name: "Confirm bury" }).click();
+  await expect(page.getByText("Your play")).toBeVisible({ timeout: 15_000 });
+}
+
+/** The cards in the player's hand. */
+export function handCards(page: Page) {
+  return page.getByRole("group", { name: "Your hand" }).getByRole("button");
+}
+
+/** The cards in the player's hand they may tap now. */
+export function playableCards(page: Page) {
+  return handCards(page).and(page.locator("[data-clickable='true']"));
 }
 
 const apiBase = "http://127.0.0.1:9100";

@@ -46,7 +46,11 @@ export function SeatTile({ seat, onTake, onRemove }: SeatProps) {
     .filter(Boolean)
     .join(" · ");
   return (
-    <div className={`${styles.tile} ${seat.isYou ? styles.yours : ""}`}>
+    <div
+      className={`${styles.tile} ${seat.isYou ? styles.yours : ""}`}
+      role="group"
+      aria-label={`Seat ${seat.seat}`}
+    >
       {avatar(seat, 40)}
       <div className={styles.who}>
         <div className={styles.name}>{seat.name}</div>

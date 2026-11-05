@@ -1,5 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
-import { createTableAndDeal } from "./helpers";
+import {
+  createTableAndDeal,
+  handCards,
+  pickAloneAndBury,
+  playableCards,
+} from "./helpers";
 
 // A player's own move shows the moment it is made, not when the server
 // answers; a move the server refuses goes back. Each test holds or refuses
@@ -38,15 +43,8 @@ test("a played card leaves the hand before the server answers", async ({
   await createTableAndDeal(page, "Play Tester", "e2e-predict-play", {
     takeSeat: 1,
   });
-  // Pick, go alone and bury two: seat 1 then leads the first trick.
-  await page.getByRole("button", { name: /Pick the blind/ }).click();
-  await page.getByRole("button", { name: "Go alone" }).click();
-  const playable = page.locator("[data-clickable='true']");
-  await expect(page.getByText("Bury 2 cards")).toBeVisible();
-  await playable.first().click();
-  await playable.first().click();
-  await page.getByRole("button", { name: "Confirm bury" }).click();
-  await expect(page.getByText("Your play")).toBeVisible({ timeout: 15_000 });
+  await pickAloneAndBury(page);
+  const playable = playableCards(page);
   await expect(playable).toHaveCount(6);
 
   const card = playable.first();
@@ -60,10 +58,7 @@ test("a played card leaves the hand before the server answers", async ({
     0,
     BEFORE_SERVER,
   );
-  await expect(page.locator('[class*="cardSlot"]')).toHaveCount(
-    5,
-    BEFORE_SERVER,
-  );
+  await expect(handCards(page)).toHaveCount(5, BEFORE_SERVER);
   await expect(page.getByText("Your play")).toBeHidden(BEFORE_SERVER);
 });
 

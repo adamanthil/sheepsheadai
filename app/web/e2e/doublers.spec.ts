@@ -26,7 +26,7 @@ test("host picks doublers and the table badges it", async ({ page }) => {
   await page.waitForURL(/\/waiting\//);
 
   // Leasters is the default, and describes itself.
-  const panel = page.locator('div[class*="RulesPanel-module"]').first();
+  const panel = page.getByRole("group", { name: "Game rules" });
   const leasters = page.getByRole("button", { name: "Leasters", exact: true });
   const doublers = page.getByRole("button", { name: "Doublers", exact: true });
   // Generous: this is the first render after a cold Next.js start.
@@ -34,7 +34,7 @@ test("host picks doublers and the table badges it", async ({ page }) => {
     timeout: 20_000,
   });
   await expect(page.getByText(/played with no picker/)).toBeVisible();
-  await expect(leasters).toHaveClass(/segActive/);
+  await expect(leasters).toHaveAttribute("aria-pressed", "true");
 
   // The rules PATCH needs the client_id the page hydrates from localStorage
   // after mount, so an early click is a no-op -- retry until it lands, the
@@ -43,17 +43,16 @@ test("host picks doublers and the table badges it", async ({ page }) => {
     .poll(
       async () => {
         await doublers.click();
-        const cls = (await doublers.getAttribute("class")) ?? "";
-        return cls.includes("segActive");
+        return doublers.getAttribute("aria-pressed");
       },
       { timeout: 30_000 },
     )
-    .toBe(true);
+    .toBe("true");
   await expect(page.getByText(/thrown in and redealt/)).toBeVisible();
-  await expect(leasters).not.toHaveClass(/segActive/);
+  await expect(leasters).toHaveAttribute("aria-pressed", "false");
   // The selection must survive the table_update the PATCH broadcasts back.
   await page.waitForTimeout(1000);
-  await expect(doublers).toHaveClass(/segActive/);
+  await expect(doublers).toHaveAttribute("aria-pressed", "true");
   await panel.screenshot({ path: "test-results/rules-doublers.png" });
 
   await page.getByRole("button", { name: "Deal cards →" }).click();
@@ -65,8 +64,7 @@ test("host picks doublers and the table badges it", async ({ page }) => {
   // disk while /start is in flight, so allow for it.
   await expect(badge).toBeVisible({ timeout: 30_000 });
   await page
-    .locator('div[class*="TableHeader-module"]')
-    .first()
+    .getByRole("banner")
     .screenshot({ path: "test-results/table-header-doublers.png" });
   // At the base stake there is no doubler badge to distract from it.
   await expect(page.getByText(/× Doubler/)).toHaveCount(0);

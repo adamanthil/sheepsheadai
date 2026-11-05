@@ -53,7 +53,7 @@ export function ChatPanel({
   };
 
   return (
-    <div className={styles.chatPanel}>
+    <section className={styles.chatPanel} aria-label="Chat">
       <div className={styles.chatHeader}>
         <span className={styles.headerTitle}>Chat</span>
         {muted && Object.keys(muted).length > 0 && (
@@ -156,6 +156,6 @@ export function ChatPanel({
           ↑
         </button>
       </form>
-    </div>
+    </section>
   );
 }

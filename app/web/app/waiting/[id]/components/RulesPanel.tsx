@@ -19,6 +19,7 @@ function Segmented({ options, value, onChange }: SegmentedProps) {
           key={o}
           type="button"
           className={`${styles.segBtn} ${i === value ? styles.segActive : ""}`}
+          aria-pressed={i === value}
           onClick={() => onChange(i)}
         >
           {o}
@@ -61,7 +62,11 @@ export default function RulesPanel({
   const scoringIndex = scoringMode === 1 ? 0 : 1;
 
   return (
-    <div className={inline ? styles.inline : `${ds.panel} ${styles.panel}`}>
+    <div
+      className={inline ? styles.inline : `${ds.panel} ${styles.panel}`}
+      role="group"
+      aria-label="Game rules"
+    >
       {!inline && (
         <div>
           <div className={ds.overline} style={{ marginBottom: 4 }}>

@@ -47,7 +47,11 @@ function RemoveConfirm({
   onCancel: () => void;
 }) {
   return (
-    <div className={styles.removeConfirm}>
+    <div
+      className={styles.removeConfirm}
+      role="group"
+      aria-label="Confirm removal"
+    >
       <span className={styles.removePrompt}>
         Remove {seat.name} from the table?
       </span>

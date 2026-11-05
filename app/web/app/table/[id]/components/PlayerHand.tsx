@@ -54,7 +54,12 @@ export default function PlayerHand({
     <div
       className={`${styles.wrap} ${isMobile ? styles.mobWrap : styles.deskWrap}`}
     >
-      <div className={styles.fan} style={fanVars}>
+      <div
+        className={styles.fan}
+        style={fanVars}
+        role="group"
+        aria-label="Your hand"
+      >
         {/* Every card is a button so the playable ones can be tabbed to;
             the rest are disabled, which also takes them out of tab order. */}
         {fanCards.map((card, i) => {

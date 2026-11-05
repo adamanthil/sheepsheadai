@@ -8,10 +8,12 @@ test("host removes a player from their seat", async ({ browser, page }) => {
   const tableId = await createTable(page, "Host", "e2e-kick-seat");
   const pest = await joinInNewPage(browser, tableId, "Pest");
 
-  const seat = page.locator('[class*="tile"]').filter({ hasText: "Pest" });
+  const seat = page
+    .getByRole("group", { name: /^Seat \d$/ })
+    .filter({ hasText: "Pest" });
   await seat.getByRole("button", { name: "Remove" }).click();
   await page
-    .locator('[class*="removeConfirm"]')
+    .getByRole("group", { name: "Confirm removal" })
     .getByRole("button", { name: "Remove" })
     .click();
 
@@ -34,7 +36,7 @@ test("host removes a player from their chat message", async ({
   await chatty.getByPlaceholder("Type a message...").fill("hello all");
   await chatty.getByPlaceholder("Type a message...").press("Enter");
 
-  const chat = page.locator('[class*="chatPanel"]');
+  const chat = page.getByRole("region", { name: "Chat" });
   await expect(chat.getByText("hello all")).toBeVisible();
   await chat.getByRole("button", { name: "Chatty:" }).click();
   await chat.getByRole("button", { name: "Remove" }).click();

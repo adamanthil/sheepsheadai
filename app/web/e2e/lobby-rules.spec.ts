@@ -20,7 +20,10 @@ test("lobby lists each table's game mode", async ({ page, browser }) => {
   await page.goto("/");
 
   const row = (name: string) =>
-    page.locator('div[class$="__row"]').filter({ hasText: name });
+    page
+      .getByRole("list", { name: "Open tables" })
+      .getByRole("listitem")
+      .filter({ hasText: name });
 
   await expect(row(`Doublers ${suffix}`)).toContainText("Called Ace");
   await expect(row(`Doublers ${suffix}`)).toContainText("Doublers");
@@ -57,7 +60,8 @@ test("a rule change in the waiting room reaches an open lobby", async ({
   const lobby = await context.newPage();
   await lobby.goto("/");
   const row = lobby
-    .locator('div[class$="__row"]')
+    .getByRole("list", { name: "Open tables" })
+    .getByRole("listitem")
     .filter({ hasText: tableName });
   await expect(row).toContainText("Leasters");
 
@@ -67,12 +71,11 @@ test("a rule change in the waiting room reaches an open lobby", async ({
     .poll(
       async () => {
         await doublers.click();
-        const cls = (await doublers.getAttribute("class")) ?? "";
-        return cls.includes("segActive");
+        return doublers.getAttribute("aria-pressed");
       },
       { timeout: 30_000 },
     )
-    .toBe(true);
+    .toBe("true");
 
   await expect(row).toContainText("Doublers", { timeout: 15_000 });
   await expect(row).not.toContainText("Leasters");

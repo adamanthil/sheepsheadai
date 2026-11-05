@@ -16,7 +16,7 @@ test("a player mutes and unmutes another player's chat", async ({
   await input.fill("first");
   await input.press("Enter");
 
-  const chat = page.locator('[class*="chatPanel"]');
+  const chat = page.getByRole("region", { name: "Chat" });
   await expect(chat.getByText("first")).toBeVisible();
   await chat.getByRole("button", { name: "Chatty:" }).click();
   await chat.getByRole("button", { name: "Mute" }).click();

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { createTableAndDeal } from "./helpers";
+import { createTableAndDeal, playableCards } from "./helpers";
 
 // Staged bury flow: as the picker, tapping hand cards stages them face-up in
 // the center (tappable to put back) without sending anything; the two BURY
@@ -18,7 +18,7 @@ test("staged bury: stage, put back, confirm", async ({ page }) => {
 
   // Bury mode: all 8 cards (6 + blind) are stageable.
   await expect(page.getByText("Bury 2 cards")).toBeVisible();
-  const clickableCards = page.locator("[data-clickable='true']");
+  const clickableCards = playableCards(page);
   await expect(clickableCards).toHaveCount(8);
 
   // Going alone as picker shows your role badge immediately.

@@ -337,7 +337,11 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div className={styles.rows}>
+          <div
+            className={styles.rows}
+            role={tables.length > 0 ? "list" : undefined}
+            aria-label="Open tables"
+          >
             {loading ? (
               <div className={styles.empty}>Loading…</div>
             ) : tables.length === 0 ? (
@@ -351,7 +355,7 @@ export default function HomePage() {
                 const canJoin = humanFilled < 5;
                 const playing = t.status === "playing";
                 return (
-                  <div key={t.id} className={styles.row}>
+                  <div key={t.id} className={styles.row} role="listitem">
                     <div>
                       <div className={styles.tableName}>{t.name}</div>
                       <div className={styles.tableRules}>

@@ -127,7 +127,7 @@ function DesktopHeader({
   onShowCheatSheet,
 }: TableHeaderProps) {
   return (
-    <div className={styles.desk}>
+    <header className={styles.desk}>
       <div className={styles.deskLeft}>
         <Wordmark size="sm" />
         <div className={styles.sep} />
@@ -155,7 +155,7 @@ function DesktopHeader({
           <DesktopLeave leave={leave} />
         </div>
       </div>
-    </div>
+    </header>
   );
 }
 

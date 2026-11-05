@@ -21,4 +21,22 @@ export default [
     ...nextPlugin.configs["core-web-vitals"],
     files: SOURCES,
   },
+  {
+    // CSS-module class names are a build detail: their format changed under
+    // the specs once already and broke four of them silently. Find elements
+    // by role and accessible name (adding them to the component if missing),
+    // or by a data-* attribute as a last resort.
+    files: ["e2e/**/*.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "Literal[value=/\\[class/], TemplateElement[value.raw=/\\[class/]",
+          message:
+            "No class selectors in e2e specs: use getByRole/getByLabel/getByText, or a data-* attribute.",
+        },
+      ],
+    },
+  },
 ];
