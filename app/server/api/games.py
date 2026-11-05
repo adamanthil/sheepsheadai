@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import logging
+import time
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from server.api.auth import PlayerIdentity, current_player
@@ -20,6 +23,7 @@ from server.realtime.chat import emit_bid_chat_message
 from server.runtime.ai_loop import schedule_ai_turns
 from server.runtime.ai_move import observe_human_decision, observe_trick_end
 from server.runtime.dealing import (
+    hand_passed_out,
     new_game_for_table,
     redeal_passed_out_hand,
     refresh_table_agent,
@@ -235,7 +239,9 @@ async def post_action(
 
     pre = None
     post = None
+    t_start = time.perf_counter()
     async with table.game_lock:
+        t_locked = time.perf_counter()
         # Validate under the lock: turn order and the valid-action set can
         # change between an unlocked check and the apply (e.g. a concurrent
         # AI move or a double-submitted request).
@@ -259,14 +265,24 @@ async def post_action(
             raise HTTPException(status_code=400, detail="apply_failed")
         table.move_seq += 1
         post = capture_post_state(table.game)
+        t_applied = time.perf_counter()
         # The AI's memory for this seat follows the human's play, in
         # training order: the decision, then any trick it completed.
         if decision_state is not None:
             await observe_human_decision(table, conn.seat, decision_state)
         await observe_trick_end(table)
+        # A hand that just ended is recorded before anyone is shown it ended,
+        # and a passed-out doublers deal is replaced before its leaster state
+        # can go out; every other move is shown before it is persisted.
+        show_first = not table.game.is_done() and not hand_passed_out(table)
+    t_observed = time.perf_counter()
     # Moving in time clears the player's timeout strikes.
     conn.timeout_strikes = 0
     cancel_turn_timer(table)
+
+    if show_first:
+        await broadcast_table_state(table)
+    t_shown = time.perf_counter()
 
     if pre is not None and post is not None:
         await fire_game_hooks(table, pre, post, seat=conn.seat, by_ai=False)
@@ -274,16 +290,37 @@ async def post_action(
     action_str = ACTION_LOOKUP.get(req.action_id, "")
     await emit_bid_chat_message(table, action_str, conn.display_name)
 
-    # A doublers table that just passed out swaps in a fresh deal here, before
-    # anything is broadcast, so the momentary leaster state never reaches a
-    # client.
-    await redeal_passed_out_hand(table)
+    if not show_first:
+        # A doublers table that just passed out swaps in a fresh deal here,
+        # before anything is broadcast, so the momentary leaster state never
+        # reaches a client.
+        await redeal_passed_out_hand(table)
 
-    if table.game and table.game.is_done():
-        # Records the hand before broadcasting that it ended.
-        await finish_hand(table)
-    else:
-        await broadcast_table_state(table)
+        if table.game and table.game.is_done():
+            # Records the hand before broadcasting that it ended.
+            await finish_hand(table)
+        else:
+            await broadcast_table_state(table)
     schedule_ai_turns(table)
+    t_end = time.perf_counter()
+
+    def ms(a: float, b: float) -> float:
+        return round((b - a) * 1000, 1)
+
+    # One line per human move, to see where the time before the player's
+    # own move reaches the table goes (lock wait, inference, persistence).
+    logging.info(
+        "action timing table=%s seat=%s action=%r lock_wait=%s apply=%s "
+        "observe=%s shown_at=%s after_shown=%s total=%s",
+        table.id,
+        conn.seat,
+        action_str,
+        ms(t_start, t_locked),
+        ms(t_locked, t_applied),
+        ms(t_applied, t_observed),
+        ms(t_start, t_shown) if show_first else None,
+        ms(t_shown, t_end),
+        ms(t_start, t_end),
+    )
 
     return {"ok": True}
