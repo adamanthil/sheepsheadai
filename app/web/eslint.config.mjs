@@ -14,6 +14,8 @@ export default [
       // Generated from openapi.json by `npm run gen:api`; drift is caught in
       // CI by a git diff against the regenerated file, not by lint.
       "lib/api.gen.ts",
+      // Third-party scripts copied verbatim (see app/components/Analytics.tsx).
+      "public/vendor/**",
     ],
   },
   ...tseslint.configs.recommended.map((c) => ({ ...c, files: SOURCES })),

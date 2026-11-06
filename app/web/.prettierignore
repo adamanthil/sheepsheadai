@@ -10,3 +10,6 @@ lib/api.gen.ts
 # Machine-managed.
 package-lock.json
 openapi.json
+
+# Third-party scripts copied verbatim (see app/components/Analytics.tsx).
+public/vendor/

@@ -5,7 +5,8 @@ const isProd = process.env.NODE_ENV === "production";
 // websocket forms. Dev stays permissive because the API host is whatever
 // hostname the browser used (see lib/apiBase.ts).
 function connectSrc() {
-  const sources = ["'self'"];
+  // GoatCounter's counting endpoint (app/components/Analytics.tsx).
+  const sources = ["'self'", "https://sheepsheadai.goatcounter.com"];
   const base = process.env.NEXT_PUBLIC_API_BASE;
   if (base) {
     sources.push(base, base.replace(/^http/, "ws"));

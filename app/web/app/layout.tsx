@@ -1,4 +1,5 @@
 import "./globals.css";
+import Analytics from "./components/Analytics";
 import { Instrument_Serif, Geist, JetBrains_Mono } from "next/font/google";
 
 const instrumentSerif = Instrument_Serif({
@@ -90,6 +91,7 @@ export default function RootLayout({
         <div className="ios-pwa-status-bar" aria-hidden="true" />
         {children}
         {modal}
+        <Analytics />
       </body>
     </html>
   );
