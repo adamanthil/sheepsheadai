@@ -2,12 +2,13 @@
 
 **Status (2026-10-31): C1 (trick-0 defender trump lead) DONE. C2
 (called-suit lead) trick-0 rate and cost DONE; later tricks PENDING.
-§10 (what search adds: league endpoint theta0 vs release theta6) DONE.**
+§10 (what search adds: league endpoint theta0 vs release theta6) DONE.
+§6 engine-variant re-search (2026-11-06) DONE.**
 
 This study supersedes `Convention_Optimality_202607.md` and its
 2026-10-16 addendum as the reference for both conventions. Those remain
 the early evidence. This one uses the fully trained release agent
-(theta6, `models/recall-rc-theta6.pt`), the production 30M
+(theta6, `models/sheepsheadai-1.0-202610.pt`), the production 30M
 (`models/pfsp-swish-30m.pt`), and the six policy-iteration search
 corpora of run `202609_recall_rc`.
 
@@ -36,7 +37,11 @@ Artifacts: `runs/convention_optimality_202610/t0_trump_lead/`
    where a trump lead is acceptable. Search rates them +0.07 to +0.25.
    Policy replays rate the same hands −0.11 to +0.06. Both estimators
    put them inside or near the tie band; neither finds a large gain.
-   The sign is unresolved (see §6).
+   An engine-variant re-search (§6.1) traces most of the called-ace
+   gap to search's own follow-up play: with the tree cut to the root,
+   search rates that lead +0.01. The oracle leaf is not a channel. The
+   JD gaps are partly (3 trump) or not at all (lone diamond) explained
+   by the engine channels tested.
 5. Outside those hand types, both estimators agree that the trump lead
    is clearly wrong: −0.1 to −1.0 per lead.
 
@@ -63,7 +68,7 @@ queen or jack.
 | instrument | what it estimates | known bias |
 |---|---|---|
 | **Seeded probe** (`t0_probe.py`, `t0_probe_v2.py`) | greedy behavior in self-play, agent in all 5 seats; deal `g` uses `Game(seed=20261030·1000003+g)`, so both agents see identical deals | the opportunity set depends on each agent's own bidding |
-| **Search corpora** (`extract_corpus.py`) | trump minus fail, with each side's card chosen by the act-time prior (avoids the winner's curse); ISMCTS committee, t0 leads at 1024 iterations × 3 replicates, iterations 1-6, 23,063 nodes | determinized search (strategy fusion), search continuation, prior of theta_{k−1} |
+| **Search corpora** (`extract_corpus.py`) | trump minus fail, with each side's card chosen by the act-time prior (avoids the winner's curse); ISMCTS committee, t0 leads at 1024 iterations × 3 replicates, iterations 1-6, 23,063 nodes | in-tree follow-up play the raw policy does not realize, world sampling, oracle-critic leaf, prior of theta_{k−1}; no strategy fusion (nodes keyed by the observer's own actions, Arm_D_Review §9.14) |
 | **True-deal replay, greedy** (`replay.py`) | replay the seeded game to the node, force the agent's preferred trump vs its preferred fail, finish greedily with the same agent; unbiased for cell averages under the agent's own play | per-node noise (SD ≈ 1.6 score); measures value under the policy's continuation, not under best play |
 | **True-deal replay, sampled** (`replay_sampled.py`) | as above, continuation sampled at T = 0.5 (deployed play temperature), 4 runs per branch with common seeds | same |
 
@@ -196,20 +201,82 @@ noise.
   singleton nodes at 4,096 iterations; the verdict moved +0.03.
 - **Not selection.** The search's positive hand types hold up on
   held-out iterations (§5).
-- **Remaining candidates.** (a) Strategy fusion: a determinized search
-  plays each world with knowledge of the hidden cards, which flatters
-  plans that need that knowledge, such as drawing the picker's trump
-  and then cashing aces. (b) Continuation strength: search plays the
-  rest of the hand better than the raw policy, and the trump lead may
-  only pay off with that better play. Under (a) the trump leads are
-  slightly wrong; under (b) they are right for a searching player and
-  slightly wrong for the raw policy.
+- **Not strategy fusion.** SO-ISMCTS keys nodes by the observer's own
+  action sequence, so one decision is shared across all sampled worlds
+  consistent with what the observer knows; non-observer seats act from
+  their own observations (Arm_D_Review_202610 §9.14). A determinized
+  world never lets the leader play with knowledge of hidden cards.
+- **Remaining candidates.** (a) Oracle-leaf calibration: leaves are
+  scored by the privileged critic after one rollout step. (b) In-tree
+  follow-up credit: within its six-ply play tree, search picks later
+  cards better than the raw policy, and the lead may only pay off with
+  those picks. (c) World sampling: the deals search samples are not the
+  true conditional deal distribution.
 
-**Adjudication experiment (not run).** Replay the true deal with the
-leader's later decisions made by search at the deploy budget, other
-seats raw policy. If the positive hand types turn positive, (b) holds;
-if they stay near −0.05, (a) does. Rough cost: about 1,000 nodes per
-hand type, two branches, about ten searched decisions each.
+### 6.1 Engine-variant re-search
+
+600 theta6 nodes, 150 per hand type, drawn at random from the nodes
+with greedy replays (`t0_variants/`, `select_v.py`, seed 7). Each node
+is replayed to the lead with theta6 and searched with the corpus
+committee (1,024 iterations × 3 replicates, prior theta6) under three
+engines that share replicate seeds:
+
+- **base**: the corpus engine (oracle leaf after one rollout step,
+  six-ply play tree);
+- **terminal**: rollouts to the end of the hand with the policy in place
+  of the oracle leaf (tests a);
+- **root-only**: play tree cut to the root lead (`max_depth play = 1`),
+  oracle leaf after one rollout step (tests b).
+
+Value is trump − fail, each side the prior's preferred card, pooled over
+replicates as in the corpus. Shifts are paired per node.
+
+| hand type | n | corpus | base | terminal | root-only | terminal − base | root-only − base | replay (these nodes) |
+|---|---|---|---|---|---|---|---|---|
+| JD: 2+ aces, 1 diamond trump, no void | 150 | +0.111 | +0.072 ± 0.015 | +0.045 ± 0.014 | +0.053 ± 0.012 | −0.027 ± 0.016 | −0.019 ± 0.015 | −0.053 ± 0.129 |
+| JD: 2+ aces, 3 trump | 150 | +0.130 | +0.150 ± 0.017 | +0.175 ± 0.016 | +0.091 ± 0.013 | +0.025 ± 0.017 | −0.058 ± 0.016 | +0.120 ± 0.109 |
+| CA: 4+ trump, called void, fail ace | 150 | +0.092 | +0.190 ± 0.018 | +0.184 ± 0.020 | +0.007 ± 0.016 | −0.006 ± 0.018 | −0.183 ± 0.016 | −0.200 ± 0.157 |
+| control: JD 2+ aces, 2 trump | 150 | −0.176 | −0.194 ± 0.022 | −0.182 ± 0.028 | −0.177 ± 0.020 | +0.012 ± 0.027 | +0.017 ± 0.026 | −0.247 ± 0.098 |
+
+The replay column is the 150-node subsample and is noisy; the reference
+replays for these hand types are in §5 (−0.046, +0.000, −0.121, −0.110).
+
+Split by theta6's own choice (base / root-only):
+
+| hand type | theta6 led trump | theta6 led fail |
+|---|---|---|
+| JD lone diamond | +0.176 / +0.094 (56) | +0.010 / +0.028 (94) |
+| JD 3 trump | +0.261 / +0.142 (70) | +0.052 / +0.047 (80) |
+| CA 4+ trump, void, ace | +0.304 / +0.071 (67) | +0.098 / −0.046 (83) |
+
+Reading:
+
+1. **The oracle leaf is not the channel.** Rolling out to the end with
+   the policy moves no hand type by more than 0.03 (all within 1.7 SE).
+   The critic's leaf values match the policy's own outcomes here.
+2. **Follow-up credit is the called-ace channel.** Cutting the tree to
+   the root removes the called-ace advantage almost entirely: +0.190 to
+   +0.007 (−0.183 ± 0.016, 11 SE). That closes about 60% of the 0.31
+   gap to the reference replay (−0.121 ± 0.053); the rest (0.13, 2.4 SE)
+   is unexplained. The trump lead there is worth playing only for a
+   player who follows up the way the tree does. It also accounts for
+   about half of theta6's own split: base separates theta6's trump and
+   fail nodes by 0.21, root-only by 0.12.
+3. **JD 3 trump is partly follow-up credit** (−0.058 ± 0.016). The
+   That closes about 40% of the gap; the root-only value (+0.09) still
+   sits 0.09 above the reference replay (+0.000 ± 0.038, 2.4 SE).
+4. **JD lone diamond is not explained by either channel.** Root-only
+   (+0.053) and terminal (+0.045) both stay about 0.10 above the
+   reference replay (−0.046 ± 0.025). This residual, and the ones in
+   points 2 and 3, point to candidate (c), world sampling, or to the
+   policy following up differently in sampled worlds than on the true
+   deal. Neither was isolated.
+5. **The control does not move** under either variant, so neither
+   engine change shifts values across the board.
+
+Implication for rule 10 (§7): for the raw policy, the called-ace trump
+lead is a small loss (about −0.12); it is a gain only with search-quality
+follow-up play. Rules 8 and 9 stay tie-band.
 
 The practical stakes are small either way. Theta6 makes these leads on
 about 0.7% of opportunities, and the disagreement is about 0.15 per
@@ -256,7 +323,10 @@ Is the 30M's trump-lead rate noise and theta6's a pattern? Yes.
   Both estimators price them at −0.2 to −0.5 per lead.
 
 Whether theta6's pattern is strictly better than leading fail in rules
-8-10, rather than a tie, is the open question in §6.
+8-10, rather than a tie, depends on who plays the rest of the hand. In
+the called-ace rule the advantage comes from search's follow-up play
+(§6.1); for the raw policy that lead is a small loss. In the JD rules
+the gap is smaller and stays unexplained.
 
 ## 9. C2 — called-suit lead
 
@@ -491,11 +561,11 @@ is no better than the 30M in called-ace mode and worse in JD.
 From the repo root, with `R=runs/convention_optimality_202610/t0_trump_lead`:
 
 ```
-uv run python $R/t0_probe_v2.py --ckpt models/recall-rc-theta6.pt --mode 0 --n 100000 --out $R/rich_recall-rc-theta6_m0.json
+uv run python $R/t0_probe_v2.py --ckpt models/sheepsheadai-1.0-202610.pt --mode 0 --n 100000 --out $R/rich_recall-rc-theta6_m0.json
 uv run python $R/extract_corpus.py $R/corpus_t0.pkl
 uv run python $R/corpus_cells.py $R          # writes corpus_feats.pkl
 uv run python $R/behavior.py $R
-uv run python $R/replay.py --ckpt models/recall-rc-theta6.pt --nodes $R/nodesB_theta6.json --out $R/replayB_theta6_0.jsonl --shard 0 --nshards 8
+uv run python $R/replay.py --ckpt models/sheepsheadai-1.0-202610.pt --nodes $R/nodesB_theta6.json --out $R/replayB_theta6_0.jsonl --shard 0 --nshards 8
 uv run python $R/final_table.py $R
 ```
 
@@ -505,3 +575,12 @@ agent's trump leads plus the JD two-ace hand type), `nodesB_theta6`
 (all theta6 nodes in the JD two-ace and called-ace 3+-trump
 void families, plus all extension trump leads), `nodesC_theta6`
 (JD 4+ trump and random controls), `nodesS_theta6` (sampled-replay set).
+
+§6.1, with `V=runs/convention_optimality_202610/t0_variants` (8 shards,
+about 90 s per node per shard on one thread):
+
+```
+uv run python $V/select_v.py $R $V
+uv run python $V/research_variants.py --ckpt models/sheepsheadai-1.0-202610.pt --nodes $V/nodesV_theta6.json --out $V/variants_0.jsonl --shard 0 --nshards 8
+uv run python $V/analyze_v.py $V
+```
