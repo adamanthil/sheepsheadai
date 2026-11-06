@@ -26,6 +26,7 @@ model-history/
 # Production deploy secrets and local backup dumps
 app/deploy/.env.prod
 app/deploy/.env.deploy
+app/deploy/.env.backup
 backups/
 
 # Playwright

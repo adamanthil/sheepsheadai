@@ -1,5 +1,21 @@
 # Continuous Deployment to sheepshead.ai — Plan (August 2026, revised October 2026)
 
+**Update (2026-11-06): D8 / §6.4 items 11–12 scripted.**
+`app/scripts/offsite_backup.sh` (nightly cron) and
+`app/scripts/restore_drill.sh` replace the inline commands; config in
+gitignored `app/deploy/.env.backup` (example committed). Departures:
+only the database dumps go to B2, not the model cache (the models are
+immutable GitHub release assets, so a copy only spends bucket space);
+rclone runs from a pinned image (`rclone/rclone:1.75.2`, D10) with its
+remotes defined by environment, so the box installs nothing; the run
+fails, and pings the check's `/fail`, when no dump in `backups/last` is
+under 26 h old, making the healthchecks.io check the `db-backup`
+container's alarm too; each run's log is posted with the ping; the
+recommended B2 key lacks `deleteFiles`. Both scripts were exercised
+locally against a `local` stand-in remote (upload, stale-dump failure,
+drill restore into postgres 18.6 with matching counts), not yet
+against B2.
+
 **Status (2026-11-02): REPO SIDE IMPLEMENTED (§9 steps 2–7, 9's job
 and 10); box not provisioned, nothing pushed.** Steps 0 and 1 were
 already done. Departures from the text below:

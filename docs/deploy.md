@@ -90,8 +90,9 @@ on the box as `deploy`: `/opt/sheepsheadai/app/scripts/deploy.sh <sha>
 <api> <web>`.
 
 **Box dies.** Provision a new one (below), restore the latest dump from
-the off-site copy, repoint DNS, deploy. Nothing else lives on the box:
-code is in git, images in GHCR, models in GitHub releases, secrets in the
+the off-site copy (`app/scripts/restore_drill.sh` shows how to fetch one
+through the crypt remote and load it with `psql`), repoint DNS, deploy.
+Nothing else lives on the box: code is in git, images in GHCR, models in GitHub releases, secrets in the
 offline copy of `.env.prod`, and the database in the backups.
 
 ## Prerelease mode
@@ -134,37 +135,46 @@ coreutils-from-gnu` switches back.
 10. First deploy by hand (above), then check
     `curl https://$DOMAIN/health` → `{"status":"ok","db":true,...}` and
     play a hand in a browser.
-11. Off-site backups: a private Backblaze B2 bucket with a lifecycle rule
-    deleting hidden versions 90 days after hiding; an application key
-    restricted to that bucket; an rclone `b2` remote with a `crypt` remote
-    over it (the dumps hold account emails and IPs). Nightly cron as
-    `deploy`:
+11. Off-site backups (`app/scripts/offsite_backup.sh`). The
+    `db-backup` container dumps the database daily into
+    `/opt/sheepsheadai/backups`, on the same disk as everything else;
+    this copies the dumps to Backblaze B2, encrypted (they hold account
+    emails and IPs). The models need no copy: they are immutable GitHub
+    release assets. It runs rclone from
+    a pinned image, so the box needs no rclone install.
+    - B2: a private bucket (it keeps every version of a file by default)
+      with the lifecycle setting "keep prior versions for 90 days"
+      (`daysFromHidingToDeleting: 90`). Then an application key for that
+      bucket alone. The web UI's "Read and Write" works; better, make one
+      that cannot delete, so a compromised box can't destroy the old
+      versions: `b2 key create --bucket <bucket> sheepshead-box
+      listBuckets,listFiles,readFiles,writeFiles`.
+    - healthchecks.io: a free check with period 1 day, grace 2 hours, and
+      an email integration. The script pings it with each run's log, and
+      pings `/fail` (an immediate alert) on any error, including a missing
+      or stale dump, so it is the `db-backup` container's alarm too.
+    - `cp app/deploy/.env.backup.example app/deploy/.env.backup` and fill
+      it in (the comments say how). **Keep the two crypt passphrases
+      offline next to `.env.prod`'s copy:** without them no backup can be
+      read.
+    - Run it once by hand and check the check turns green:
+      `/opt/sheepsheadai/app/scripts/offsite_backup.sh`.
+    - Cron as `deploy` (`crontab -e`; the box runs in UTC and the dump
+      lands at 00:00 UTC):
 
-    ```sh
-    rclone copy /opt/sheepsheadai/backups crypt:backups &&
-      rclone copy /opt/sheepsheadai-models crypt:models &&
-      curl -fsS -m 10 https://hc-ping.com/<uuid>
-    ```
+      ```
+      30 1 * * * /opt/sheepsheadai/app/scripts/offsite_backup.sh >/dev/null 2>&1
+      ```
 
-    with a free healthchecks.io check that alerts when the ping stops.
-    Use `copy`, never `sync`: a `sync` would mirror an emptied `backups/`
-    and delete the good copies. (rclone skips the backup tool's `*-latest`
-    symlinks; the dated files are the real dumps.)
-12. Restore drill, now and after any Postgres major upgrade: pull the
-    latest dump back through the crypt remote, restore it into a
-    throwaway postgres container, and compare row counts (`player`,
-    `ai_player`, game records) with the live database:
-
-    ```sh
-    rclone copy crypt:backups/daily/ ./drill/
-    dump=$(ls -t drill/*.sql.gz | head -1)
-    docker run -d --name restore-drill -e POSTGRES_PASSWORD=x postgres:18.6
-    sleep 5
-    gunzip -c "$dump" |
-      docker exec -i restore-drill psql -q -U postgres
-    docker exec restore-drill psql -U postgres -c 'select count(*) from player'
-    docker rm -f restore-drill
-    ```
+    The script uses `rclone copy`, never `sync`: a `sync` would mirror an
+    emptied `backups/` and delete the good copies. To pick up a new
+    rclone, bump `RCLONE_IMAGE` in both scripts in its own commit.
+12. Restore drill, now and after any Postgres major upgrade:
+    `/opt/sheepsheadai/app/scripts/restore_drill.sh`. It pulls the newest
+    dump back through the crypt remote, restores it into a throwaway
+    container of the production postgres version, and prints its row
+    counts beside the live database's (live may be a little higher: rows
+    added since the dump).
 13. An uptime monitor (UptimeRobot, free) on `https://$DOMAIN/health`.
 
 On GitHub:
