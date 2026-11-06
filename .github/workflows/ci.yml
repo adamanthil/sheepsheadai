@@ -251,7 +251,8 @@ jobs:
               --cache-from type=gha,scope=api --cache-to type=gha,scope=api,mode=max --push .
           fi
       # NEXT_PUBLIC_API_BASE stays at the Dockerfile's empty default:
-      # same-origin behind Caddy.
+      # same-origin behind Caddy. The deployment id is the content tag, so it
+      # changes exactly when the image does.
       - name: build web if missing
         env:
           IMG: ghcr.io/${{ github.repository_owner }}/sheepshead-web:${{ steps.tags.outputs.web }}
@@ -260,6 +261,7 @@ jobs:
             echo "$IMG exists; skipping the build"
           else
             docker buildx build -t "$IMG" \
+              --build-arg NEXT_DEPLOYMENT_ID=${{ steps.tags.outputs.web }} \
               --label org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }} \
               --cache-from type=gha,scope=web --cache-to type=gha,scope=web,mode=max --push app/web
           fi

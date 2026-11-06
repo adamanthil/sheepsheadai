@@ -14,6 +14,12 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ARG NEXT_PUBLIC_API_BASE=
 ENV NEXT_PUBLIC_API_BASE=$NEXT_PUBLIC_API_BASE
+# Names the build, so a page left open from an older deploy reloads on its
+# next navigation instead of soft-navigating on stale JavaScript. CI passes
+# the image's content tag (app/scripts/deploy_tags.sh); empty, as in a local
+# build, leaves it unset.
+ARG NEXT_DEPLOYMENT_ID=
+ENV NEXT_DEPLOYMENT_ID=$NEXT_DEPLOYMENT_ID
 RUN npm run build
 
 FROM node:22.23.4-alpine AS run
