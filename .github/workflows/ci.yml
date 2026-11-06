@@ -143,8 +143,11 @@ jobs:
 
   # The Playwright suite against the real server, a production build of the
   # web app and a migrated Postgres, with the e2e model checkpoint.
+  # Bounded well past a normal run (about 5 min), so a hang fails the job
+  # rather than holding the deploy for GitHub's 6-hour default.
   e2e:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:18.6
