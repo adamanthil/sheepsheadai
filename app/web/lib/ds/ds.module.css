@@ -124,14 +124,14 @@
   padding: 6px 10px;
   font-size: 12px;
 }
-/* A button waiting on the server (useBusy): after a beat, so a quick answer
-   never flickers, the label gives way to a small spinner in its colour. The
-   button keeps its size and reads as pressed rather than disabled.
+/* A button waiting on the server (useBusy): the moment it is pressed, the
+   label gives way to a small spinner in its colour. The button keeps its
+   size and reads as pressed rather than disabled.
    Compose:    className={`${ds.btn} ${busy ? ds.btnBusy : ""}`}
                disabled={busy} aria-busy={busy} */
 .btnBusy {
   position: relative;
-  animation: btnBusyLabel 0s linear 150ms forwards;
+  -webkit-text-fill-color: transparent;
 }
 .btnBusy:disabled {
   opacity: 1;
@@ -152,31 +152,18 @@
   border: 2px solid currentColor;
   border-right-color: transparent;
   border-radius: 50%;
-  opacity: 0;
-  animation:
-    btnBusySpin 0.7s linear infinite,
-    btnBusyShow 0s linear 150ms forwards;
-}
-@keyframes btnBusyLabel {
-  to {
-    -webkit-text-fill-color: transparent;
-  }
+  animation: btnBusySpin 0.7s linear infinite;
 }
 @keyframes btnBusySpin {
   to {
     transform: rotate(360deg);
   }
 }
-@keyframes btnBusyShow {
-  to {
-    opacity: 1;
-  }
-}
 @media (prefers-reduced-motion: reduce) {
   .btnBusy::after {
     border-style: dotted;
     border-right-color: currentColor;
-    animation: btnBusyShow 0s linear 150ms forwards;
+    animation: none;
   }
 }
 
