@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trick-0 defender trump-lead rate</title>
+<link rel="stylesheet" href="/css/MyFontsWebfontsKit.css">
+<style>
+:root {
+  color-scheme: light;
+  --font-body: TransatStandard, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-bold: TransatBold, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --surface: #ffffff;
+  --heading: #4a4a4a;
+  --ink: #555555;
+  --ink-soft: #777777;
+  --muted: #8a8a8a;
+  --grid: #ececec;
+  --band: #fafafa;
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--surface); }
+body {
+  color: var(--ink);
+  font: 15px/1.5 var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+.viz { max-width: 880px; margin: 0 auto; padding: 8px 16px 16px; }
+h3 { font: 1.2rem/1.3 var(--font-bold); font-weight: normal; color: var(--heading); margin: 0 0 4px; }
+.sub { color: var(--ink-soft); margin: 0 0 14px; max-width: 70ch; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 0 0 10px; color: var(--ink); font-size: 14px; }
+.legend span { display: inline-flex; align-items: center; gap: 8px; }
+.legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.chart { position: relative; width: 100%; }
+.chart svg { display: block; width: 100%; overflow: visible; }
+.chart text { font-family: var(--font-body); }
+.tick { fill: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.rowlabel { fill: var(--ink); font-size: 14px; }
+.rowlabel.strong { fill: var(--heading); font-family: var(--font-bold); }
+.rownote { fill: var(--muted); font-size: 12px; }
+.val { fill: var(--ink-soft); font-size: 13px; font-variant-numeric: tabular-nums; }
+.val.strong { fill: var(--heading); font-family: var(--font-bold); }
+.tip {
+  position: absolute; pointer-events: none; opacity: 0; z-index: 2;
+  background: var(--surface); color: var(--ink);
+  border: 1px solid var(--grid); border-radius: 3px;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.10);
+  padding: 8px 10px; font-size: 13px; line-height: 1.45; white-space: nowrap;
+  transition: opacity 80ms;
+}
+.tip b { font-family: var(--font-bold); font-weight: normal; color: var(--heading); }
+.tip .k { color: var(--ink-soft); }
+.tip i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+.foot { color: var(--ink-soft); font-size: 13px; margin: 10px 0 0; }
+details { margin-top: 8px; }
+summary { cursor: pointer; color: var(--ink-soft); font-size: 13px; }
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; margin-top: 8px; font-size: 13px; font-variant-numeric: tabular-nums; width: 100%; }
+th, td { text-align: right; padding: 6px 10px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { font-family: var(--font-bold); font-weight: normal; color: var(--heading); }
+td .n { color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="viz">
+  <h3>Trick-0 defender trump-lead rate</h3>
+  <p class="sub">How often a defender opening trick 0 leads trump instead of fail. Lower is better. 100,000 jack-of-diamonds and 100,000 called-ace games per agent; dots are rates, whiskers 95% intervals.</p>
+  <div class="legend" id="legend"></div>
+  <div class="chart" id="chart"></div>
+  <p class="foot">Same seeded deals for all three agents, greedy play in all five seats. theta0 is the league-phase final of run 202609_recall_rc before search training; the 1.0 release is theta6, after six search-teacher iterations.</p>
+  <details>
+    <summary>Show the data as a table</summary>
+    <div class="tablewrap"><table id="table"></table></div>
+  </details>
+</div>
+<script>
+const AGENTS = [
+  { key: "m30", name: "30M (production)", color: "--series-1" },
+  { key: "t0", name: "theta0 (league final)", color: "--series-2" },
+  { key: "t6", name: "1.0 release (theta6)", color: "--series-3" },
+];
+const CFG = {"domain": [0, 6], "ticks": [0, 1, 2, 3, 4, 5, 6], "left": 150, "leftNarrow": 104, "sub": 22, "dot": 5, "bands": true, "unit": "opportunities", "groups": [{"label": "Composite", "note": "both partner modes", "strong": true, "rows": [{"agent": "m30", "v": [0.895, 0.837, 0.958, 832, 92915]}, {"agent": "t0", "v": [2.974, 2.869, 3.083, 2876, 96706]}, {"agent": "t6", "v": [0.762, 0.709, 0.819, 732, 96044]}]}, {"label": "Jack of diamonds", "note": null, "strong": false, "rows": [{"agent": "m30", "v": [1.008, 0.92, 1.105, 453, 44936]}, {"agent": "t0", "v": [5.366, 5.165, 5.574, 2504, 46668]}, {"agent": "t6", "v": [1.216, 1.12, 1.318, 573, 47141]}]}, {"label": "Called ace", "note": null, "strong": false, "rows": [{"agent": "m30", "v": [0.79, 0.715, 0.873, 379, 47979]}, {"agent": "t0", "v": [0.743, 0.672, 0.823, 372, 50038]}, {"agent": "t6", "v": [0.325, 0.278, 0.38, 159, 48903]}]}], "aria": "Trick-0 defender trump-lead rate. Composite: 30M 0.90%, theta0 2.97%, 1.0 release 0.76%; Jack of diamonds: 30M 1.01%, theta0 5.37%, 1.0 release 1.22%; Called ace: 30M 0.79%, theta0 0.74%, 1.0 release 0.33%", "tableHead": "Partner mode", "table": [{"name": "Composite", "d": {"m30": [0.895, 0.837, 0.958, 832, 92915], "t0": [2.974, 2.869, 3.083, 2876, 96706], "t6": [0.762, 0.709, 0.819, 732, 96044]}}, {"name": "Jack of diamonds", "d": {"m30": [1.008, 0.92, 1.105, 453, 44936], "t0": [5.366, 5.165, 5.574, 2504, 46668], "t6": [1.216, 1.12, 1.318, 573, 47141]}}, {"name": "Called ace", "d": {"m30": [0.79, 0.715, 0.873, 379, 47979], "t0": [0.743, 0.672, 0.823, 372, 50038], "t6": [0.325, 0.278, 0.38, 159, 48903]}}]};
+
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+const pct = (x) => x.toFixed(2) + "%";
+const int = (x) => x.toLocaleString("en-US");
+const legend = document.getElementById("legend");
+if (legend) legend.innerHTML = AGENTS.map(
+  (a) => `<span><i style="background:var(${a.color})"></i>${a.name}</span>`).join("");
+
+// A group is one labelled row block; each agent is a sub-row inside it.
+function draw() {
+  const host = document.getElementById("chart");
+  host.innerHTML = "";
+  const W = host.clientWidth, narrow = W < 460;
+  const left = narrow ? CFG.leftNarrow : CFG.left, right = 18, top = 4;
+  const sub = CFG.sub, gap = 10, pad = 8;
+  const groupH = (g) => g.rows.length * sub + pad * 2;
+  const plotH = CFG.groups.reduce((s, g) => s + groupH(g) + gap, -gap);
+  const H = top + plotH + 26;
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, height: H, role: "img" }, host);
+  const [d0, d1] = CFG.domain;
+  const x = (v) => left + (v - d0) / (d1 - d0) * (W - left - right);
+  const bottom = top + plotH;
+
+  let gy = top;
+  CFG.groups.forEach((g, gi) => {
+    if (CFG.bands && gi % 2 === 0)
+      el("rect", { x: 0, y: gy, width: W, height: groupH(g), rx: 2, fill: css("--band") }, svg);
+    gy += groupH(g) + gap;
+  });
+  for (const t of CFG.ticks) {
+    el("line", { x1: x(t), x2: x(t), y1: top, y2: bottom, stroke: css("--grid"), "stroke-width": 1 }, svg);
+    el("text", { x: x(t), y: bottom + 17, "text-anchor": "middle", class: "tick" }, svg).textContent = t + "%";
+  }
+  const tip = document.createElement("div");
+  tip.className = "tip";
+  host.appendChild(tip);
+
+  gy = top;
+  CFG.groups.forEach((g) => {
+    const h = groupH(g);
+    if (g.label) {
+      const ly = gy + h / 2 + (g.note && !narrow ? -3 : 5);
+      el("text", { x: 6, y: ly, class: "rowlabel" + (g.strong ? " strong" : "") }, svg).textContent = g.label;
+      if (g.note && !narrow) el("text", { x: 6, y: ly + 16, class: "rownote" }, svg).textContent = g.note;
+    }
+    g.rows.forEach((row, ri) => {
+      const a = AGENTS.find((q) => q.key === row.agent);
+      const [r, lo, hi, k, n] = row.v;
+      const cy = gy + pad + ri * sub + sub / 2;
+      const col = css(a.color);
+      if (row.label)
+        el("text", { x: 6, y: cy + 5, class: "rowlabel" }, svg).textContent = narrow ? row.short : row.label;
+      el("line", { x1: x(lo), x2: x(hi), y1: cy, y2: cy, stroke: col, "stroke-width": 2, "stroke-linecap": "round" }, svg);
+      el("circle", { cx: x(r), cy, r: CFG.dot, fill: col, stroke: css("--surface"), "stroke-width": 2 }, svg);
+      const roomRight = (W - right) - x(hi) > 56;
+      el("text", { x: roomRight ? x(hi) + 9 : x(lo) - 9, y: cy + 4.5, "text-anchor": roomRight ? "start" : "end",
+        class: "val" + (g.strong ? " strong" : "") }, svg).textContent = pct(r);
+      const hit = el("rect", { x: 0, y: cy - sub / 2, width: W, height: sub, fill: "transparent" }, svg);
+      hit.addEventListener("mousemove", (ev) => {
+        tip.innerHTML = `<div><i style="background:var(${a.color})"></i><b>${a.name}</b></div>
+          ${g.label ? `<div class="k">${g.label}${g.note ? " (" + g.note + ")" : ""}</div>` : ""}
+          <div><b>${pct(r)}</b> <span class="k">95% CI ${lo.toFixed(2)}–${hi.toFixed(2)}</span></div>
+          <div class="k">${int(k)} of ${int(n)} ${CFG.unit}</div>`;
+        const box = host.getBoundingClientRect();
+        tip.style.opacity = 1;
+        tip.style.left = Math.max(0, Math.min(ev.clientX - box.left + 12, box.width - tip.offsetWidth)) + "px";
+        tip.style.top = (ev.clientY - box.top + 14) + "px";
+      });
+      hit.addEventListener("mouseleave", () => (tip.style.opacity = 0));
+    });
+    gy += h + gap;
+  });
+  svg.setAttribute("aria-label", CFG.aria);
+}
+
+document.getElementById("table").innerHTML =
+  `<thead><tr><th>${CFG.tableHead}</th>${AGENTS.map((a) => `<th>${a.name}</th>`).join("")}</tr></thead><tbody>` +
+  CFG.table.map((t) => `<tr><td>${t.name}</td>${AGENTS.map((a) => {
+    const [r, lo, hi, k, n] = t.d[a.key];
+    return `<td>${pct(r)} [${lo.toFixed(2)}, ${hi.toFixed(2)}]<br><span class="n">${int(k)} / ${int(n)}</span></td>`;
+  }).join("")}</tr>`).join("") + "</tbody>";
+
+draw();
+let raf;
+window.addEventListener("resize", () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(draw); });
+</script>
+</body>
+</html>
