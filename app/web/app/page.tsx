@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { TableSummary } from "../lib/types";
+import { tableRoute } from "../lib/tableRoute";
 import { apiFetch, storeSessionToken } from "../lib/api";
 import { STORAGE_KEYS } from "../lib/storage";
 import { createAndJoinTable } from "../lib/createTable";
@@ -148,6 +149,12 @@ export default function HomePage() {
   const joinTable = async (tableId: string): Promise<boolean> => {
     const resolvedDisplayName = displayName;
     setError(null);
+    // A dealt table, even between hands, is played on the table page; one
+    // not in the list yet goes by way of the waiting room, which sends it on.
+    const route = tableRoute(
+      tableId,
+      tables.find((t) => t.id === tableId)?.status,
+    );
 
     try {
       // If we have a stored client id for this table, reuse it
@@ -157,7 +164,7 @@ export default function HomePage() {
         );
         if (existing) {
           await persistTypedName(playerId, displayNameInput.trim());
-          router.push(`/waiting/${tableId}`);
+          router.push(route);
           return true;
         }
       }
@@ -187,7 +194,7 @@ export default function HomePage() {
       const typedName = displayNameInput.trim();
       await persistIdentityFromJoin(data, typedName);
 
-      router.push(`/waiting/${data.table.id}`);
+      router.push(route);
       return true;
     } catch (err) {
       const errorMessage =

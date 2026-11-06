@@ -9,6 +9,7 @@ import { useBusy } from "../../../lib/hooks/useBusy";
 import { useChatMutes } from "../../../lib/hooks/useChatMutes";
 import { useChatUnread } from "../../../lib/hooks/useChatUnread";
 import { STORAGE_KEYS } from "../../../lib/storage";
+import { tableRoute } from "../../../lib/tableRoute";
 import styles from "./page.module.css";
 import { ChatPanel } from "../../components/chat";
 import { RemovePlayerButton } from "../../components/RemovePlayerButton";
@@ -103,9 +104,6 @@ export default function WaitingRoom() {
         if (rules.allPassMode !== undefined) setAllPassMode(rules.allPassMode);
         if (rules.doubleOnTheBump !== undefined)
           setScoringMode(rules.doubleOnTheBump ? 1 : 0);
-        if (t.status === "playing") {
-          router.push(`/table/${params?.id}`);
-        }
       },
       onLobbyEvent: (msg) => {
         setCallout(msg);
@@ -114,12 +112,17 @@ export default function WaitingRoom() {
       onTableClosed: () => setCallout("Table closed"),
     });
 
-  // A state message while in the waiting room means the game has started.
+  // Once the first hand is dealt, the table page is where this table is
+  // played -- between hands too, where only it offers the next deal. The
+  // status may come from the first fetch, a table update or a state
+  // message, so a player who lands here late is sent on at once. Replaced,
+  // not pushed: Back shouldn't return to a waiting room that is over.
+  const status = lastState?.table?.status ?? table?.status;
   useEffect(() => {
-    if (lastState?.table?.status === "playing" && params?.id) {
-      router.push(`/table/${params.id}`);
-    }
-  }, [lastState, params?.id, router]);
+    if (!params?.id) return;
+    const route = tableRoute(params.id, status);
+    if (route !== `/waiting/${params.id}`) router.replace(route);
+  }, [status, params?.id, router]);
 
   // The table page's code is fetched now, so Deal cards waits only on the
   // server, not also on the next page.
