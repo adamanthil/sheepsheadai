@@ -21,34 +21,18 @@ from server.services.persistence.pool import get_db_pool
 from sheepshead.game import Game
 
 
-def build_table_agent(settings, table_id: str):
-    """Load the table's AI, applying the configured convention mask if any.
+def build_table_agent(settings):
+    """Load the table's AI with the configured deployment sampler.
 
     SHEEPSHEAD_TEMPERATURE_* / SHEEPSHEAD_LOGIT_BAND install the deployment
     sampler (server.services.ai_sampling); all zero = argmax, the default.
-    SHEEPSHEAD_CONVENTION_WRAP ("", "c1", "c2", "c1c2") wraps the agent with
-    the deploy-time convention mask (sheepshead/agent/convention_wrapper.py):
-    convention-violating defender leads are masked, the policy still picks the
-    card. Table agents only — /analyze stays raw so the research scanners
-    measure the unwrapped policy. An unknown value raises (fail fast at game
-    start rather than silently no-opping).
+    act(deterministic=True) then samples from the tempered policy. Fresh
+    seed per table agent.
     """
     agent = load_agent(settings.sheepshead_model_path)
     sampler = SamplingSpec.from_settings(settings).sampler()
     if sampler is not None:
-        # Installed on the raw agent (a convention wrapper delegates reads
-        # but not writes); act(deterministic=True) then samples from the
-        # tempered policy. Fresh seed per table agent.
         agent.deploy_sampling = sampler
-    if settings.sheepshead_convention_wrap:
-        from sheepshead.agent.convention_wrapper import wrap_agent
-
-        agent = wrap_agent(agent, settings.sheepshead_convention_wrap)
-        logging.info(
-            "Table %s AI wrapped with convention mask %s",
-            table_id,
-            settings.sheepshead_convention_wrap,
-        )
     return agent
 
 
@@ -73,7 +57,7 @@ def refresh_table_agent(table: Table) -> None:
     by seat, and carrying last deal's memory into this one would have the AI
     reading a hand nobody holds any more.
     """
-    table.ai_agent = build_table_agent(get_settings(), table.id)
+    table.ai_agent = build_table_agent(get_settings())
 
 
 def hand_passed_out(table: Table) -> bool:

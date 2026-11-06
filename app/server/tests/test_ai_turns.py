@@ -26,9 +26,7 @@ class StubAgent:
 async def test_seat_lost_to_ai_on_an_all_human_deal_is_played(monkeypatch):
     # Dealt with five humans; seat 1 (first to bid) then disconnects and an
     # AI occupant takes it over. The deal still got a table AI to play it.
-    monkeypatch.setattr(
-        dealing, "build_table_agent", lambda settings, table_id: StubAgent()
-    )
+    monkeypatch.setattr(dealing, "build_table_agent", lambda settings: StubAgent())
     monkeypatch.setattr(dealing, "get_settings", lambda: None)
     table = Table(id="t", name="humans")
     for seat in range(1, 6):
@@ -95,9 +93,7 @@ async def test_ai_lead_waits_out_the_collect_animation(monkeypatch):
 async def test_hand_is_recorded_before_anyone_sees_it_end(monkeypatch):
     # The game-over banner offers Next hand: were the ended hand shown
     # before finish_hand records it, dealing on would discard the result.
-    monkeypatch.setattr(
-        dealing, "build_table_agent", lambda settings, table_id: StubAgent()
-    )
+    monkeypatch.setattr(dealing, "build_table_agent", lambda settings: StubAgent())
     monkeypatch.setattr(dealing, "get_settings", lambda: None)
 
     async def no_pause(seconds: float) -> None:

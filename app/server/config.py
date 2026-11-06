@@ -13,12 +13,6 @@ class Settings(BaseSettings):
     sheepshead_model_label: str
     database_url: str
     sheepshead_cors_origins: str = ""
-    # Deploy-time convention mask for TABLE agents ("", "c1", "c2", "c1c2"):
-    # masks convention-violating defender leads; the policy still picks the
-    # card within the convention. /analyze stays raw by design — the research
-    # scanners measure the unwrapped policy. See
-    # sheepshead/agent/convention_wrapper.py + Convention_Optimality notebook.
-    sheepshead_convention_wrap: str = ""
     # Deployment sampling for TABLE agents (sheepshead/agent/sampling.py):
     # per-head softmax temperatures (0 = argmax) and an optional logit band
     # in nats. Tuned per checkpoint (Training_Program_Redesign §4.5); the

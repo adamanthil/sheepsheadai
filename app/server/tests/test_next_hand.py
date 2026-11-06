@@ -61,7 +61,7 @@ async def client(app, monkeypatch):
     monkeypatch.setattr(games, "ensure_game_table", noop)
     monkeypatch.setattr(games, "persist_started_game", noop)
     monkeypatch.setattr(games, "schedule_ai_turns", lambda *a, **k: None)
-    monkeypatch.setattr(dealing, "build_table_agent", lambda s, tid: object())
+    monkeypatch.setattr(dealing, "build_table_agent", lambda s: object())
 
     def fake_player(request: Request) -> PlayerIdentity:
         return PlayerIdentity(id=uuid.UUID(request.headers["x-test-player"]))

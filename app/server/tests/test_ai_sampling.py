@@ -60,22 +60,16 @@ def test_negative_values_are_rejected():
         SamplingSpec.from_settings(_settings(sheepshead_logit_band=-1.0))
 
 
-def test_table_agent_gets_the_sampler_before_wrapping(monkeypatch):
+def test_table_agent_gets_the_sampler(monkeypatch):
     stub = _StubAgent()
     monkeypatch.setattr(dealing_module, "load_agent", lambda path: stub)
-    agent = build_table_agent(_settings(), table_id="t1")
+    agent = build_table_agent(_settings())
     assert agent is stub and stub.deploy_sampling is None
 
-    agent = build_table_agent(
-        _settings(sheepshead_temperature_play=0.75, sheepshead_convention_wrap="c1"),
-        table_id="t2",
-    )
-    # The sampler sits on the raw agent under the convention wrapper, which
-    # delegates attribute reads but not writes.
-    assert agent is not stub
+    agent = build_table_agent(_settings(sheepshead_temperature_play=0.75))
+    assert agent is stub
     assert isinstance(stub.deploy_sampling, DeploySampling)
     assert stub.deploy_sampling.temperature["play"] == 0.75
-    assert agent.deploy_sampling is stub.deploy_sampling
 
 
 @pytest.mark.skipif(

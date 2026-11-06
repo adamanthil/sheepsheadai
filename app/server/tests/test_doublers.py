@@ -44,7 +44,7 @@ def no_persistence(monkeypatch):
     monkeypatch.setattr(dealing, "persist_started_game", noop)
     # A redeal gives the table a fresh AI; no model is needed here.
     monkeypatch.setattr(dealing, "get_settings", lambda: None)
-    monkeypatch.setattr(dealing, "build_table_agent", lambda settings, tid: object())
+    monkeypatch.setattr(dealing, "build_table_agent", lambda settings: object())
 
 
 async def test_passed_out_deal_is_thrown_in_and_redealt(no_persistence):
