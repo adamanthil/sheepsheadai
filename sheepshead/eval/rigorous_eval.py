@@ -110,8 +110,8 @@ class Model:
     filepath: Path
     episodes: Optional[int]
     # A PPOAgent, or any stand-in with the same act()/observe() surface: the
-    # convention wrapper (design E4) and the head-routed pair
-    # (eval/head_routed_h2h.py) are entrants in their own right.
+    # head-routed pair (eval/head_routed_h2h.py) is an entrant in its own
+    # right.
     agent: Any
 
 
@@ -120,18 +120,13 @@ class ModelRegistry:
 
     A single PPOAgent instance can safely fill several seats in one game because
     its recurrent memory is keyed by player_id (ppo.PPOAgent._player_memories),
-    so distinct seats never share state. A convention-wrapped entrant (``wrap``,
-    design E4) shares the raw instance for the same reason: the wrapper only
-    filters valid actions per call and holds no per-seat state itself.
+    so distinct seats never share state.
     """
 
     def __init__(self) -> None:
         self._by_path: Dict[Path, Model] = {}
-        self._wrapped: Dict[tuple, Model] = {}
 
-    def get(
-        self, path: Path, episodes: Optional[int] = None, wrap: Optional[str] = None
-    ) -> Model:
+    def get(self, path: Path, episodes: Optional[int] = None) -> Model:
         path = path.resolve()
         if path not in self._by_path:
             # A manifest artifact (models/<key>.pt) must hash to its pin: a
@@ -143,19 +138,7 @@ class ModelRegistry:
             self._by_path[path] = Model(
                 model_id=path.stem, filepath=path, episodes=episodes, agent=agent
             )
-        if wrap is None:
-            return self._by_path[path]
-        key = (path, wrap)
-        if key not in self._wrapped:
-            from sheepshead.agent.convention_wrapper import wrap_agent
-
-            self._wrapped[key] = Model(
-                model_id=f"{path.stem}@{wrap}",
-                filepath=path,
-                episodes=episodes,
-                agent=wrap_agent(self._by_path[path].agent, wrap),
-            )
-        return self._wrapped[key]
+        return self._by_path[path]
 
 
 def extract_episodes_from_name(path: Path) -> Optional[int]:
@@ -844,21 +827,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     registry = ModelRegistry()
 
     # --- Resolve candidates -------------------------------------------------
-    from sheepshead.agent.convention_wrapper import parse_wrap_spec
-
-    cand_specs: List[Tuple[Path, Optional[int], Optional[str]]] = []
+    cand_specs: List[Tuple[Path, Optional[int]]] = []
     if args.candidates:
         for c in args.candidates:
-            raw_path, wrap = parse_wrap_spec(c)
-            pth = Path(raw_path)
-            cand_specs.append((pth, extract_episodes_from_name(pth), wrap))
+            pth = Path(c)
+            cand_specs.append((pth, extract_episodes_from_name(pth)))
     elif args.input_dir:
-        cand_specs = [
-            (p, eps, None)
-            for p, eps in discover_candidates(
-                Path(args.input_dir).resolve(), args.episode_divisor
-            )
-        ]
+        cand_specs = discover_candidates(
+            Path(args.input_dir).resolve(), args.episode_divisor
+        )
     else:
         print("Provide --candidates or --input-dir.")
         return 1
@@ -870,19 +847,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 1
 
     print(f"Loading {len(cand_specs)} candidates ...")
-    candidates = [registry.get(p, eps, wrap) for p, eps, wrap in cand_specs]
+    candidates = [registry.get(p, eps) for p, eps in cand_specs]
 
     # --- Resolve anchor panel ----------------------------------------------
     if args.anchors:
-        panel = []
-        for a in args.anchors:
-            raw_path, wrap = parse_wrap_spec(a)
-            panel.append(registry.get(Path(raw_path), wrap=wrap))
+        panel = [registry.get(Path(a)) for a in args.anchors]
         # Canonical order: the frozen field assignment is drawn from panel
         # indices, so CLI argument order must not change the experiment.
-        # (model_id tiebreak only distinguishes wrapped arms of one file;
-        # raw-only panels keep their historical ordering.)
-        panel.sort(key=lambda m: (str(m.filepath), m.model_id))
+        panel.sort(key=lambda m: str(m.filepath))
         print(f"Reference panel: {[m.model_id for m in panel]}")
     else:
         strongest = max(

@@ -24,7 +24,6 @@ from sheepshead.agent.architectures.registry import (
     available_architectures,
     get_spec,
 )
-from sheepshead.agent.convention_wrapper import ConventionWrapper
 from sheepshead.agent.observation import (
     HEADER_KEYS,
     LEGACY_PICKER_MEMORY_KEYS,
@@ -107,11 +106,9 @@ class TestObservationContract:
             == RECALL_KEYS | LEGACY_PICKER_MEMORY_KEYS
         )
         # Scripted agents and anything without the attribute get the clean
-        # observation; a wrapper delegates to what it wraps.
+        # observation.
         assert needs_picker_memory(ScriptedAgent()) is False
         assert set(observation_for(player, ScriptedAgent())) == RECALL_KEYS
-        assert needs_picker_memory(ConventionWrapper(legacy)) is True
-        assert needs_picker_memory(ConventionWrapper(recall)) is False
 
     def test_needs_picker_memory_never_masks_a_broken_property(self):
         class Broken:

@@ -74,7 +74,7 @@ share lives here, under a public name.
 | `test_stop_rules.py` / `test_program.py` | The program's decision rules on recorded numbers; the orchestrator (command wiring, config round-trip, generation loop with scripted h2h, resume) |
 | `test_ismcts_exit_regression.py` / `test_ismcts_replay_equivalence.py` / `test_ismcts_committee.py` / `test_ismcts_oracle_leaves.py` / `test_committee_summary.py` | ISMCTS teacher: determinizer, forced replay, committee search, oracle leaves, committee summary |
 | `test_distill_pipeline.py` / `test_policy_iteration.py` | Search-corpus generation; the policy-iteration stages (fit, target, distill, cert) |
-| `test_scripted_agent.py` / `test_convention_wrapper.py` | Scripted baseline + convention wrappers |
+| `test_scripted_agent.py` | Scripted baseline |
 | `test_trump_lead_probe.py` / `test_called_suit_probe.py` | Analysis probe plumbing (shared geometry in `sheepshead/eval/conventions.py`) |
 
 ## When you change the algorithm, what do you update?

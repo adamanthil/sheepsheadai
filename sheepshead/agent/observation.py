@@ -51,9 +51,9 @@ LEGACY_PICKER_MEMORY_KEYS: frozenset[str] = frozenset({"blind_ids", "bury_ids"})
 
 def needs_picker_memory(agent) -> bool:
     """Whether ``agent`` consumes the legacy picker-memory interface. Read
-    off the agent (``PPOAgent.needs_picker_memory``; wrappers delegate to
-    the agent they wrap); anything without the attribute — scripted agents,
-    random baselines — gets the clean observation. A property that raises
+    off the agent (``PPOAgent.needs_picker_memory``); anything without the
+    attribute — scripted agents, random baselines — gets the clean
+    observation. A property that raises
     is re-raised, never read as "no" (a legacy agent silently fed the
     clean observation would encode zeros for its memory)."""
     try:
