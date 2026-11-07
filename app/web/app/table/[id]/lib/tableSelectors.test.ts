@@ -109,6 +109,17 @@ describe("computeContext", () => {
     expect(text(ctx.parts)).toBe("Leaster · 4× Doubler");
   });
 
+  it("gives your pick position from the dealer while picking", () => {
+    const first = computeContext(tableState({ yourSeat: 1 }), "pick", false);
+    expect(text(first.parts)).toBe("1st Position");
+    const dealer = computeContext(
+      tableState({ yourSeat: 5, table: { scoreMultiplier: 2 } }),
+      "pick",
+      false,
+    );
+    expect(text(dealer.parts)).toBe("5th Position · 2× Doubler");
+  });
+
   it("says only that while the last trick is open", () => {
     expect(computeContext(tableState(), "play", true).parts).toEqual([
       "Last trick",

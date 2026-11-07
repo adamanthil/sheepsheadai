@@ -167,6 +167,8 @@ export interface HandContext {
   faded: boolean;
 }
 
+const ORDINALS = ["1st", "2nd", "3rd", "4th", "5th"];
+
 /**
  * The line under the table: what the hand was declared as, kept in view
  * as a reference, e.g. "A♣ called", "A♥ called under", "J♦ partner",
@@ -189,7 +191,10 @@ export function computeContext(
 
   const facts: ContextPart[][] = [];
   let hasPartner = false;
-  if (view.is_leaster) {
+  if (phase === "pick" && yourSeat !== null) {
+    // Seats are numbered in pick order from the dealer's left.
+    facts.push([`${ORDINALS[yourSeat - 1]} Position`]);
+  } else if (view.is_leaster) {
     facts.push(["Leaster"]);
   } else if (picker) {
     if (view.alone) {
