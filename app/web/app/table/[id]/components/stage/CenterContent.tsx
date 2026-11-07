@@ -168,7 +168,7 @@ export function CenterContent({
                     Pass
                   </div>
                 </div>
-                <div className={styles.callLabel}>Pass the buck</div>
+                <div className={styles.callLabel}>Pass</div>
               </button>
             )}
           </div>

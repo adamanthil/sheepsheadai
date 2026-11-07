@@ -27,7 +27,7 @@ test("a pass shows before the server answers", async ({ page }) => {
   await createTableAndDeal(page, "Pass Tester", "e2e-predict-pass", {
     takeSeat: 1,
   });
-  const pass = page.getByRole("button", { name: /Pass the buck/ });
+  const pass = page.getByRole("button", { name: /^Pass/ });
   await expect(pass).toBeVisible();
 
   await holdActions(page);
@@ -66,7 +66,7 @@ test("a refused move goes back, with the reason", async ({ page }) => {
   await createTableAndDeal(page, "Refused Tester", "e2e-predict-refused", {
     takeSeat: 1,
   });
-  const pass = page.getByRole("button", { name: /Pass the buck/ });
+  const pass = page.getByRole("button", { name: /^Pass/ });
   await expect(pass).toBeVisible();
 
   await page.route(
