@@ -25,9 +25,12 @@ def reserved_ai_ids(table: Table) -> Set[str]:
 
 
 def pick_join_ai_seat(table: Table) -> Optional[int]:
-    """Pick a seat for a mid-hand newcomer: the first takeable AI seat not
-    reserved for a disconnected human's reclaim, or None to join unseated."""
-    reserved_ids = reserved_ai_ids(table)
+    """Pick a seat for a newcomer: the first takeable AI seat not reserved
+    for a disconnected human's reclaim or promised to a queued joiner, or
+    None to join unseated."""
+    reserved_ids = reserved_ai_ids(table) | {
+        c.queued_occupant for c in table.clients.values() if c.queued_occupant
+    }
     for i in range(1, 6):
         occ = table.seats.get(i)
         if (
@@ -72,23 +75,54 @@ def find_seat_of_occupant(table: Table, occ_id: str) -> Optional[int]:
     return None
 
 
-async def replace_ai_with_human_and_reserve(
-    table: Table, seat: int, client_id: str
-) -> None:
-    """Replace AI at seat with human client and remember the AI for future reclaim."""
+def seat_over_ai(table: Table, seat: int, client_id: str) -> None:
+    """Seat a human where the AI sits, keeping that AI to stand in for them
+    if they drop. Caller holds ``table.state_lock``."""
     prev_occ = table.seats.get(seat)
-    if not is_ai_occupant(table, prev_occ):
-        return
     table.seats[seat] = client_id
-    if client_id in table.clients:
-        table.clients[client_id].seat = seat
-    if prev_occ:
+    conn = table.clients.get(client_id)
+    if conn is not None:
+        conn.seat = seat
+        conn.queued_occupant = None
+    if is_ai_occupant(table, prev_occ):
         if prev_occ in reserved_ai_ids(table):
             placeholder = allocate_ai_occupant()
             table.occupants[placeholder.id] = placeholder
             table.reserved_ai_by_human[client_id] = placeholder.id
         else:
-            table.reserved_ai_by_human[client_id] = prev_occ
+            table.reserved_ai_by_human[client_id] = prev_occ  # type: ignore[assignment]
+
+
+def seat_queued_joiners(table: Table) -> list[tuple[ClientConn, int]]:
+    """Seat each newcomer who has watched a hand through, before the next
+    deal: in the AI seat they were promised, or another free one if it has
+    gone. One who is offline stays queued for the deal after. Returns who
+    sat where. Caller holds ``table.state_lock``."""
+    seated: list[tuple[ClientConn, int]] = []
+    for conn in table.clients.values():
+        occ = conn.queued_occupant
+        if occ is None or not conn.connected:
+            continue
+        conn.queued_occupant = None
+        if conn.seat is not None:
+            continue
+        seat = find_seat_of_occupant(table, occ)
+        if seat is None or occ in reserved_ai_ids(table):
+            seat = pick_join_ai_seat(table)
+        if seat is None:
+            continue
+        seat_over_ai(table, seat, conn.client_id)
+        seated.append((conn, seat))
+    return seated
+
+
+async def replace_ai_with_human_and_reserve(
+    table: Table, seat: int, client_id: str
+) -> None:
+    """Replace AI at seat with human client and remember the AI for future reclaim."""
+    if not is_ai_occupant(table, table.seats.get(seat)):
+        return
+    seat_over_ai(table, seat, client_id)
     conn = table.clients.get(client_id)
     if conn is not None:
         await post_presence_notice(table, conn, f"joined and took seat {seat}")

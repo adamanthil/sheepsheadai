@@ -46,6 +46,9 @@ class ClientConn:
     # The player asked to leave once the hand in play ends
     # (runtime.departures); they are unseated before the next deal.
     leave_after_hand: bool = False
+    # The AI occupant a mid-hand newcomer takes over from at the next deal
+    # (seating.seat_queued_joiners); they watch the hand in play until then.
+    queued_occupant: Optional[str] = None
 
     @property
     def connected(self) -> bool:

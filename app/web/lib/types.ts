@@ -113,4 +113,7 @@ export type TableStateMsg = {
   /** A spectator the turn clock moved out: the AI occupant now holding
    * their seat, which is the only seat they may take back. */
   homeOccupant?: string | null;
+  /** A mid-hand newcomer: the AI occupant they take over from at the next
+   * deal, while they watch this hand. */
+  queuedOccupant?: string | null;
 };

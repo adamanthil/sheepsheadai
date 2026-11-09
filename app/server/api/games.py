@@ -19,7 +19,7 @@ from server.realtime.broadcast import (
     broadcast_table_state,
     broadcast_table_update,
 )
-from server.realtime.chat import emit_bid_chat_message
+from server.realtime.chat import emit_bid_chat_message, post_presence_notice
 from server.runtime.ai_loop import schedule_ai_turns
 from server.runtime.ai_move import observe_human_decision, observe_trick_end
 from server.runtime.dealing import (
@@ -36,6 +36,7 @@ from server.runtime.seating import (
     home_seat,
     pick_join_ai_seat,
     schedule_ai_replacement_for_disconnected_human,
+    seat_queued_joiners,
 )
 from server.runtime.timing import FIRST_AI_MOVE_DELAY_SECONDS
 from server.runtime.turn_timer import cancel_turn_timer
@@ -126,6 +127,7 @@ async def next_hand(
         if table.status != "finished" or table.game is None:
             raise HTTPException(status_code=400, detail="no_hand_finished")
         host = _seat_the_host(table)
+        joiners = seat_queued_joiners(table)
         _require_full_table(table)
         _pass_the_deal(table)
         game = _deal(table)
@@ -134,6 +136,8 @@ async def next_hand(
     # doesn't come back, the AI takes the seat again after the usual grace.
     if host is not None and not host.connected:
         schedule_ai_replacement_for_disconnected_human(table, host.client_id)
+    for conn, _ in joiners:
+        await post_presence_notice(table, conn, "took a seat", toast=False)
     await _announce_deal(table, game)
     return table.to_public_dict()
 

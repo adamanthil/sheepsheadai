@@ -100,6 +100,7 @@ export const wsMessageSchema = z.discriminatedUnion("type", [
     turnSecondsLeft: z.number().nullable().optional(),
     turnSeconds: z.number().nullable().optional(),
     homeOccupant: z.string().nullable().optional(),
+    queuedOccupant: z.string().nullable().optional(),
   }),
   z.looseObject({
     type: z.literal("table_update"),

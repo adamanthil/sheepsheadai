@@ -424,6 +424,7 @@ export default function TablePage() {
       isMobile={isMobile}
       secondsLeft={secondsLeft}
       homeOccupant={lastState.homeOccupant}
+      queuedOccupant={lastState.queuedOccupant}
     />
   );
 

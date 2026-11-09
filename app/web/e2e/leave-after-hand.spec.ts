@@ -12,6 +12,9 @@ test("a guest leaves once the hand ends, onto its final scores", async ({
   const tableId = page.url().split("/table/")[1];
   const guest = await joinInNewPage(browser, tableId, "Guest");
   await guest.waitForURL(/\/table\//);
+  // Joining mid-hand watches by default; sit down now instead.
+  await guest.getByRole("button", { name: "Take seat now" }).click();
+  await expect(guest.getByText(/^Watching/)).toHaveCount(0);
 
   await guest.getByText("Leave", { exact: true }).click();
   await expect(guest.getByText("Leave now", { exact: true })).toBeVisible();

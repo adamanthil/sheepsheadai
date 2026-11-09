@@ -179,15 +179,16 @@ async def test_public_table_marks_human_dealt_seats_untakeable():
     assert takeable == {1: True, 2: False, 3: False, 4: True, 5: True}
 
 
-async def test_mid_hand_joiner_skips_human_dealt_seat(client, monkeypatch):
+async def test_mid_hand_joiner_watches_queued_for_an_ai_dealt_seat(client, monkeypatch):
     table, _, _ = _table_in_play()
     _with_human_dealt_ai_seat(table)
     table.game_player_is_ai[1] = False  # seat 1 is another absent human's
 
     joined = await _join_as_newcomer(client, monkeypatch)
 
-    assert table.clients[joined["client_id"]].seat == 4
-    assert table.seats[1] == "ai1" and table.seats[3] == "ai3"
+    conn = table.clients[joined["client_id"]]
+    assert conn.seat is None and conn.queued_occupant == "ai4"
+    assert [table.seats[i] for i in (1, 3, 4, 5)] == ["ai1", "ai3", "ai4", "ai5"]
 
 
 async def test_mid_hand_joiner_watches_when_every_ai_seat_is_human_dealt(
@@ -199,7 +200,8 @@ async def test_mid_hand_joiner_watches_when_every_ai_seat_is_human_dealt(
 
     joined = await _join_as_newcomer(client, monkeypatch)
 
-    assert table.clients[joined["client_id"]].seat is None
+    conn = table.clients[joined["client_id"]]
+    assert conn.seat is None and conn.queued_occupant is None
     assert [table.seats[i] for i in (1, 3, 4, 5)] == ["ai1", "ai3", "ai4", "ai5"]
 
 
@@ -250,3 +252,18 @@ async def test_timed_out_owner_may_take_back_their_human_dealt_seat(client):
 
     assert r.status_code == 200
     assert table.seats[2] == "seated"
+
+
+async def test_take_seat_now_ends_the_wait_for_the_next_deal(client):
+    table, _, spectator = _table_in_play()
+    table.clients["spectator"].queued_occupant = "ai4"
+
+    r = await client.post(
+        "/api/tables/t/seat",
+        json={"client_id": "spectator", "seat": 4},
+        headers={"x-test-player": str(spectator)},
+    )
+
+    assert r.status_code == 200
+    conn = table.clients["spectator"]
+    assert conn.seat == 4 and conn.queued_occupant is None

@@ -53,7 +53,7 @@ from server.runtime.manager import (
     tables,
 )
 from server.runtime.models import ClientConn, Table
-from server.runtime.occupants import allocate_ai_occupant, give_seat_to_ai
+from server.runtime.occupants import give_seat_to_ai
 from server.runtime.seating import (
     cancel_disconnect_task,
     home_seat,
@@ -62,7 +62,7 @@ from server.runtime.seating import (
     may_reclaim_seat,
     pick_join_ai_seat,
     replace_ai_with_human_and_reserve,
-    reserved_ai_ids,
+    seat_over_ai,
 )
 from server.runtime.timing import NEW_TABLE_GRACE_SECONDS
 from server.services.persistence import accounts as accounts_db
@@ -205,13 +205,13 @@ async def join_table(request: Request, table_id: str, req: JoinTableRequest):
                 table.creator_player_id = str(player_uuid)
 
         if table.status == "playing":
+            # Mid-hand, a newcomer watches the hand through and takes over
+            # from an AI at the next deal (or sooner, with Take seat now).
+            # With every AI seat holding a human's hand, they just watch.
             ai_seat = pick_join_ai_seat(table)
-            if ai_seat is None:
-                # Every AI seat is holding a human's hand: watch until the
-                # hand ends, then take a seat once the table reopens.
-                await post_presence_notice(table, conn, "joined and is watching")
-            else:
-                await replace_ai_with_human_and_reserve(table, ai_seat, client_id)
+            if ai_seat is not None:
+                conn.queued_occupant = table.seats[ai_seat]
+            await post_presence_notice(table, conn, "joined and is watching")
         else:
             # Every seat holds an AI or a human: the host sits at 5, anyone
             # else takes over the lowest AI seat.
@@ -290,17 +290,7 @@ async def choose_seat(
         # Moving between seats before the deal: the AI the player took
         # their old seat from sits back down in it.
         give_seat_to_ai(table, conn)
-
-        prev_occ = table.seats.get(req.seat)
-        table.seats[req.seat] = req.client_id
-        table.clients[req.client_id].seat = req.seat
-        if is_ai_occupant(table, prev_occ):
-            if prev_occ in reserved_ai_ids(table):
-                placeholder = allocate_ai_occupant()
-                table.occupants[placeholder.id] = placeholder
-                table.reserved_ai_by_human[req.client_id] = placeholder.id
-            else:
-                table.reserved_ai_by_human[req.client_id] = prev_occ  # type: ignore[assignment]
+        seat_over_ai(table, req.seat, req.client_id)
 
     await post_presence_notice(
         table, table.clients[req.client_id], f"took seat {req.seat}", toast=False

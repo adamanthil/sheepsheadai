@@ -59,6 +59,7 @@
   gap: 8px;
   justify-content: center;
   flex-wrap: wrap;
+  align-items: center;
 }
 /* Slightly shorter buttons than the shared .btn: the bar sits under the
    table on every phone, so its height comes straight out of the ring stage. */

@@ -194,3 +194,63 @@ async def test_a_host_without_a_free_seat_deals_and_watches(client):
 
     assert r.status_code == 200, r.text
     assert host.seat is None and "host" not in table.seats.values()
+
+
+def _queue(table: Table, cid: str, ai: str) -> ClientConn:
+    """A connected newcomer watching the hand, promised ``ai``'s seat."""
+    conn = ClientConn(
+        client_id=cid, display_name=cid, player_id=str(uuid.uuid4()), queued_occupant=ai
+    )
+    conn.sockets.add(_Socket())  # type: ignore[arg-type]
+    table.clients[cid] = conn
+    return conn
+
+
+async def test_a_queued_newcomer_takes_their_ai_seat_at_the_deal(client):
+    table = _table("finished")
+    late = _queue(table, "late", "ai3")
+
+    r = await _next_hand(client, table)
+
+    assert r.status_code == 200, r.text
+    # Seat 3, then down a seat with everyone else.
+    assert table.seats[2] == "late" and late.seat == 2
+    assert late.queued_occupant is None
+    assert table.reserved_ai_by_human["late"] == "ai3"
+
+
+async def test_a_queued_newcomer_whose_ai_is_gone_takes_another(client):
+    table = _table("finished")
+    late = _queue(table, "late", "ai3")
+    _join(table, "quick", seat=3)  # took seat 3 over between hands
+
+    r = await _next_hand(client, table)
+
+    assert r.status_code == 200, r.text
+    # Seat 1, the first AI seat left, then down into seat 5.
+    assert table.seats[5] == "late" and late.seat == 5
+
+
+async def test_an_offline_queued_newcomer_waits_for_a_later_deal(client):
+    table = _table("finished")
+    late = _queue(table, "late", "ai3")
+    late.sockets.clear()
+
+    r = await _next_hand(client, table)
+
+    assert r.status_code == 200, r.text
+    assert late.seat is None and late.queued_occupant == "ai3"
+
+
+async def test_the_host_and_a_queued_newcomer_get_different_seats(client):
+    table = _table("finished")
+    host = table.clients["host"]
+    host.sockets.add(_Socket())  # type: ignore[arg-type]
+    give_seat_to_ai(table, host)  # seat 5 to a fresh AI, nobody's to reclaim
+    late = _queue(table, "late", "ai1")
+
+    r = await _next_hand(client, table)
+
+    assert r.status_code == 200, r.text
+    # The host skips the AI promised to the newcomer.
+    assert {host.seat, late.seat} == {5, 2}
