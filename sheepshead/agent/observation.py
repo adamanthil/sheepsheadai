@@ -26,6 +26,8 @@ call site that bypasses the helper.
 
 from __future__ import annotations
 
+import numpy as np
+
 HEADER_KEYS: tuple[str, ...] = (
     "partner_mode",
     "is_leaster",
@@ -64,14 +66,37 @@ def needs_picker_memory(agent) -> bool:
         return False
 
 
+def observes_pre_play_leader(agent) -> bool:
+    """Whether ``agent`` reads ``leader_rel`` before play starts, read off
+    the agent like ``needs_picker_memory``. Every other agent was trained
+    on 0 there and keeps seeing it."""
+    try:
+        return bool(agent.observes_pre_play_leader)
+    except AttributeError:
+        if any("observes_pre_play_leader" in vars(k) for k in type(agent).__mro__):
+            raise
+        return False
+
+
+def without_pre_play_leader(state: dict) -> dict:
+    """``state`` as an agent that does not read the pre-play leader sees it,
+    for harnesses that hand one observation to several agents."""
+    if int(state["play_started"]):
+        return state
+    return {**state, "leader_rel": np.uint8(0)}
+
+
 def observation_for(player, agent, trick_index=None) -> dict:
     """The observation ``agent`` acts on at ``player``'s seat: the clean
     ``get_state_dict`` observation, merged with ``get_picker_memory`` only
-    for a legacy agent. ``trick_index`` is forwarded to ``get_state_dict``
-    (replay/search instruments observe past tricks)."""
+    for a legacy agent, and with the opening leader before play only for
+    an agent that reads it. ``trick_index`` is forwarded to
+    ``get_state_dict`` (replay/search instruments observe past tricks)."""
     obs = player.get_state_dict(trick_index=trick_index)
     if needs_picker_memory(agent):
         obs.update(player.get_picker_memory())
+    if observes_pre_play_leader(agent) and not player.game.play_started:
+        obs["leader_rel"] = player.get_opening_leader_rel()
     return obs
 
 

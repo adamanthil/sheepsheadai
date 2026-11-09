@@ -1095,6 +1095,12 @@ class Player:
         }
         return obs
 
+    def get_opening_leader_rel(self):
+        """This player's relative seat for the first trick's leader (seat 1,
+        left of the dealer): 1=self, 2=LHO, ... The player's position
+        relative to the dealer, known from the deal on."""
+        return np.uint8(((1 - self.position) % 5) + 1)
+
     def get_picker_memory(self):
         """The legacy picker-memory interface: this player's own blind and
         bury as fixed-size id arrays (zeros for everyone but the picker).

@@ -42,7 +42,11 @@ class TagAgent:
 
 
 def state_with_leader(rel: int) -> dict:
-    return {"leader_rel": np.uint8(rel), "trick_card_ids": np.zeros(5, dtype=np.uint8)}
+    return {
+        "leader_rel": np.uint8(rel),
+        "play_started": np.uint8(1),
+        "trick_card_ids": np.zeros(5, dtype=np.uint8),
+    }
 
 
 class TestLeadFollowRouting:

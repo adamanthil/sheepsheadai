@@ -31,7 +31,11 @@ from pathlib import Path
 
 import numpy as np
 
-from sheepshead.agent.observation import needs_picker_memory
+from sheepshead.agent.observation import (
+    needs_picker_memory,
+    observes_pre_play_leader,
+    without_pre_play_leader,
+)
 from sheepshead.eval.league_progress_eval import h2h_parallel_eval
 from sheepshead.eval.rigorous_eval import (
     Model,
@@ -79,6 +83,12 @@ class HeadRoutedAgent:
         keys; a legacy one raises without them)."""
         return any(needs_picker_memory(agent) for agent in self._agents())
 
+    @property
+    def observes_pre_play_leader(self) -> bool:
+        """True if ANY routed agent reads it; ``act`` strips it again for
+        the routed agents that were trained without it."""
+        return any(observes_pre_play_leader(agent) for agent in self._agents())
+
     def reset_recurrent_state(self):
         for agent in self._agents():
             agent.reset_recurrent_state()
@@ -90,7 +100,12 @@ class HeadRoutedAgent:
     def act(self, state, valid_actions, player_id, deterministic=True):
         outs = {
             id(agent): agent.act(
-                state, valid_actions, player_id, deterministic=deterministic
+                state
+                if observes_pre_play_leader(agent)
+                else without_pre_play_leader(state),
+                valid_actions,
+                player_id,
+                deterministic=deterministic,
             )
             for agent in self._agents()
         }
