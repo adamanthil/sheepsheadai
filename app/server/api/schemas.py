@@ -335,6 +335,17 @@ class CloseTableRequest(BaseModel):
     client_id: str
 
 
+class ScoreColumn(BaseModel):
+    # A player's own column, or the occupant id of an AI's (runtime.scores).
+    id: str
+    name: str
+
+
+class ScoreSegment(BaseModel):
+    # In seat order at the block's first deal.
+    columns: List[ScoreColumn]
+
+
 class TablePublic(BaseModel):
     id: str
     name: str
@@ -357,8 +368,8 @@ class TablePublic(BaseModel):
     closingAfterHand: bool
     host: Optional[str]
     resultsHistory: List[Dict[str, Any]]
-    initialSeatOrder: List[str]
-    initialNames: Dict[str, str]
+    # Blocks of hands played by one set of players (runtime.scores).
+    scoreSegments: List[ScoreSegment]
 
 
 class CreateTableResponse(TablePublic):

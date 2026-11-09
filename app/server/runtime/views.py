@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 
 from server.runtime.models import Table
+from server.runtime.scores import assign_score_columns
 from sheepshead.game import ACTION_IDS, Game
 from sheepshead.views import build_player_state
 
@@ -93,6 +94,9 @@ def get_actor_seat(table: Table) -> Optional[int]:
 def record_hand_result(table: Table) -> None:
     """Tally per-seat scores into running totals and append a results-history entry.
 
+    Each seat's score adds to its score column (runtime.scores), and the
+    entry names the block of hands it belongs to.
+
     Scores are scaled by the table's doublers stake, so a hand reached after
     two passed-out deals counts four times.
 
@@ -103,13 +107,14 @@ def record_hand_result(table: Table) -> None:
     if not table.game or table.results_counted:
         return
 
+    # A hand dealt outside games._deal (tests, mostly) has no columns yet.
+    if len(table.seat_columns) < 5:
+        assign_score_columns(table)
     multiplier = int(table.score_multiplier)
     for i in range(1, 6):
-        occ = table.seats[i]
-        if not occ:
-            continue
+        column = table.seat_columns[i]
         pscore = int(table.game.players[i - 1].get_score()) * multiplier
-        table.running_scores[occ] = table.running_scores.get(occ, 0) + pscore
+        table.running_scores[column] = table.running_scores.get(column, 0) + pscore
     table.results_counted = True
     table.hand_finished_at = time.monotonic()
 
@@ -118,6 +123,7 @@ def record_hand_result(table: Table) -> None:
             "hand": len(table.results_history) + 1,
             "timestamp": time.time(),
             "multiplier": multiplier,
+            "segment": len(table.score_segments) - 1,
             "bySeat": {},
             "sum": 0,
         }
@@ -134,6 +140,7 @@ def record_hand_result(table: Table) -> None:
             entry["bySeat"][i] = {
                 "name": pub["seats"][i],
                 "id": pub["seatOccupants"][i],
+                "column": table.seat_columns[i],
                 "score": score,
             }
             entry["sum"] += score

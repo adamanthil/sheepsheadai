@@ -32,6 +32,7 @@ from server.runtime.lifecycle import finish_hand, is_draining
 from server.runtime.manager import tables
 from server.runtime.models import ClientConn, Table
 from server.runtime.rules import plays_doublers
+from server.runtime.scores import assign_score_columns, rotate_score_columns
 from server.runtime.seating import (
     home_seat,
     pick_join_ai_seat,
@@ -184,6 +185,7 @@ def _pass_the_deal(table: Table) -> None:
         table.seats[i] = occ
         if occ and occ in table.clients:
             table.clients[occ].seat = i
+    rotate_score_columns(table)
 
 
 def _deal(table: Table) -> Game:
@@ -198,13 +200,7 @@ def _deal(table: Table) -> Game:
     # doublers deal raises it, and only until that hand is played out.
     table.doublings = 0
     table.pass_out_count = 0
-    if not table.initial_seat_order:
-        table.initial_seat_order = [str(table.seats[i] or "") for i in range(1, 6)]
-        pub = table.to_public_dict()
-        for i in range(1, 6):
-            occ = table.seats[i]
-            if occ:
-                table.initial_names[str(occ)] = pub["seats"][i]
+    assign_score_columns(table)
 
     refresh_table_agent(table)
     return game

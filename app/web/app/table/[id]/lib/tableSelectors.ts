@@ -1,4 +1,10 @@
-import type { GameView, TableStateMsg, TableView } from "../../../../lib/types";
+import type {
+  GameView,
+  HandResult,
+  ScoreSegment,
+  TableStateMsg,
+  TableView,
+} from "../../../../lib/types";
 import { parseCard } from "../../../../lib/ds";
 import { gameModeLabel, scoringModeLabel } from "../../../../lib/rules";
 import { accountForSeat, nameForSeat, isAiSeat } from "../utils/seatMath";
@@ -147,6 +153,58 @@ export function computeWinnerSeat(
   view: GameView,
 ): number | null {
   return showPrev ? view.last_trick_winner : null;
+}
+
+export interface ScoreBlockRow {
+  hand: number;
+  multiplier: number;
+  /** The picking team lost: the picker's score is negative. */
+  set: boolean;
+  /** Per column: the total through this hand, and this hand's own score. */
+  cells: Array<{ total: number; delta: number }>;
+}
+
+/** Hands played by one set of players, with running totals from 0. */
+export interface ScoreBlock {
+  columns: ScoreSegment["columns"];
+  rows: ScoreBlockRow[];
+}
+
+/** The scores card's blocks, oldest first, each starting over at the deal
+ * a new player was dealt in. Blocks with no finished hand are left out. */
+export function scoreBlocks(table: TableView): ScoreBlock[] {
+  const blocks: ScoreBlock[] = (table.scoreSegments ?? []).map((s) => ({
+    columns: s.columns,
+    rows: [],
+  }));
+  const history: HandResult[] = table.resultsHistory ?? [];
+  history.forEach((h, idx) => {
+    const block = blocks[h.segment ?? 0];
+    if (!block) return;
+    const entries = Object.values(h.bySeat ?? {});
+    const picker = entries.find((e) => h.picker != null && e.id === h.picker);
+    const prev = block.rows.at(-1)?.cells;
+    block.rows.push({
+      hand: h.hand || idx + 1,
+      multiplier: h.multiplier || 1,
+      set: !!picker && picker.score < 0,
+      cells: block.columns.map((c, i) => {
+        const delta = entries
+          .filter((e) => e.column === c.id)
+          .reduce((sum, e) => sum + (e.score || 0), 0);
+        return { delta, total: (prev?.[i].total ?? 0) + delta };
+      }),
+    });
+  });
+  return blocks.filter((b) => b.rows.length > 0);
+}
+
+/** Finished hands in the current block, the one the running scores count. */
+export function handsInCurrentBlock(table: TableView): number {
+  const current = (table.scoreSegments?.length ?? 0) - 1;
+  return (table.resultsHistory ?? []).filter(
+    (h: HandResult) => (h.segment ?? 0) === current,
+  ).length;
 }
 
 export function computeHandNumber(table: TableView): number {

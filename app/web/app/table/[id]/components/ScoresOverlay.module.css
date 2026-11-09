@@ -93,6 +93,12 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* A later block of hands, after a new player sat down: a subtle break
+   above its header row. */
+.block + .block tr:first-child th {
+  border-top: 1px solid var(--rule-strong);
+  padding-top: 18px;
+}
 /* Marks a hand that was played at a doubled doublers stake. */
 .handStake {
   margin-left: 5px;

@@ -1,6 +1,7 @@
 import React from "react";
 import { SeatAvatar, ds } from "../../../../lib/ds";
 import type { TableView } from "../../../../lib/types";
+import { handsInCurrentBlock } from "../lib/tableSelectors";
 
 interface ScoreboardProps {
   table: TableView;
@@ -23,7 +24,8 @@ export default function Scoreboard({
     string,
     string | null
   >;
-  const handCount = table.resultsHistory?.length ?? 0;
+  // Running scores restart when a new player is dealt in.
+  const handCount = handsInCurrentBlock(table);
 
   const rows = [1, 2, 3, 4, 5]
     .map((seat) => ({

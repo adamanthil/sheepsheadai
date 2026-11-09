@@ -1422,20 +1422,6 @@
             "title": "Id",
             "type": "string"
           },
-          "initialNames": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "title": "Initialnames",
-            "type": "object"
-          },
-          "initialSeatOrder": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Initialseatorder",
-            "type": "array"
-          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -1467,6 +1453,13 @@
             "default": 1,
             "title": "Scoremultiplier",
             "type": "integer"
+          },
+          "scoreSegments": {
+            "items": {
+              "$ref": "#/components/schemas/ScoreSegment"
+            },
+            "title": "Scoresegments",
+            "type": "array"
           },
           "seatAccount": {
             "additionalProperties": {
@@ -1556,8 +1549,7 @@
           "closingAfterHand",
           "host",
           "resultsHistory",
-          "initialSeatOrder",
-          "initialNames",
+          "scoreSegments",
           "host_key"
         ],
         "title": "CreateTableResponse",
@@ -2165,6 +2157,40 @@
         "title": "RulesUpdateResponse",
         "type": "object"
       },
+      "ScoreColumn": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "ScoreColumn",
+        "type": "object"
+      },
+      "ScoreSegment": {
+        "properties": {
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ScoreColumn"
+            },
+            "title": "Columns",
+            "type": "array"
+          }
+        },
+        "required": [
+          "columns"
+        ],
+        "title": "ScoreSegment",
+        "type": "object"
+      },
       "SeatRequest": {
         "properties": {
           "client_id": {
@@ -2228,20 +2254,6 @@
             "title": "Id",
             "type": "string"
           },
-          "initialNames": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "title": "Initialnames",
-            "type": "object"
-          },
-          "initialSeatOrder": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Initialseatorder",
-            "type": "array"
-          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -2273,6 +2285,13 @@
             "default": 1,
             "title": "Scoremultiplier",
             "type": "integer"
+          },
+          "scoreSegments": {
+            "items": {
+              "$ref": "#/components/schemas/ScoreSegment"
+            },
+            "title": "Scoresegments",
+            "type": "array"
           },
           "seatAccount": {
             "additionalProperties": {
@@ -2362,8 +2381,7 @@
           "closingAfterHand",
           "host",
           "resultsHistory",
-          "initialSeatOrder",
-          "initialNames"
+          "scoreSegments"
         ],
         "title": "TablePublic",
         "type": "object"

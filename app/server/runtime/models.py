@@ -120,9 +120,8 @@ class Table:
     turn_deadline: Optional[float] = None
     # Full length of the running turn timer, for the client's clock bar
     turn_seconds: Optional[float] = None
-    running_scores: Dict[str, int] = field(
-        default_factory=dict
-    )  # occupant_id -> cumulative score
+    # Score column -> total over the current block of hands (runtime.scores)
+    running_scores: Dict[str, int] = field(default_factory=dict)
     # Doublings stacked onto the stake of the hand in progress. Add to it only
     # through stack_doubling(), which enforces the cap shared by every
     # doubling rule; it resets to 0 once a hand is actually played out.
@@ -133,10 +132,12 @@ class Table:
     results_counted: bool = False
     # History of completed hands at this table (in chronological order)
     results_history: List[Dict[str, Any]] = field(default_factory=list)
-    # Stable ordering of players for score display: occupant ids in the order of seats 1..5 at the first hand start
-    initial_seat_order: List[str] = field(default_factory=list)
-    # Snapshot of display names at first hand start, keyed by occupant id
-    initial_names: Dict[str, str] = field(default_factory=dict)
+    # Blocks of hands played by one set of players, oldest first: each is
+    # {"columns": [{"id", "name"}, ...]} in seat order at its first deal
+    # (runtime.scores). Results-history entries name their block by index.
+    score_segments: List[Dict[str, Any]] = field(default_factory=list)
+    # Seat -> score column of the hand in play (or the last one)
+    seat_columns: Dict[int, str] = field(default_factory=dict)
     # Pending disconnect replacement tasks keyed by human client_id
     disconnect_tasks: Dict[str, asyncio.Task] = field(default_factory=dict)
     # Reserved AI occupant id to reclaim per human client id
@@ -201,6 +202,13 @@ class Table:
             return True
         return self.game_player_is_ai.get(seat, True)
 
+    def score_column_key(self, occ_id: str) -> str:
+        """The score column a hand played by ``occ_id`` adds to on its
+        own: a human's player identity, so the same person rejoining under
+        a new client id keeps their column, else the occupant id."""
+        conn = self.clients.get(occ_id)
+        return (conn.player_id or occ_id) if conn else occ_id
+
     @property
     def score_multiplier(self) -> int:
         """Stake the hand in progress is played for: 1 doubled per doubling."""
@@ -231,12 +239,15 @@ class Table:
         seats_named = {i: seat_name(self.seats[i]) for i in self.seats}
         seats_ids = {i: self.seats[i] for i in self.seats}
 
+        # A newcomer seated between hands starts at 0, not on the total of
+        # the seat's column they will leave behind at the next deal.
         running_by_seat = {}
         for i in self.seats:
             occ = self.seats[i]
-            running_by_seat[i] = (
-                int(self.running_scores.get(occ or "", 0)) if occ else 0
-            )
+            column = self.seat_columns.get(i)
+            if occ in self.clients and self.score_column_key(occ) != column:
+                column = None
+            running_by_seat[i] = int(self.running_scores.get(column or "", 0))
 
         seat_is_ai = {}
         for i in self.seats:
@@ -282,6 +293,5 @@ class Table:
                 else None
             ),
             "resultsHistory": self.results_history,
-            "initialSeatOrder": self.initial_seat_order,
-            "initialNames": self.initial_names,
+            "scoreSegments": self.score_segments,
         }

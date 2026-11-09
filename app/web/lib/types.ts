@@ -23,7 +23,11 @@ export type HandResult = {
   hand?: number;
   /** Doublers stake the hand counted for; the scores already include it. */
   multiplier?: number;
-  bySeat?: Record<string, { id: string; score: number }>;
+  /** Index into TableView.scoreSegments: the block of hands it was played in. */
+  segment?: number;
+  /** Per seat: the occupant who finished the hand and the score column
+   * (a ScoreSegment column id) the hand counts toward. */
+  bySeat?: Record<string, { id: string; column: string; score: number }>;
   sum?: number;
   /** The picker's occupant id; null on a leaster. */
   picker?: string | null;
@@ -48,6 +52,7 @@ export interface ChatMessage {
 /** The table object inside WebSocket state messages is the same
  * to_public_dict() payload the REST endpoints return. */
 export type TableView = TablePublic;
+export type ScoreSegment = components["schemas"]["ScoreSegment"];
 
 export type FinalState = {
   mode?: "leaster" | "standard";

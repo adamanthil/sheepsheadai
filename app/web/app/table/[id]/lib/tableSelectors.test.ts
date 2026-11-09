@@ -6,6 +6,8 @@ import {
   computeIsYourTurn,
   computeValidActionStrings,
   formatClock,
+  handsInCurrentBlock,
+  scoreBlocks,
   stakeBadgeText,
 } from "./tableSelectors";
 
@@ -136,5 +138,82 @@ describe("badges and clock", () => {
   it("formats the turn clock", () => {
     expect(formatClock(120)).toBe("2:00");
     expect(formatClock(5)).toBe("0:05");
+  });
+});
+
+describe("scoreBlocks", () => {
+  const cols = (...ids: string[]) => ids.map((id) => ({ id, name: id }));
+  // Two-seat hands keep the fixtures short; the columns are what count.
+  const hand = (
+    segment: number,
+    picker: string | null,
+    scores: Array<[id: string, column: string, score: number]>,
+  ) => ({
+    segment,
+    picker,
+    bySeat: Object.fromEntries(
+      scores.map(([id, column, score], i) => [i + 1, { id, column, score }]),
+    ),
+  });
+  const table = tableState({
+    table: {
+      scoreSegments: [
+        { columns: cols("ann", "ai1") },
+        { columns: cols("bob", "ann") },
+      ],
+      resultsHistory: [
+        hand(0, "ann", [
+          ["ann", "ann", 2],
+          ["ai1", "ai1", -2],
+        ]),
+        // The AI stood in for Ann, on her column, and was set.
+        hand(0, "stand-in", [
+          ["stand-in", "ann", -4],
+          ["ai1", "ai1", 4],
+        ]),
+        // Bob was dealt in: a new block from 0.
+        hand(1, null, [
+          ["bob", "bob", 3],
+          ["ann", "ann", -3],
+        ]),
+      ],
+    },
+  }).table;
+
+  it("restarts running totals in each block of players", () => {
+    const blocks = scoreBlocks(table);
+
+    expect(blocks.map((b) => b.columns.map((c) => c.id))).toEqual([
+      ["ann", "ai1"],
+      ["bob", "ann"],
+    ]);
+    expect(blocks.map((b) => b.rows.map((r) => r.cells))).toEqual([
+      [
+        [
+          { delta: 2, total: 2 },
+          { delta: -2, total: -2 },
+        ],
+        [
+          { delta: -4, total: -2 },
+          { delta: 4, total: 2 },
+        ],
+      ],
+      [
+        [
+          { delta: 3, total: 3 },
+          { delta: -3, total: -3 },
+        ],
+      ],
+    ]);
+  });
+
+  it("marks the hands the picker was set", () => {
+    expect(scoreBlocks(table).flatMap((b) => b.rows.map((r) => r.set))).toEqual(
+      [false, true, false],
+    );
+  });
+
+  it("counts only the current block's hands for the running scores", () => {
+    expect(handsInCurrentBlock(table)).toBe(1);
   });
 });

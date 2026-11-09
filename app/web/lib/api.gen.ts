@@ -1037,12 +1037,6 @@ export interface components {
             host_key: string;
             /** Id */
             id: string;
-            /** Initialnames */
-            initialNames: {
-                [key: string]: string;
-            };
-            /** Initialseatorder */
-            initialSeatOrder: string[];
             /** Name */
             name: string;
             /**
@@ -1064,6 +1058,8 @@ export interface components {
              * @default 1
              */
             scoreMultiplier: number;
+            /** Scoresegments */
+            scoreSegments: components["schemas"]["ScoreSegment"][];
             /** Seataccount */
             seatAccount: {
                 [key: string]: string | null;
@@ -1324,6 +1320,18 @@ export interface components {
             /** Status */
             status: string;
         };
+        /** ScoreColumn */
+        ScoreColumn: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** ScoreSegment */
+        ScoreSegment: {
+            /** Columns */
+            columns: components["schemas"]["ScoreColumn"][];
+        };
         /** SeatRequest */
         SeatRequest: {
             /** Client Id */
@@ -1346,12 +1354,6 @@ export interface components {
             host: string | null;
             /** Id */
             id: string;
-            /** Initialnames */
-            initialNames: {
-                [key: string]: string;
-            };
-            /** Initialseatorder */
-            initialSeatOrder: string[];
             /** Name */
             name: string;
             /**
@@ -1373,6 +1375,8 @@ export interface components {
              * @default 1
              */
             scoreMultiplier: number;
+            /** Scoresegments */
+            scoreSegments: components["schemas"]["ScoreSegment"][];
             /** Seataccount */
             seatAccount: {
                 [key: string]: string | null;

@@ -18,9 +18,12 @@ const looseTable = z.looseObject({
   status: z.enum(["open", "playing", "finished"]),
   name: z.string(),
   host: z.string().nullable(),
-  initialNames: z.record(z.string(), z.string()),
-  initialSeatOrder: z.array(z.string()),
   resultsHistory: z.array(z.looseObject({})),
+  scoreSegments: z.array(
+    z.object({
+      columns: z.array(z.object({ id: z.string(), name: z.string() })),
+    }),
+  ),
   rules,
   scoreMultiplier: z.number(),
   passOutCount: z.number(),
