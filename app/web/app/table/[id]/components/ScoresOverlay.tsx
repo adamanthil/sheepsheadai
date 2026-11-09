@@ -69,15 +69,17 @@ export default function ScoresOverlay({
   const isSet = (row: (typeof rows)[number]) =>
     row.picker !== null && scoreFor(row, row.picker) < 0;
 
-  const totalById: Record<string, number> = {};
-  columns.forEach((c) => {
-    totalById[c.id] = 0;
-  });
-  rows.forEach((r) => {
-    columns.forEach((c) => {
-      totalById[c.id] += scoreFor(r, c.id);
-    });
-  });
+  // Each row shows the totals through that hand; the hand's own score
+  // stays in the cell's tooltip.
+  const runningById: Record<string, number> = {};
+  const cumulative = rows.map((r) =>
+    columns.map((c) => {
+      const delta = scoreFor(r, c.id);
+      runningById[c.id] = (runningById[c.id] ?? 0) + delta;
+      return { delta, total: runningById[c.id] };
+    }),
+  );
+  const signed = (n: number) => (n > 0 ? `+${n}` : String(n));
 
   return (
     <div className={styles.scoresOverlay}>
@@ -131,7 +133,15 @@ export default function ScoresOverlay({
               </thead>
               <tbody>
                 {rows.map((r, idx) => (
-                  <tr key={idx} className={isSet(r) ? styles.set : undefined}>
+                  <tr
+                    key={idx}
+                    className={[
+                      isSet(r) && styles.set,
+                      idx === rows.length - 1 && styles.latest,
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                  >
                     <td className={styles.tdHand}>
                       {r.hand}
                       {r.multiplier > 1 && (
@@ -143,21 +153,17 @@ export default function ScoresOverlay({
                         </span>
                       )}
                     </td>
-                    {columns.map((c, i) => (
-                      <td key={i} className={styles.tdRight}>
-                        {scoreFor(r, c.id)}
+                    {cumulative[idx].map(({ delta, total }, i) => (
+                      <td
+                        key={i}
+                        className={styles.tdRight}
+                        title={`This hand: ${signed(delta)}`}
+                      >
+                        {total}
                       </td>
                     ))}
                   </tr>
                 ))}
-                <tr>
-                  <td className={styles.tdTotalLabel}>Total</td>
-                  {columns.map((c, i) => (
-                    <td key={i} className={styles.tdRightTotal}>
-                      {totalById[c.id]}
-                    </td>
-                  ))}
-                </tr>
               </tbody>
             </table>
           </div>

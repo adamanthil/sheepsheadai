@@ -116,17 +116,9 @@
 .set .tdRight {
   color: var(--card-red);
 }
-.tdTotalLabel {
-  font-family: var(--font-ui);
+/* The latest hand's row carries the current totals. */
+.latest .tdRight {
   font-weight: 600;
-  color: var(--ink);
-}
-.tdRightTotal {
-  text-align: right;
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-  color: var(--ink);
 }
 
 @media (max-width: 560px) {
@@ -158,10 +150,9 @@
   .thName {
     max-width: 8ch;
   }
-  /* Keep the hand/total column to its content so names get the rest. */
+  /* Keep the hand column to its content so names get the rest. */
   .thLeft,
-  .tdHand,
-  .tdTotalLabel {
+  .tdHand {
     width: 1%;
     white-space: nowrap;
   }
