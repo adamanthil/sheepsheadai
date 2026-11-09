@@ -32,9 +32,9 @@ from pathlib import Path
 import numpy as np
 
 from sheepshead.agent.observation import (
-    needs_picker_memory,
-    observes_pre_play_leader,
-    without_pre_play_leader,
+    LegacyObservation,
+    actor_state_for,
+    legacy_observation,
 )
 from sheepshead.eval.league_progress_eval import h2h_parallel_eval
 from sheepshead.eval.rigorous_eval import (
@@ -76,18 +76,21 @@ class HeadRoutedAgent:
         return list(unique.values())
 
     @property
-    def needs_picker_memory(self) -> bool:
+    def legacy_observation(self) -> LegacyObservation | None:
         """The harness observes through ``observation_for``, which reads
-        this off the acting agent: the legacy picker-memory keys are needed
-        if ANY routed agent consumes them (a clean encoder ignores the extra
-        keys; a legacy one raises without them)."""
-        return any(needs_picker_memory(agent) for agent in self._agents())
-
-    @property
-    def observes_pre_play_leader(self) -> bool:
-        """True if ANY routed agent reads it; ``act`` strips it again for
-        the routed agents that were trained without it."""
-        return any(observes_pre_play_leader(agent) for agent in self._agents())
+        this off the acting agent, so it builds what EVERY routed agent can
+        read: picker memory if any consumes it (a clean encoder ignores the
+        extra keys; a legacy one raises without them), and the pre-play
+        leader if any reads it (``act`` hides it again per agent)."""
+        contracts = [legacy_observation(agent) for agent in self._agents()]
+        if all(c is None for c in contracts):
+            return None
+        return LegacyObservation(
+            picker_memory=any(c is not None and c.picker_memory for c in contracts),
+            hides_pre_play_leader=all(
+                c is not None and c.hides_pre_play_leader for c in contracts
+            ),
+        )
 
     def reset_recurrent_state(self):
         for agent in self._agents():
@@ -100,9 +103,7 @@ class HeadRoutedAgent:
     def act(self, state, valid_actions, player_id, deterministic=True):
         outs = {
             id(agent): agent.act(
-                state
-                if observes_pre_play_leader(agent)
-                else without_pre_play_leader(state),
+                actor_state_for(state, agent),
                 valid_actions,
                 player_id,
                 deterministic=deterministic,

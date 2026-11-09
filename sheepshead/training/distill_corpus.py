@@ -74,6 +74,7 @@ import numpy as np
 from sheepshead.agent.observation import (
     last_trick_observation_for,
     observation_for,
+    oracle_observation_for,
 )
 from sheepshead.game import ACTIONS, PARTNER_BY_CALLED_ACE, PARTNER_BY_JD, TRUMP, Game
 from sheepshead.rewards import RETURN_SCALE
@@ -517,7 +518,7 @@ def play_corpus_game(task: tuple) -> dict:
                     # these; the legacy target above is act-time readout).
                     transition.update(summary.as_row_fields())
                 if collect_oracle:
-                    transition["oracle_state"] = player.get_oracle_state_dict()
+                    transition["oracle_state"] = oracle_observation_for(player, agent)
                 seat_transitions[player.position].append(transition)
 
                 if not is_private_action(action):

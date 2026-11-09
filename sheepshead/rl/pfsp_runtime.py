@@ -20,6 +20,7 @@ import numpy as np
 from sheepshead.agent.observation import (
     last_trick_observation_for,
     observation_for,
+    oracle_observation_for,
 )
 from sheepshead.agent.ppo import PPOAgent
 from sheepshead.game import Game
@@ -536,7 +537,9 @@ def play_population_game(
                         ),
                     }
                     if collect_oracle:
-                        transition["oracle_state"] = player.get_oracle_state_dict()
+                        transition["oracle_state"] = oracle_observation_for(
+                            player, training_agent
+                        )
                     episode_transitions.append(transition)
 
                     if shaped:

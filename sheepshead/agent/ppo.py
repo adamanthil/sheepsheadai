@@ -7,6 +7,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 from sheepshead.agent.architectures.registry import get_spec
+from sheepshead.agent.observation import LegacyObservation
 from sheepshead.game import (
     ACTION_IDS,
     BURY_ACTIONS,
@@ -363,18 +364,10 @@ class PPOAgent:
         self.reset_storage()
 
     @property
-    def needs_picker_memory(self) -> bool:
-        """Whether this agent's architecture consumes the legacy
-        picker-memory interface (``Player.get_picker_memory``); the
-        registry's ``ArchitectureSpec.legacy_picker_memory`` is the truth."""
-        return bool(get_spec(self.arch_name).legacy_picker_memory)
-
-    @property
-    def observes_pre_play_leader(self) -> bool:
-        """Whether this agent's architecture reads ``leader_rel`` before
-        play starts; ``ArchitectureSpec.observes_pre_play_leader`` is the
-        truth."""
-        return bool(get_spec(self.arch_name).observes_pre_play_leader)
+    def legacy_observation(self) -> LegacyObservation | None:
+        """How this agent's observation differs from the current one;
+        ``ArchitectureSpec.legacy_observation`` is the truth."""
+        return get_spec(self.arch_name).legacy_observation
 
     @property
     def observation_keys(self) -> tuple[str, ...]:

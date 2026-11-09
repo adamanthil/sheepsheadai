@@ -6,9 +6,9 @@ import torch
 
 from sheepshead.agent.architectures.pick_seat import PICK_CONTEXT_COUNT
 from sheepshead.agent.observation import (
+    hide_pre_play_leader,
     last_trick_observation_for,
     observation_for,
-    without_pre_play_leader,
 )
 from sheepshead.agent.ppo import PPOAgent
 from sheepshead.game import ACTIONS, Game
@@ -47,7 +47,7 @@ def test_stripping_restores_the_seat_blind_observation():
     aware = PPOAgent(len(ACTIONS), arch=ARCH)
     blind = PPOAgent(len(ACTIONS), arch="perceiver-recall")
     _, player = seated_at_pick(4)
-    stripped = without_pre_play_leader(observation_for(player, aware))
+    stripped = hide_pre_play_leader(observation_for(player, aware))
     for key, value in observation_for(player, blind).items():
         assert np.array_equal(stripped[key], value), key
 

@@ -29,7 +29,7 @@ from sheepshead.agent.observation import (
     LEGACY_PICKER_MEMORY_KEYS,
     RECALL_KEYS,
     TABLE_KEYS,
-    needs_picker_memory,
+    legacy_observation,
     observation_for,
 )
 from sheepshead.agent.ppo import (
@@ -98,8 +98,8 @@ class TestObservationContract:
         recall = PPOAgent(len(ACTIONS), arch="perceiver-recall")
         legacy = PPOAgent(len(ACTIONS), arch="perceiver-shared-v2-bp")
         player = Game(seed=1).players[0]
-        assert recall.needs_picker_memory is False
-        assert legacy.needs_picker_memory is True
+        assert recall.legacy_observation.picker_memory is False
+        assert legacy.legacy_observation.picker_memory is True
         assert set(observation_for(player, recall)) == RECALL_KEYS
         assert (
             set(observation_for(player, legacy))
@@ -107,21 +107,21 @@ class TestObservationContract:
         )
         # Scripted agents and anything without the attribute get the clean
         # observation.
-        assert needs_picker_memory(ScriptedAgent()) is False
+        assert legacy_observation(ScriptedAgent()) is None
         assert set(observation_for(player, ScriptedAgent())) == RECALL_KEYS
 
-    def test_needs_picker_memory_never_masks_a_broken_property(self):
+    def test_legacy_observation_never_masks_a_broken_property(self):
         class Broken:
             @property
-            def needs_picker_memory(self):
+            def legacy_observation(self):
                 raise AttributeError("arch attribute missing")
 
         class Plain:
             pass
 
         with pytest.raises(AttributeError, match="arch attribute missing"):
-            needs_picker_memory(Broken())
-        assert needs_picker_memory(Plain()) is False
+            legacy_observation(Broken())
+        assert legacy_observation(Plain()) is None
 
     def test_onehot_encoder_fails_loudly_on_the_clean_observation(self):
         state = Game(seed=1).players[0].get_state_dict()
@@ -144,15 +144,20 @@ class TestObservationContract:
         seed_all(0)
         agent = PPOAgent(len(ACTIONS), arch=arch)
         reads_legacy = bool(set(agent.observation_keys) & LEGACY_PICKER_MEMORY_KEYS)
-        assert reads_legacy == spec.legacy_picker_memory, arch
+        contract = spec.legacy_observation
+        assert reads_legacy == (contract is not None and contract.picker_memory), arch
 
     def test_only_the_recall_family_is_recall(self):
         recall = {
             name
             for name, spec in ARCHITECTURES.items()
-            if not spec.legacy_picker_memory
+            if spec.legacy_observation is None
+            or not spec.legacy_observation.picker_memory
         }
-        assert recall == set(RECALL_LADDER) | {"perceiver-recall-pickseat"}
+        assert recall == set(RECALL_LADDER) | {
+            "perceiver-recall-pickseat",
+            "perceiver-recall-seated",
+        }
 
 
 class TestRecallLadder:

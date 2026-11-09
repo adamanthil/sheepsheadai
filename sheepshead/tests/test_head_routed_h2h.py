@@ -79,29 +79,37 @@ class TestLeadFollowRouting:
         assert (shared.acts, shared.resets, shared.observes) == (2, 1, 1)
         assert (other.acts, other.resets, other.observes) == (2, 1, 1)
 
-    def test_picker_memory_need_delegates_to_any_routed_agent(self):
-        """The harness observes through observation_for, which reads
-        needs_picker_memory off the acting agent (the chimera). A legacy
-        member must pull the picker-memory keys in for everyone."""
-        from sheepshead.agent.observation import needs_picker_memory
+    def test_contract_covers_what_any_routed_agent_reads(self):
+        """The harness observes through observation_for, which reads the
+        contract off the acting agent (the chimera). A legacy member must
+        pull the picker-memory keys in for everyone, and a member that reads
+        the pre-play leader must keep it in the shared observation."""
+        from sheepshead.agent.observation import (
+            LEGACY_PICKER_MEMORY,
+            LEGACY_SEATLESS_RECALL,
+            legacy_observation,
+        )
 
         class Legacy(TagAgent):
-            needs_picker_memory = True
+            legacy_observation = LEGACY_PICKER_MEMORY
 
-        class Clean(TagAgent):
-            needs_picker_memory = False
+        class Seatless(TagAgent):
+            legacy_observation = LEGACY_SEATLESS_RECALL
 
-        assert (
-            needs_picker_memory(HeadRoutedAgent(TagAgent("b"), TagAgent("p"))) is False
+        assert legacy_observation(HeadRoutedAgent(TagAgent("b"), TagAgent("p"))) is None
+
+        seatless = legacy_observation(HeadRoutedAgent(Seatless("b"), Seatless("p")))
+        assert seatless == LEGACY_SEATLESS_RECALL
+
+        with_legacy = legacy_observation(
+            HeadRoutedAgent(Legacy("b"), Seatless("p"), lead_agent=Seatless("l"))
         )
-        assert needs_picker_memory(HeadRoutedAgent(Clean("b"), Clean("p"))) is False
-        assert needs_picker_memory(HeadRoutedAgent(Clean("b"), Legacy("p"))) is True
-        assert (
-            needs_picker_memory(
-                HeadRoutedAgent(Legacy("b"), Clean("p"), lead_agent=Clean("l"))
-            )
-            is True
-        )
+        assert with_legacy.picker_memory is True
+        assert with_legacy.hides_pre_play_leader is True
+
+        mixed = legacy_observation(HeadRoutedAgent(Seatless("b"), TagAgent("p")))
+        assert mixed.picker_memory is False
+        assert mixed.hides_pre_play_leader is False
 
 
 CAND = "runs/policy_iteration_202609/iter11/distill_epoch7.pt"

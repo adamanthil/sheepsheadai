@@ -51,6 +51,7 @@ from sheepshead.agent import ppo
 from sheepshead.agent.observation import (
     last_trick_observation_for,
     observation_for,
+    oracle_observation_for,
 )
 from sheepshead.agent.ppo import load_agent
 from sheepshead.eval.conventions import called_suit_fail
@@ -206,7 +207,7 @@ def collect_nodes(
             state = observation_for(actor, agent)
             valid = actor.get_valid_action_ids()
             if want_oracle:
-                oracle_events[pos].append(actor.get_oracle_state_dict())
+                oracle_events[pos].append(oracle_observation_for(actor, agent))
 
             probs, _v = policy_and_value(agent, state, valid, pid=pos)
 
@@ -282,7 +283,7 @@ def probe_branch(
             state = observation_for(actor, agent)
             valid = actor.get_valid_action_ids()
             if pos == node.leader and orc_events is not None and v_next_orc is None:
-                orc_events.append(actor.get_oracle_state_dict())
+                orc_events.append(oracle_observation_for(actor, agent))
             probs, v = policy_and_value(agent, state, valid, pid=pos)
             if pos == node.leader and v_next_lim is None:
                 v_next_lim = v
