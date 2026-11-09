@@ -57,6 +57,7 @@ def migrate(src: str, arch: str) -> tuple[PPOAgent, list[str]]:
     c_missing, c_unexpected = agent.critic.load_state_dict(
         checkpoint["critic_state_dict"], strict=False
     )
+    c_missing = [k for k in c_missing if not k.startswith("pick_seat_residual")]
     if c_missing or c_unexpected:
         raise SystemExit(
             f"critic mismatch: missing={c_missing} unexpected={c_unexpected}"
@@ -79,8 +80,8 @@ def migrate(src: str, arch: str) -> tuple[PPOAgent, list[str]]:
 def max_prob_divergence(
     a: PPOAgent, b: PPOAgent, games: int = 6, seed: int = 0
 ) -> float:
-    """Max |p_a - p_b| over every decision of ``games`` self-play games
-    driven by ``a`` (both agents observe the same stream)."""
+    """Max |p_a - p_b| or |v_a - v_b| over every decision of ``games``
+    self-play games driven by ``a`` (both agents observe the same stream)."""
     worst = 0.0
     for g in range(games):
         mode = PARTNER_BY_CALLED_ACE if g % 2 == 0 else PARTNER_BY_JD
@@ -91,21 +92,23 @@ def max_prob_divergence(
             for player in game.players:
                 valid = player.get_valid_action_ids()
                 while valid:
-                    action, _, _ = a.act(
+                    action, _, va = a.act(
                         observation_for(player, a),
                         valid,
                         player.position,
                         deterministic=True,
                     )
                     pa = np.asarray(a.last_action_probs, dtype=np.float64)
-                    b.act(
+                    _, _, vb = b.act(
                         observation_for(player, b),
                         valid,
                         player.position,
                         deterministic=True,
                     )
                     pb = np.asarray(b.last_action_probs, dtype=np.float64)
-                    worst = max(worst, float(np.abs(pa - pb).max()))
+                    worst = max(
+                        worst, float(np.abs(pa - pb).max()), abs(float(va) - float(vb))
+                    )
                     player.act(action)
                     if game.was_trick_just_completed and not game.is_done():
                         for seat in game.players:
@@ -136,7 +139,7 @@ def main(argv=None) -> int:
     div = max_prob_divergence(source, agent)
     if div > args.tol:
         raise SystemExit(
-            f"migrated agent diverges from the source (max |dp| {div:g} > {args.tol}); "
+            f"migrated agent diverges from the source (max |dp|, |dv| {div:g} > {args.tol}); "
             "the extra parameters are not inert at init — refusing to write"
         )
     agent.save(args.out)

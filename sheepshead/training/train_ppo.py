@@ -92,7 +92,7 @@ from sheepshead.training.league_streams import (
 )
 from sheepshead.training.league_worker import league_worker_init, publish_weights
 
-PHASES = ("bootstrap", "league", "bidding")
+PHASES = ("bootstrap", "league", "bidding", "pick_seat")
 
 # training_progress.csv schema (append-only: add at the end, never rename;
 # ensure_csv_columns migrates pre-existing files on resume).
@@ -266,7 +266,7 @@ class PhaseSpec:
     name: str
     reward_mode: str  # "shaped" | "terminal"
     critic_mode: str  # "limited" | "oracle"
-    trainable_heads: str  # "all" | "bidding"
+    trainable_heads: str  # "all" | "bidding" | "pick_seat"
     seat_rotation: bool
     grad_accum: bool
     gamma: float
@@ -300,13 +300,24 @@ PHASE_SPECS = {
         grad_accum=True,
         gamma=1.0,
     ),
+    # The bidding recipe, training only the pick seat residual
+    # (architectures/pick_seat.py) on a migrated checkpoint.
+    "pick_seat": PhaseSpec(
+        name="pick_seat",
+        reward_mode="terminal",
+        critic_mode="oracle",
+        trainable_heads="pick_seat",
+        seat_rotation=True,
+        grad_accum=True,
+        gamma=1.0,
+    ),
 }
 
 
 def hyperparams_for(phase: str):
     if phase == "bootstrap":
         return BootstrapHyperparams()
-    if phase == "bidding":
+    if phase in ("bidding", "pick_seat"):
         return BiddingHyperparams()
     return LeagueHyperparams()
 

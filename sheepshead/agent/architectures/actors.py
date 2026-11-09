@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from sheepshead.agent.architectures.pick_seat import PickSeatResidual
 from sheepshead.game import ACTION_IDS
 
 
@@ -40,6 +41,7 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         call_card_ids: torch.Tensor,
         play_under_action_index: int,
         bilinear_pointer: bool = False,
+        pick_seat_residual: bool = False,
     ):
         super(MultiHeadRecurrentActorNetwork, self).__init__()
         self.action_size = action_size
@@ -92,6 +94,10 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
             self.pointer_V = nn.Linear(self._d_token, self.pointer_hidden, bias=False)
             nn.init.zeros_(self.pointer_U.weight)
             nn.init.orthogonal_(self.pointer_V.weight, gain=1.0)
+        self.pick_seat_residual = (
+            PickSeatResidual(d_model) if pick_seat_residual else None
+        )
+        self._pick_slot = action_groups["pick"].index(ACTION_IDS["PICK"] - 1)
         # Two-tower (card CALL scoring)
         self.tw_latent = 64
         self.tw_Wg = nn.Linear(d_model, self.tw_latent)
@@ -191,6 +197,7 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
         action_mask: torch.Tensor | None = None,
         all_tokens: torch.Tensor | None = None,
         all_mask: torch.Tensor | None = None,
+        pick_context: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """Assemble full action logits from actor features and hand ids.
 
@@ -219,6 +226,12 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
 
         # PICK / PASS
         pick_logits = self.pick_head(feat)
+        if self.pick_seat_residual is not None:
+            if pick_context is None:
+                raise ValueError("pick_seat_residual needs the encoder's pick_context")
+            pick_delta = torch.zeros_like(pick_logits)
+            pick_delta[:, self._pick_slot] = self.pick_seat_residual(feat, pick_context)
+            pick_logits = pick_logits + pick_delta
         logits[:, self.action_groups["pick"]] = pick_logits
 
         # PARTNER: basic (ALONE, JD PARTNER)
@@ -321,6 +334,7 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
             action_mask=action_mask,
             all_tokens=encoder_out.get("all_tokens"),
             all_mask=encoder_out.get("all_mask"),
+            pick_context=encoder_out.get("pick_context"),
         )
         probs = F.softmax(logits, dim=-1)
         return probs
@@ -347,6 +361,7 @@ class MultiHeadRecurrentActorNetwork(nn.Module):
             action_mask=action_mask,
             all_tokens=encoder_out.get("all_tokens"),
             all_mask=encoder_out.get("all_mask"),
+            pick_context=encoder_out.get("pick_context"),
         )
         probs = F.softmax(logits, dim=-1)
         return probs, logits

@@ -23,6 +23,7 @@ from .critics import (
 from .encoders import (
     PerceiverCtxMemEncoder,
     PerceiverEncoder,
+    PickSeatRecallEncoder,
     PooledMemoryEncoder,
     RecallEncoder,
     SharedReadoutEncoder,
@@ -59,6 +60,10 @@ class ArchitectureSpec:
     # the runtime truth is encoder.observation_keys(), and the golden test
     # welds the two. New entries default to the recall contract.
     legacy_picker_memory: bool = False
+    # True when the agent reads leader_rel before play starts (the seat
+    # relative to the dealer); see observation.observation_for. Every other
+    # agent was trained on 0 there.
+    observes_pre_play_leader: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -88,6 +93,19 @@ def _bilinear_pointer_actor(action_size, action_groups, encoder, mappings):
         d_token=encoder.d_token_dim,
         d_model=encoder.d_model,
         bilinear_pointer=True,
+        **mappings,
+    )
+
+
+def _pick_seat_actor(action_size, action_groups, encoder, mappings):
+    return MultiHeadRecurrentActorNetwork(
+        action_size,
+        action_groups,
+        d_card=encoder.d_card_dim,
+        d_token=encoder.d_token_dim,
+        d_model=encoder.d_model,
+        bilinear_pointer=True,
+        pick_seat_residual=True,
         **mappings,
     )
 
@@ -131,6 +149,14 @@ def _perceiver_aux_critic(encoder):
 
 def _aux_critic(encoder):
     return RecurrentCriticNetwork(d_card=encoder.d_card_dim, d_model=encoder.d_model)
+
+
+def _pick_seat_critic(encoder):
+    return RecurrentCriticNetwork(
+        d_card=encoder.d_card_dim,
+        d_model=encoder.d_model,
+        pick_seat_residual=True,
+    )
 
 
 def _no_aux_critic(encoder):
@@ -730,6 +756,26 @@ register(
         build_actor=_bilinear_pointer_actor,
         build_critic=_aux_critic,
         legacy_picker_memory=False,
+        has_aux_heads=True,
+    )
+)
+
+
+register(
+    ArchitectureSpec(
+        name="perceiver-recall-pickseat",
+        description=(
+            "perceiver-recall plus zero-initialized seat residuals on the "
+            "pick head and limited critic, for surgery onto a trained "
+            "seat-blind checkpoint; loads one bit-identically via "
+            "research/migrate_arch_checkpoint.py. The trunk still sees "
+            "leader_rel = 0 before play."
+        ),
+        build_encoder=lambda: PickSeatRecallEncoder(card_config=CardEmbeddingConfig()),
+        build_actor=_pick_seat_actor,
+        build_critic=_pick_seat_critic,
+        legacy_picker_memory=False,
+        observes_pre_play_leader=True,
         has_aux_heads=True,
     )
 )

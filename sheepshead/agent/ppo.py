@@ -370,6 +370,13 @@ class PPOAgent:
         return bool(get_spec(self.arch_name).legacy_picker_memory)
 
     @property
+    def observes_pre_play_leader(self) -> bool:
+        """Whether this agent's architecture reads ``leader_rel`` before
+        play starts; ``ArchitectureSpec.observes_pre_play_leader`` is the
+        truth."""
+        return bool(get_spec(self.arch_name).observes_pre_play_leader)
+
+    @property
     def observation_keys(self) -> tuple[str, ...]:
         """Observation-dict keys this agent's encoder reads (sorted): the
         runtime form of the observation contract in agent/observation.py.
@@ -548,14 +555,21 @@ class PPOAgent:
                     is what makes the phase composable with search-driven
                     policy iteration — the two improvement operators never
                     touch the same parameters.
+        ``"pick_seat"`` only the actor's pick seat residual trains; every
+                    other actor and encoder parameter is frozen while the
+                    critics keep training, so a gain is attributable to
+                    the seat input.
         Frozen parameters keep ``requires_grad=False``; Adam skips them.
         """
-        if mode not in ("all", "bidding"):
+        if mode not in ("all", "bidding", "pick_seat"):
             raise ValueError(f"unknown trainable-heads mode: {mode!r}")
         train_all = mode == "all"
         for prm in self.encoder.parameters():
             prm.requires_grad_(train_all)
         for name, prm in self.actor.named_parameters():
+            if mode == "pick_seat":
+                prm.requires_grad_(name.startswith("pick_seat_residual"))
+                continue
             is_play = name.startswith(self.PLAY_HEAD_PREFIXES)
             prm.requires_grad_(train_all or not is_play)
         self.trainable_heads = mode
@@ -1303,6 +1317,11 @@ class PPOAgent:
             all_mask_bt.reshape(B * T, -1) if all_mask_bt is not None else None
         )
 
+        pick_context_bt = encoder_out_seq.get("pick_context")  # (B, T)
+        flat_pick_context = (
+            pick_context_bt.reshape(B * T) if pick_context_bt is not None else None
+        )
+
         logits_flat = self.actor._build_logits_from_features(
             actor_features=flat_feat,
             hand_ids=flat_hand,
@@ -1311,6 +1330,7 @@ class PPOAgent:
             action_mask=flat_mask,
             all_tokens=flat_all_tokens,
             all_mask=flat_all_mask,
+            pick_context=flat_pick_context,
         )
         logits_bt = logits_flat.view(B, T, -1)
 

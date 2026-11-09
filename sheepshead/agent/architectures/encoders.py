@@ -426,3 +426,37 @@ class RecallEncoder(SharedReadoutEncoder):
             "all_tokens": all_tokens,
             "all_mask": all_mask,
         }
+
+
+class PickSeatRecallEncoder(RecallEncoder):
+    """The ``perceiver-recall-pickseat`` encoder: a ``RecallEncoder`` whose
+    trunk keeps seeing ``leader_rel = 0`` before play, exactly as it was
+    trained, and which instead reports each row's pick context for the
+    seat residuals on the pick head and limited critic
+    (architectures/pick_seat.py)."""
+
+    def marshal_batch(self, batch, device=None):
+        marshalled = super().marshal_batch(batch, device)
+        fields = self.HEADER_FIELDS
+        header = marshalled["header_scalar"]
+        leader = header[:, fields.index("leader_rel")]
+        started = header[:, fields.index("play_started")]
+        picking = (
+            started.eq(0)
+            & header[:, fields.index("is_leaster")].eq(0)
+            & header[:, fields.index("picker_rel")].eq(0)
+            & leader.gt(0)
+        )
+        partner_mode = header[:, fields.index("partner_mode")]
+        marshalled["pick_context"] = (
+            (leader - 1) * 2 + partner_mode + 1
+        ).long() * picking
+        trunk_header = header.clone()
+        trunk_header[:, fields.index("leader_rel")] = leader * started
+        marshalled["header_scalar"] = trunk_header
+        return marshalled
+
+    def encode_tensors(self, obs, memory_in=None, device=None):
+        out = super().encode_tensors(obs, memory_in=memory_in, device=device)
+        out["pick_context"] = obs["pick_context"]
+        return out

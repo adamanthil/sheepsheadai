@@ -152,7 +152,7 @@ class TestObservationContract:
             for name, spec in ARCHITECTURES.items()
             if not spec.legacy_picker_memory
         }
-        assert recall == set(RECALL_LADDER)
+        assert recall == set(RECALL_LADDER) | {"perceiver-recall-pickseat"}
 
 
 class TestRecallLadder:
