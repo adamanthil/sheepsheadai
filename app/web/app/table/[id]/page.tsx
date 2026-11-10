@@ -572,7 +572,11 @@ export default function TablePage() {
           // Between hands the chat takes the hand's place, open: the time
           // between hands is when the table talks.
           <div className={`${styles.mobBody} ${styles.mobBetween}`}>
-            <div className={styles.mobBetweenStage}>{stage}</div>
+            <div
+              className={`${styles.mobBetweenStage} ${yourSeat === null ? styles.mobBetweenWatching : ""}`}
+            >
+              {stage}
+            </div>
             {final && (
               <div className={styles.mobResultLine}>
                 {resultLine(final, table, yourSeat)}

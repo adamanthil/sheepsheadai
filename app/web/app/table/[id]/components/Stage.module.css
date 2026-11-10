@@ -1,7 +1,11 @@
 /* ===== Desktop ring ===== */
 .deskStage {
+  --stage-h: min(480px, 52vh);
+  /* How far the bottom seat's name-plate reaches below its card's center:
+     half a card (104px wide at uiScale 1), the chip gap, and the plate. */
+  --plate-reach: 176px;
   position: relative;
-  height: min(480px, 52vh);
+  height: var(--stage-h);
   flex-shrink: 0;
   display: flex;
   justify-content: center;
@@ -16,13 +20,22 @@
    card anchors are percentage-based, so they track the taller stage. */
 @media (min-width: 1600px) and (min-height: 900px) {
   .deskStage {
-    height: min(544px, 54vh);
+    --stage-h: min(544px, 54vh);
+    --plate-reach: 187px;
   }
 }
 @media (min-width: 1920px) and (min-height: 1024px) {
   .deskStage {
-    height: min(620px, 56vh);
+    --stage-h: min(620px, 56vh);
+    --plate-reach: 199px;
   }
+}
+/* A spectator sees the bottom seat's full name-plate (a player there sees
+   only "You"), which hangs below the stage: make room for it before
+   whatever comes next. The bottom card's center sits 17% above the stage's foot
+   (RING_ANCHORS[0]). */
+.deskStage:has(.ringSeat[data-seat-rel="0"] .chip) {
+  margin-bottom: max(0px, calc(var(--plate-reach) - 0.17 * var(--stage-h)));
 }
 .deskInner {
   position: relative;
