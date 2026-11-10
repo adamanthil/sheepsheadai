@@ -117,6 +117,7 @@ def record_hand_result(table: Table) -> None:
         table.running_scores[column] = table.running_scores.get(column, 0) + pscore
     table.results_counted = True
     table.hand_finished_at = time.monotonic()
+    table.idle_warning_sent = False
 
     try:
         entry: Dict[str, Any] = {

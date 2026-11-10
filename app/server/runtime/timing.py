@@ -46,6 +46,10 @@ NEW_TABLE_GRACE_SECONDS = ABANDONED_TABLE_SECONDS
 LOBBY_EXPIRY_SECONDS = 20 * 60
 # A finished hand nobody deals on closes the table this long after it ended.
 HAND_IDLE_SECONDS = 5 * 60
+# Chat warns the table this long before that close. The sweep runs on its
+# own interval, so the warning and the close each land up to one interval
+# late, which keeps the gap between them about this long.
+HAND_IDLE_WARNING_SECONDS = 60
 # How often the idle sweep checks the two expiries above.
 SWEEP_INTERVAL_SECONDS = 30.0
 # A disconnected, unseated client keeps its reclaim rights this long; after

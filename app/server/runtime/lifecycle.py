@@ -9,6 +9,7 @@ from typing import Callable
 from fastapi import WebSocketDisconnect
 
 from server.realtime.broadcast import broadcast_table_event, broadcast_table_state
+from server.realtime.chat import add_chat_message, broadcast_chat_append
 from server.runtime.departures import see_off_departures
 from server.runtime.manager import tables
 from server.runtime.models import Table
@@ -17,6 +18,7 @@ from server.runtime.tasks import spawn
 from server.runtime.timing import (
     ABANDONED_TABLE_SECONDS,
     HAND_IDLE_SECONDS,
+    HAND_IDLE_WARNING_SECONDS,
     LOBBY_EXPIRY_SECONDS,
     SWEEP_INTERVAL_SECONDS,
 )
@@ -220,8 +222,31 @@ def idle_tables(now: float) -> list[tuple[Table, str]]:
     return due
 
 
+def tables_to_warn(now: float) -> list[Table]:
+    """Finished-hand tables within HAND_IDLE_WARNING_SECONDS of closing
+    for want of a deal, not yet warned, at monotonic time ``now``."""
+    return [
+        table
+        for table in tables.tables.values()
+        if table.hand_finished_at is not None
+        and not table.idle_warning_sent
+        and HAND_IDLE_SECONDS - HAND_IDLE_WARNING_SECONDS
+        <= now - table.hand_finished_at
+        < HAND_IDLE_SECONDS
+    ]
+
+
 async def sweep_idle_tables() -> None:
-    for table, reason in idle_tables(time.monotonic()):
+    now = time.monotonic()
+    for table in tables_to_warn(now):
+        table.idle_warning_sent = True
+        msg_dict = await add_chat_message(
+            table,
+            "system",
+            "The table closes in a minute unless the host deals the next hand.",
+        )
+        await broadcast_chat_append(table, msg_dict)
+    for table, reason in idle_tables(now):
         logging.info("closing idle table %s (%s)", table.id, reason)
         await close_table(table, reason=reason)
 

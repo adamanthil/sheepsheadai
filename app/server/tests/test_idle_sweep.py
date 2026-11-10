@@ -10,7 +10,11 @@ import server.runtime.lifecycle as lifecycle
 from server.runtime.lifecycle import idle_tables, sweep_idle_tables
 from server.runtime.manager import tables
 from server.runtime.models import ClientConn, Table
-from server.runtime.timing import HAND_IDLE_SECONDS, LOBBY_EXPIRY_SECONDS
+from server.runtime.timing import (
+    HAND_IDLE_SECONDS,
+    HAND_IDLE_WARNING_SECONDS,
+    LOBBY_EXPIRY_SECONDS,
+)
 
 
 class _Socket:
@@ -65,3 +69,18 @@ async def test_sweep_closes_idle_tables():
     await sweep_idle_tables()
 
     assert set(tables.tables) == {"fresh-lobby"}
+
+
+async def test_sweep_warns_a_minute_before_closing_for_want_of_a_deal():
+    almost = HAND_IDLE_SECONDS - HAND_IDLE_WARNING_SECONDS + 1
+    warned = _table("almost-idle", age=3600, dealt=True, finished_ago=almost)
+    fresh = _table("just-finished", age=3600, dealt=True, finished_ago=30)
+
+    await sweep_idle_tables()
+    await sweep_idle_tables()
+
+    assert [m["body"] for m in warned.chat_log] == [
+        "The table closes in a minute unless the host deals the next hand."
+    ]
+    assert not fresh.chat_log
+    assert set(tables.tables) == {"almost-idle", "just-finished"}

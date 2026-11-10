@@ -80,6 +80,9 @@ class Table:
     created_at: float = field(default_factory=time.monotonic)
     ever_dealt: bool = False
     hand_finished_at: Optional[float] = None
+    # The chat has been told the finished hand's table is about to close
+    # for want of a deal (runtime.lifecycle.sweep_idle_tables).
+    idle_warning_sent: bool = False
     # Who opened the table, for the per-player and per-IP open-table caps.
     # The player is known at creation only if they already had a session;
     # otherwise it is recorded when they use the host key.
