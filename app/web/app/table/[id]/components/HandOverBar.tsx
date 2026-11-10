@@ -60,12 +60,16 @@ export default function HandOverBar({
         )}
       </div>
       <div className={styles.secondary}>
-        <button
-          className={`${ds.btn} ${ds.btnGhost} ${ds.btnSm}`}
-          onClick={onShowScores}
-        >
-          Scores
-        </button>
+        {/* Hidden while the close is confirmed, to keep the buttons on one
+            line on a phone: cancelling brings it back. */}
+        {!confirmClose && (
+          <button
+            className={`${ds.btn} ${ds.btnGhost} ${ds.btnSm}`}
+            onClick={onShowScores}
+          >
+            Scores
+          </button>
+        )}
         {isHost ? (
           confirmClose ? (
             <>
