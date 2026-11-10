@@ -2,7 +2,7 @@ import React from "react";
 import { PlayingCard } from "../../../../../lib/ds";
 import { RING_ANCHORS } from "../../lib/seatLayout";
 import CollectOverlay from "../CollectOverlay";
-import { CenterContent, seatCardContent } from "./CenterContent";
+import { CenterContent, ResultTile, seatCardContent } from "./CenterContent";
 import { LastTrickButton, RingChip, roleName, showLastTrick } from "./chrome";
 import type { StageProps } from "./types";
 import styles from "../Stage.module.css";
@@ -13,7 +13,7 @@ export default function DesktopStage(props: StageProps) {
   const cardW = Math.round(104 * (props.uiScale ?? 1));
   const you = seats.find((s) => s.you);
   const youPlayed =
-    (props.phase === "play" || props.phase === "done") && you
+    (props.phase === "play" || props.phase === "done") && you && !props.result
       ? props.displayCards[you.absSeat - 1] || ""
       : "";
 
@@ -77,6 +77,20 @@ export default function DesktopStage(props: StageProps) {
               You
               {roleName(props.yourRole) ? ` · ${roleName(props.yourRole)}` : ""}
             </span>
+          </div>
+        )}
+
+        {props.result && you && (
+          <div
+            className={styles.ringSeat}
+            data-seat-rel={0}
+            style={{
+              left: `${RING_ANCHORS[0].cardX}%`,
+              top: `${RING_ANCHORS[0].cardY}%`,
+            }}
+          >
+            <ResultTile result={props.result} seat={you.absSeat} w={cardW} />
+            <span className={styles.youPlate}>You</span>
           </div>
         )}
 

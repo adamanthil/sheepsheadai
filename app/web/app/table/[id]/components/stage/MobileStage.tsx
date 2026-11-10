@@ -2,7 +2,7 @@ import React from "react";
 import { PlayingCard } from "../../../../../lib/ds";
 import { MOBILE_RING_ANCHORS } from "../../lib/seatLayout";
 import CollectOverlay from "../CollectOverlay";
-import { CenterContent, seatCardContent } from "./CenterContent";
+import { CenterContent, ResultTile, seatCardContent } from "./CenterContent";
 import { RingChip, roleName } from "./chrome";
 import type { StageProps } from "./types";
 import styles from "../Stage.module.css";
@@ -17,7 +17,9 @@ export default function MobileStage(props: StageProps) {
   const playing = props.phase === "play" || props.phase === "done";
   const you = seats.find((s) => s.you);
   const youPlayed =
-    playing && you ? props.displayCards[you.absSeat - 1] || "" : "";
+    playing && you && !props.result
+      ? props.displayCards[you.absSeat - 1] || ""
+      : "";
   return (
     <div
       className={`${styles.mobStage} ${playing ? styles.mobStagePlay : ""}`}
@@ -96,6 +98,20 @@ export default function MobileStage(props: StageProps) {
             You
             {roleName(props.yourRole) ? ` · ${roleName(props.yourRole)}` : ""}
           </span>
+        </div>
+      )}
+
+      {props.result && you && (
+        <div
+          className={styles.ringSeat}
+          data-seat-rel={0}
+          style={{
+            left: `${MOBILE_RING_ANCHORS[0].cardX}%`,
+            top: `${MOBILE_RING_ANCHORS[0].cardY}%`,
+          }}
+        >
+          <ResultTile result={props.result} seat={you.absSeat} />
+          <span className={styles.youPlate}>You</span>
         </div>
       )}
 

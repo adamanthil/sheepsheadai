@@ -5,6 +5,7 @@ import type {
   InterludeMode,
   YourRole,
 } from "../../lib/phase";
+import type { FinalState } from "../../../../../lib/types";
 import type { AnimTrick } from "../../hooks/useTrickAnimation";
 import type { StagedActions } from "../../hooks/useStagedActions";
 
@@ -67,4 +68,7 @@ export interface StageProps {
   trickBoxRef: React.RefObject<HTMLDivElement | null>;
   animTrick: AnimTrick | null;
   callout: string | null;
+  /** The hand just finished, while its result is on the table between
+   * hands: each seat shows its points and score, the center the outcome. */
+  result: FinalState | null;
 }

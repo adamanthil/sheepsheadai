@@ -1,4 +1,5 @@
 import type {
+  FinalState,
   GameView,
   HandResult,
   ScoreSegment,
@@ -279,6 +280,31 @@ export function computeContext(
     parts: facts.flatMap((fact, i) => (i === 0 ? fact : [" · ", ...fact])),
     faded: hasPartner && !!view.partner,
   };
+}
+
+/** The finished hand in one line, for the mobile table while the chat is
+ * in use: the outcome, and your own score when you played it. */
+export function resultLine(
+  final: FinalState,
+  table: TableView,
+  yourSeat: number | null,
+): string {
+  const signed = (n: number) => (n > 0 ? `+${n}` : String(n));
+  const parts: string[] = [];
+  if (final.mode === "leaster") {
+    const winner = final.winner ?? 0;
+    parts.push(
+      `${nameForSeat(winner, table)} wins the leaster with ${final.points_taken?.[winner - 1] ?? 0}`,
+    );
+  } else {
+    parts.push(
+      `Picker ${final.picker_score} – ${final.defender_score} Defenders`,
+    );
+  }
+  if (yourSeat !== null) {
+    parts.push(`You ${signed(final.scores?.[yourSeat - 1] ?? 0)}`);
+  }
+  return parts.join(" · ");
 }
 
 /** The turn clock as minutes and seconds, e.g. "2:00", "0:05". */

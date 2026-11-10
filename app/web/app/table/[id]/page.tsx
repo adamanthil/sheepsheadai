@@ -34,6 +34,7 @@ import {
   computeHandNumber,
   computeHasLastTrick,
   computeContext,
+  resultLine,
 } from "./lib/tableSelectors";
 import {
   useTableSocket,
@@ -41,7 +42,7 @@ import {
   useCallout,
   useStagedActions,
 } from "./hooks";
-import HandSummaryBanner from "./components/HandSummaryBanner";
+import HandOverBar from "./components/HandOverBar";
 import ScoresOverlay from "./components/ScoresOverlay";
 import CheatSheet from "../../how-to-play/CheatSheet";
 import TableHeader from "./components/TableHeader";
@@ -52,6 +53,7 @@ import TableStatus from "./components/TableStatus";
 import { LastTrickButton, showLastTrick } from "./components/stage/chrome";
 import SpectatorBar from "./components/SpectatorBar";
 import RightRail from "./components/RightRail";
+import { ChatPanel } from "../../components/chat";
 import MobileLogScreen from "./components/MobileLogScreen";
 
 const TOTAL_TRICKS = 6;
@@ -150,12 +152,6 @@ export default function TablePage() {
   const [showMenu, setShowMenu] = useState(false);
   const [showCheatSheet, setShowCheatSheet] = useState(false);
 
-  const chatUnread = useChatUnread(
-    mutes.visible(chatMessages),
-    clientId,
-    showMobileLog,
-  );
-
   // The after-hand choices (leave, or as host close) show the moment they
   // are made, ahead of the server's table_update; a refusal puts the
   // server's value back, with the reason shown. A choice is dropped once
@@ -212,6 +208,19 @@ export default function TablePage() {
   // from here, not an AI move). The beat starts once the previous trick has
   // been shown and collected, so the table can still be read.
   const trickOnShow = showPrev || animTrick !== null;
+  // Between hands the result is on the table once the last trick has been
+  // shown and collected; the player can still open the last trick, which
+  // shows in the result's place without leaving the between-hands layout.
+  const final = (lastState?.view.is_done && lastState.view.final) || null;
+  const betweenHands =
+    !!final && animTrick === null && (!showPrev || lastTrickOpen);
+
+  // On a phone the chat is on screen between hands, so it is read there too.
+  const chatUnread = useChatUnread(
+    mutes.visible(chatMessages),
+    clientId,
+    showMobileLog || (isMobile && betweenHands),
+  );
   const lastTrickPlay =
     isYourTurn &&
     !trickOnShow &&
@@ -359,6 +368,7 @@ export default function TablePage() {
       trickBoxRef={trickBoxRef}
       animTrick={animTrick}
       callout={callout?.message ?? null}
+      result={betweenHands && !showPrev ? final : null}
     />
   );
 
@@ -413,6 +423,18 @@ export default function TablePage() {
               isDealer: yourSeat === DEALER_SEAT,
             }
       }
+    />
+  );
+
+  // Between hands, the next step takes the hand's place.
+  const handOver = betweenHands && !departure && (
+    <HandOverBar
+      table={table}
+      onNextHand={nextHand}
+      onShowScores={() => setShowScores(true)}
+      isHost={isHost}
+      onCloseTable={closeTable}
+      onLeave={() => router.push("/")}
     />
   );
 
@@ -486,19 +508,6 @@ export default function TablePage() {
           }
         />
       )}
-      {/* Held back while the final trick is shown and collected, so the
-          banner doesn't cover the last cards played. */}
-      {!departure && view.is_done && view.final && !trickOnShow && (
-        <HandSummaryBanner
-          final={view.final}
-          table={table}
-          onNextHand={nextHand}
-          onShowScores={() => setShowScores(true)}
-          isHost={isHost}
-          onCloseTable={closeTable}
-          onLeave={() => router.push("/")}
-        />
-      )}
       {showScores && (
         <ScoresOverlay table={table} onClose={() => setShowScores(false)} />
       )}
@@ -559,12 +568,31 @@ export default function TablePage() {
     return (
       <div className={styles.root}>
         {header}
-        <div className={styles.mobBody}>
-          {stage}
-          {status}
-          {hand}
-          {spectatorBar}
-        </div>
+        {handOver ? (
+          // Between hands the chat takes the hand's place, open: the time
+          // between hands is when the table talks.
+          <div className={`${styles.mobBody} ${styles.mobBetween}`}>
+            <div className={styles.mobBetweenStage}>{stage}</div>
+            {final && (
+              <div className={styles.mobResultLine}>
+                {resultLine(final, table, yourSeat)}
+              </div>
+            )}
+            {status}
+            <div className={styles.mobHandOver}>{handOver}</div>
+            {spectatorBar}
+            <div className={styles.mobChat}>
+              <ChatPanel {...chat} />
+            </div>
+          </div>
+        ) : (
+          <div className={styles.mobBody}>
+            {stage}
+            {status}
+            {hand}
+            {spectatorBar}
+          </div>
+        )}
         {showMenu && (
           <TableMenu
             roomName={table.name}
@@ -594,7 +622,11 @@ export default function TablePage() {
           />
           {stage}
           {status}
-          {hand}
+          {handOver ? (
+            <div className={styles.deskHandOver}>{handOver}</div>
+          ) : (
+            hand
+          )}
           {spectatorBar}
         </div>
         <RightRail

@@ -1,7 +1,83 @@
 import React from "react";
 import { PlayingCard, ds } from "../../../../../lib/ds";
+import type { FinalState } from "../../../../../lib/types";
+import { stakeBadgeText } from "../../lib/tableSelectors";
 import type { SeatView, StageProps } from "./types";
 import styles from "../Stage.module.css";
+
+// ---------- The finished hand's result, between hands ----------
+/** A seat's score and points taken, in the card's place on the ring. */
+export function ResultTile({
+  result,
+  seat,
+  w,
+}: {
+  result: FinalState;
+  seat: number;
+  w?: number;
+}) {
+  const points = result.points_taken?.[seat - 1] ?? 0;
+  const score = result.scores?.[seat - 1] ?? 0;
+  const winner = result.mode === "leaster" && result.winner === seat;
+  return (
+    <div
+      className={`${styles.resultTile} ${winner ? styles.resultWinner : ""}`}
+      style={
+        w != null
+          ? ({ ["--pc-w" as string]: `${w}px` } as React.CSSProperties)
+          : undefined
+      }
+      aria-label={`${points} points, scored ${score}`}
+    >
+      <span
+        className={`${styles.resultScore} ${score > 0 ? styles.resultUp : score < 0 ? styles.resultDown : ""}`}
+      >
+        {score > 0 ? `+${score}` : score}
+      </span>
+      <span className={styles.resultPoints}>{points} pts</span>
+    </div>
+  );
+}
+
+/** The outcome in the middle of the ring: the team split and who won, or a
+ * leaster's winner. Per-seat points and scores are on the seats. */
+function ResultHeadline({
+  result,
+  seats,
+  mobile,
+}: {
+  result: FinalState;
+  seats: SeatView[];
+  mobile?: boolean;
+}) {
+  const stake = stakeBadgeText(result.multiplier);
+  if (result.mode === "leaster") {
+    const winner = result.winner ?? 0;
+    const name = seats.find((s) => s.absSeat === winner)?.name ?? "";
+    return (
+      <div className={`${styles.headline} ${mobile ? styles.headlineSm : ""}`}>
+        <div className={ds.overline}>Leaster{stake && ` · ${stake}`}</div>
+        <div className={styles.headlineMain}>{name} wins</div>
+        <div className={styles.centerSub}>
+          with {result.points_taken?.[winner - 1] ?? 0} pts
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className={`${styles.headline} ${mobile ? styles.headlineSm : ""}`}>
+      <div className={ds.overline}>Points{stake && ` · ${stake}`}</div>
+      <div className={styles.headlineMain}>
+        {result.picker_score} – {result.defender_score}
+      </div>
+      <div className={styles.headlineLabels}>
+        {/* "team" doesn't fit between the mobile ring's top seats. */}
+        <span>{mobile ? "Picker" : "Picker team"}</span>
+        <span>Defenders</span>
+      </div>
+    </div>
+  );
+}
 
 // ---------- Card content for a seat ----------
 // `w` is the card width in px; omit it (mobile) to let the CSS-driven --pc-w
@@ -12,6 +88,9 @@ export function seatCardContent(props: StageProps, seat: SeatView, w?: number) {
       ? ({ ["--pc-w" as string]: `${w}px` } as React.CSSProperties)
       : undefined;
   const { phase } = props;
+  if (props.result) {
+    return <ResultTile result={props.result} seat={seat.absSeat} w={w} />;
+  }
   if (phase === "play" || phase === "done") {
     const played = props.displayCards[seat.absSeat - 1] || "";
     if (played) {
@@ -109,6 +188,16 @@ export function CenterContent({
 }) {
   const { phase, yourMode, trickIndex, totalTricks } = props;
   const scale = mobile ? 1 : (props.uiScale ?? 1);
+
+  if (props.result) {
+    return (
+      <ResultHeadline
+        result={props.result}
+        seats={props.seats}
+        mobile={mobile}
+      />
+    );
+  }
 
   if (phase === "pick") {
     // Your decision → the blind itself is the Pick button, with a Pass card

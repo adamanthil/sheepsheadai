@@ -277,6 +277,94 @@
   white-space: nowrap;
 }
 
+/* ===== Between hands: the finished hand's result ===== */
+/* A seat's result in its card's place, sized off the same --pc-w, so the
+   name plates stay where they were through the hand. The score leads, in
+   the scoreboard's colours; the points taken sit under it. */
+.resultTile {
+  width: var(--pc-w, 64px);
+  height: calc(var(--pc-w, 64px) * 1.45);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: var(--bg-card);
+  box-shadow: var(--shadow-1);
+  line-height: 1;
+}
+.resultWinner {
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 1px var(--accent),
+    var(--shadow-1);
+}
+.resultScore {
+  font-family: var(--font-display);
+  font-size: calc(var(--pc-w, 64px) * 0.4);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.resultPoints {
+  font-family: var(--font-mono);
+  font-size: max(10px, calc(var(--pc-w, 64px) * 0.15));
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  white-space: nowrap;
+  margin-top: calc(var(--pc-w, 64px) * 0.1);
+}
+.resultUp {
+  color: var(--accent);
+}
+.resultDown {
+  color: var(--accent-2);
+}
+
+/* The outcome in the middle of the ring. */
+.headline {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.headline .centerSub {
+  margin-top: 0;
+}
+.headlineMain {
+  font-family: var(--font-display);
+  font-size: 34px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.headlineLabels {
+  display: flex;
+  gap: 18px;
+  font-family: var(--font-ui);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.headlineSm {
+  gap: 3px;
+}
+.headlineSm > :first-child {
+  font-size: 8px;
+}
+.headlineSm .headlineMain {
+  font-size: 22px;
+}
+.headlineSm .headlineLabels {
+  font-size: 8px;
+  gap: 10px;
+}
+.headlineSm .centerSub {
+  font-size: 12px;
+}
+
 /* Callout bulletin */
 .callout {
   position: absolute;

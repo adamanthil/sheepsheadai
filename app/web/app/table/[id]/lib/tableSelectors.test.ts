@@ -7,6 +7,7 @@ import {
   computeValidActionStrings,
   formatClock,
   handsInCurrentBlock,
+  resultLine,
   scoreBlocks,
   stakeBadgeText,
 } from "./tableSelectors";
@@ -215,5 +216,36 @@ describe("scoreBlocks", () => {
 
   it("counts only the current block's hands for the running scores", () => {
     expect(handsInCurrentBlock(table)).toBe(1);
+  });
+});
+
+describe("resultLine", () => {
+  const table = tableState({
+    table: {
+      seats: { "1": "Ann", "2": "Bob", "3": "Cy", "4": "Di", "5": "Ed" },
+    },
+  }).table;
+
+  it("gives the team split and your score", () => {
+    const final = {
+      mode: "standard" as const,
+      picker: 2,
+      picker_score: 58,
+      defender_score: 62,
+      scores: [1, -4, 1, 1, 1],
+    };
+    expect(resultLine(final, table, 1)).toBe(
+      "Picker 58 – 62 Defenders · You +1",
+    );
+  });
+
+  it("names a leaster's winner and leaves a spectator's score out", () => {
+    const final = {
+      mode: "leaster" as const,
+      winner: 3,
+      points_taken: [30, 41, 0, 25, 24],
+      scores: [-1, -1, 4, -1, -1],
+    };
+    expect(resultLine(final, table, null)).toBe("Cy wins the leaster with 0");
   });
 });

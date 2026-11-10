@@ -1,0 +1,32 @@
+/* Between hands, in the hand's place: the next step on the left, the rest
+   quieter on the right. */
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px 24px;
+  flex-shrink: 0;
+}
+.secondary {
+  display: flex;
+  gap: 8px;
+}
+/* Stands in for Next hand for everyone but the host. */
+.waitingHost {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+/* A phone's full width: the next step at the left edge, the rest at the
+   right. */
+@media (max-width: 560px) {
+  .bar {
+    justify-content: space-between;
+  }
+  .waitingHost {
+    font-size: 13px;
+  }
+}
