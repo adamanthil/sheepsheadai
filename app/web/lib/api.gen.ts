@@ -440,6 +440,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tables/{table_id}/leave": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Leave Table
+         * @description Leave the table now (runtime.departures): the AI takes the seat at
+         *     once, where a dropped connection's seat is held for its return.
+         */
+        post: operations["leave_table_api_tables__table_id__leave_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tables/{table_id}/leave_after_hand": {
         parameters: {
             query?: never;
@@ -1235,6 +1256,11 @@ export interface components {
             username: string;
             /** Win Pct */
             win_pct: number;
+        };
+        /** LeaveRequest */
+        LeaveRequest: {
+            /** Client Id */
+            client_id: string;
         };
         /** LoginRequest */
         LoginRequest: {
@@ -2194,6 +2220,41 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["KickRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OkResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    leave_table_api_tables__table_id__leave_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                table_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaveRequest"];
             };
         };
         responses: {

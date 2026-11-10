@@ -23,6 +23,7 @@ from server.api.schemas import (
     JoinTableRequest,
     JoinTableResponse,
     KickRequest,
+    LeaveRequest,
     OkResponse,
     RulesUpdateResponse,
     SeatRequest,
@@ -40,6 +41,7 @@ from server.realtime.chat import (
     post_presence_notice,
 )
 from server.runtime.ai_loop import schedule_ai_turns
+from server.runtime.departures import leave_now
 from server.runtime.lifecycle import (
     close_table,
     is_draining,
@@ -378,6 +380,32 @@ async def leave_after_hand(
             raise HTTPException(status_code=400, detail="not_seated")
         conn.leave_after_hand = req.on
     await broadcast_table_update(table)
+    return {"ok": True}
+
+
+@router.post("/api/tables/{table_id}/leave", response_model=OkResponse)
+@limiter.limit(GAME_ACTIONS)
+async def leave_table(
+    request: Request,
+    table_id: str,
+    req: LeaveRequest,
+    identity: PlayerIdentity = Depends(current_player),
+):
+    """Leave the table now (runtime.departures): the AI takes the seat at
+    once, where a dropped connection's seat is held for its return."""
+    try:
+        table = tables.get_table(table_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="table_not_found")
+
+    conn = require_client(table, req.client_id, identity)
+    cancel_disconnect_task(table, conn.client_id)
+    seat = await leave_now(table, conn)
+    if seat is not None and table.game is not None:
+        # The seat's hand is the AI's now, mid-turn or not.
+        await broadcast_table_state(table)
+        schedule_ai_turns(table)
+    schedule_autoclose_if_no_humans(table)
     return {"ok": True}
 
 

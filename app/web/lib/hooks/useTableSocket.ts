@@ -68,6 +68,8 @@ export interface UseTableSocketReturn {
   setCloseAfterHand: (on: boolean) => Promise<boolean>;
   /** Leave the table once the hand in play ends, or not. */
   setLeaveAfterHand: (on: boolean) => Promise<boolean>;
+  /** Leave the table now: the AI takes the seat at once. */
+  leaveTable: () => Promise<boolean>;
   nextHand: () => Promise<boolean>;
   /** Spectator only: take over the AI at ``seat``. */
   takeSeat: (seat: number) => Promise<boolean>;
@@ -265,6 +267,13 @@ export function useTableSocket(
           window.localStorage.removeItem(STORAGE_KEYS.clientId(tableId));
           socket.close();
           window.location.href = "/?notice=removed";
+        } else if (data.type === "left") {
+          // This player left (from this tab or another): every tab goes
+          // home, and a rejoin is a fresh join.
+          disposed = true;
+          window.localStorage.removeItem(STORAGE_KEYS.clientId(tableId));
+          socket.close();
+          window.location.replace("/");
         } else if (data.type === "left_after_hand") {
           // Carries the table with the hand just finished, which this
           // player is gone before the broadcast of.
@@ -401,6 +410,16 @@ export function useTableSocket(
     [post],
   );
 
+  /** Leave now: the AI takes the seat at once, instead of holding it for
+   * a return as it does when the connection merely drops. */
+  const leaveTable = useCallback(async () => {
+    const ok = await post("leave", {}, "Leave failed");
+    if (ok && tableId) {
+      window.localStorage.removeItem(STORAGE_KEYS.clientId(tableId));
+    }
+    return ok;
+  }, [post, tableId]);
+
   const setLeaveAfterHand = useCallback(
     (on: boolean) => post("leave_after_hand", { on }, "Leave failed"),
     [post],
@@ -469,6 +488,7 @@ export function useTableSocket(
     closeTable,
     setCloseAfterHand,
     setLeaveAfterHand,
+    leaveTable,
     nextHand,
     takeSeat,
     kickPlayer,

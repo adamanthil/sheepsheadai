@@ -1940,6 +1940,19 @@
         "title": "LeaderboardRow",
         "type": "object"
       },
+      "LeaveRequest": {
+        "properties": {
+          "client_id": {
+            "title": "Client Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_id"
+        ],
+        "title": "LeaveRequest",
+        "type": "object"
+      },
       "LoginRequest": {
         "additionalProperties": false,
         "properties": {
@@ -3437,6 +3450,56 @@
           }
         },
         "summary": "Kick Player"
+      }
+    },
+    "/api/tables/{table_id}/leave": {
+      "post": {
+        "description": "Leave the table now (runtime.departures): the AI takes the seat at\nonce, where a dropped connection's seat is held for its return.",
+        "operationId": "leave_table_api_tables__table_id__leave_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "table_id",
+            "required": true,
+            "schema": {
+              "title": "Table Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LeaveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Leave Table"
       }
     },
     "/api/tables/{table_id}/leave_after_hand": {

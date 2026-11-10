@@ -130,6 +130,7 @@ export const wsMessageSchema = z.discriminatedUnion("type", [
   }),
   z.looseObject({ type: z.literal("server_restart") }),
   z.looseObject({ type: z.literal("kicked") }),
+  z.looseObject({ type: z.literal("left") }),
   z.looseObject({
     type: z.literal("left_after_hand"),
     tableId: z.string().optional(),

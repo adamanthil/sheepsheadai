@@ -118,6 +118,7 @@ export default function TablePage() {
     closeTable,
     setCloseAfterHand,
     setLeaveAfterHand,
+    leaveTable,
     nextHand,
     takeSeat,
     kickPlayer,
@@ -427,6 +428,11 @@ export default function TablePage() {
     />
   );
 
+  // Said out loud, so the AI takes the seat now rather than holding it for
+  // a return; home either way, the server falling back to the hold if the
+  // request doesn't land.
+  const leaveNow = () => void leaveTable().finally(() => router.push("/"));
+
   // Between hands, the next step takes the hand's place; for a spectator
   // the SpectatorBar says what the table waits on instead, unless they
   // are the host and it is theirs to deal.
@@ -439,7 +445,7 @@ export default function TablePage() {
       onShowScores={() => setShowScores(true)}
       isHost={isHost}
       onCloseTable={closeTable}
-      onLeave={() => router.push("/")}
+      onLeave={leaveNow}
       lastTrick={mobLastTrick}
     />
   );
@@ -528,7 +534,7 @@ export default function TablePage() {
   const leave = {
     canLeaveAfterHand: handInPlay && yourSeat !== null && !departure,
     leavingAfterHand: leaveChoice ?? serverLeaving,
-    onLeave: () => router.push("/"),
+    onLeave: leaveNow,
     onLeaveAfterHand: chooseAfterHand(setLeaveChoice, setLeaveAfterHand),
   };
   const close = isHost

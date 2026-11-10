@@ -1,8 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { createTableAndDeal, joinInNewPage } from "./helpers";
 
-// Leave and Close table each offer to wait for the hand in play to end.
-// Nobody moves; the (2s, in e2e) turn clock plays the hand out.
+// Leave and Close table each offer to wait for the hand in play to end,
+// and Leave now goes at once. Nobody moves; the (2s, in e2e) turn clock
+// plays the hand out.
 
 test("a guest leaves once the hand ends, onto its final scores", async ({
   browser,
@@ -30,6 +31,27 @@ test("a guest leaves once the hand ends, onto its final scores", async ({
   await expect(guest.getByText("Connection rejected")).toHaveCount(0);
   // The host plays on.
   await expect(page.getByRole("button", { name: "Next hand →" })).toBeVisible();
+});
+
+test("a guest who leaves now hands their seat to the AI at once", async ({
+  browser,
+  page,
+}) => {
+  await createTableAndDeal(page, "Host", "e2e-leave-now");
+  const tableId = page.url().split("/table/")[1];
+  const guest = await joinInNewPage(browser, tableId, "Guest");
+  await guest.waitForURL(/\/table\//);
+  await guest.getByRole("button", { name: "Take seat now" }).click();
+  await expect(guest.getByText(/^Watching/)).toHaveCount(0);
+
+  await guest.getByText("Leave", { exact: true }).click();
+  await guest.getByText("Leave now", { exact: true }).click();
+  await guest.waitForURL((url) => !url.pathname.startsWith("/table/"));
+
+  // Well inside the grace a dropped connection gets.
+  await expect(page.getByText(/left\. Seat \d went to the AI\./)).toBeVisible({
+    timeout: 5_000,
+  });
 });
 
 test("the host ends the table once the hand ends", async ({ page }) => {

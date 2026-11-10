@@ -335,6 +335,10 @@ class CloseTableRequest(BaseModel):
     client_id: str
 
 
+class LeaveRequest(BaseModel):
+    client_id: str
+
+
 class ScoreColumn(BaseModel):
     # A player's own column, or the occupant id of an AI's (runtime.scores).
     id: str

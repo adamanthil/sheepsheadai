@@ -1,4 +1,5 @@
-"""Leaving, or closing the table, once the hand in play ends."""
+"""Leaving on purpose, now or once the hand in play ends, and closing the
+table once it ends."""
 
 from __future__ import annotations
 
@@ -12,7 +13,7 @@ from fastapi import Request
 
 from server.api.auth import PlayerIdentity, current_player
 from server.runtime.dealing import new_game_for_table
-from server.runtime.departures import LEFT_AFTER_HAND_WS_CODE
+from server.runtime.departures import LEFT_WS_CODE
 from server.runtime.lifecycle import finish_hand
 from server.runtime.manager import tables
 from server.runtime.models import ClientConn, Occupant, Table
@@ -102,13 +103,48 @@ async def test_guest_leaves_when_the_hand_ends(client):
     assert table.occupants[table.seats[2] or ""].is_ai
     left = next(m for m in ws.sent if m["type"] == "left_after_hand")
     assert len(left["table"]["resultsHistory"]) == 1
-    assert ws.closed_with == LEFT_AFTER_HAND_WS_CODE
+    assert ws.closed_with == LEFT_WS_CODE
     assert table.results_history[-1]["bySeat"][2]["id"] == "guest"
     last = table.chat_log[-1]
     assert (last["author"], last["body"]) == (
         "guest",
         "left after the hand. Seat 2 went to the AI.",
     )
+
+
+async def test_leaving_now_seats_the_ai_at_once(client):
+    table = _table_in_play()
+    guest = table.clients["guest"]
+    ws = _socket(guest)
+
+    r = await client.post(
+        "/api/tables/t/leave", json={"client_id": "guest"}, headers=_as(guest)
+    )
+    assert r.status_code == 200, r.text
+
+    # No grace, as a dropped connection gets: the AI has the seat already.
+    assert "guest" not in table.clients
+    assert table.occupants[table.seats[2] or ""].is_ai
+    assert "guest" not in table.disconnect_tasks
+    assert table.ai_task is not None
+    assert ws.sent[-1] == {"type": "left"}
+    assert ws.closed_with == LEFT_WS_CODE
+    last = table.chat_log[-1]
+    assert (last["author"], last["body"]) == ("guest", "left. Seat 2 went to the AI.")
+
+
+async def test_a_host_leaving_now_passes_host_on(client):
+    table = _table_in_play()
+    host = table.clients["host"]
+
+    r = await client.post(
+        "/api/tables/t/leave", json={"client_id": "host"}, headers=_as(host)
+    )
+    assert r.status_code == 200, r.text
+
+    assert table.host_client_id == "guest"
+    assert table.occupants[table.seats[5] or ""].is_ai
+    assert table.chat_log[-1]["body"] == "is now the host"
 
 
 async def test_request_can_be_taken_back(client):
