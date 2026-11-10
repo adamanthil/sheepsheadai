@@ -424,10 +424,6 @@ export default function HomePage() {
               })
             )}
           </div>
-
-          <div className={styles.lobbyFooter}>
-            <div className={styles.version}>v0.7 · Jun 2026</div>
-          </div>
         </div>
       </div>
     </div>

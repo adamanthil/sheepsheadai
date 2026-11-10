@@ -326,22 +326,6 @@
   padding: 16px 0;
 }
 
-.lobbyFooter {
-  margin-top: auto;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  padding-top: 16px;
-  gap: 12px;
-}
-.version {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--muted);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
 /* A phone's lobby: a smaller title, and no column heads over the rows. */
 @media (max-width: 768px) {
   .lobby {
