@@ -1,5 +1,7 @@
 """The perceiver-recall-pickseat surgery: inert at init, seat-aware after."""
 
+from typing import cast
+
 import numpy as np
 import pytest
 import torch
@@ -12,6 +14,11 @@ from sheepshead.agent.observation import (
 )
 from sheepshead.agent.ppo import PPOAgent
 from sheepshead.game import ACTIONS, Game
+from sheepshead.training.train_ppo import (
+    MainPhaseContext,
+    apply_schedules,
+    hyperparams_for,
+)
 
 ARCH = "perceiver-recall-pickseat"
 PICK_ID = ACTIONS.index("PICK") + 1
@@ -183,3 +190,18 @@ def test_win_and_return_residuals_read_the_seat():
     assert agent.critic.aux_predictions(out)[1] == pytest.approx(
         agent.critic.return_head(feat).item(), abs=1e-6
     )
+
+
+@pytest.mark.parametrize(
+    "episode,expected",
+    [(0, 0.8), (200_000, 0.44), (400_000, 0.08), (500_000, 0.08)],
+)
+def test_pick_seat_phase_anneals_pick_entropy(episode, expected):
+    class Context:
+        hyperparams = hyperparams_for("pick_seat")
+        training_agent = PPOAgent(len(ACTIONS), arch=ARCH)
+        args = None
+
+    apply_schedules(episode, cast(MainPhaseContext, Context()))
+    assert Context.training_agent.entropy_coeff_pick == pytest.approx(expected)
+    assert Context.training_agent.entropy_coeff_partner == 0.05

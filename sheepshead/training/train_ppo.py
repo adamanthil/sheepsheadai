@@ -82,6 +82,7 @@ from sheepshead.training.config import (
     BootstrapHyperparams,
     LeagueConfig,
     LeagueHyperparams,
+    PickSeatHyperparams,
 )
 from sheepshead.training.league import ROLE_PAST_MAIN, SELF_PLAY, League
 from sheepshead.training.league_streams import (
@@ -317,8 +318,10 @@ PHASE_SPECS = {
 def hyperparams_for(phase: str):
     if phase == "bootstrap":
         return BootstrapHyperparams()
-    if phase in ("bidding", "pick_seat"):
+    if phase == "bidding":
         return BiddingHyperparams()
+    if phase == "pick_seat":
+        return PickSeatHyperparams()
     return LeagueHyperparams()
 
 
@@ -340,7 +343,9 @@ def apply_schedules(episode: int, context: MainPhaseContext) -> None:
     linearly over its own length (BootstrapHyperparams); the league phase
     holds the fixed LeagueHyperparams values unless the entropy controller
     owns them (it overwrites these right after, see _ppo_update); the
-    bidding phase holds BiddingHyperparams' fixed values."""
+    bidding phase holds BiddingHyperparams' fixed values; the pick_seat
+    phase holds them too except for its annealed pick coefficient
+    (PickSeatHyperparams)."""
     args = context.args
     hp = context.hyperparams
     agent = context.training_agent
@@ -364,6 +369,11 @@ def apply_schedules(episode: int, context: MainPhaseContext) -> None:
         agent.entropy_coeff_partner = hp.entropy_partner
         agent.entropy_coeff_bury = hp.entropy_bury
         agent.entropy_coeff_play = hp.entropy_play
+    if isinstance(hp, PickSeatHyperparams):
+        frac = min(1.0, episode / hp.entropy_pick_decay_episodes)
+        agent.entropy_coeff_pick = (
+            hp.entropy_pick_start + (hp.entropy_pick - hp.entropy_pick_start) * frac
+        )
     agent.set_learning_rates(hp.lr_actor, hp.lr_critic)
 
 
