@@ -12,6 +12,9 @@ interface HandOverBarProps {
   isHost: boolean;
   onCloseTable: () => Promise<boolean>;
   onLeave: () => void;
+  /** The last-trick button, set on mobile, where the status line that holds
+   * it in play is gone between hands. */
+  lastTrick?: React.ReactNode;
 }
 
 /** What to do between hands, in the hand's place under the table: the
@@ -23,6 +26,7 @@ export default function HandOverBar({
   isHost,
   onCloseTable,
   onLeave,
+  lastTrick,
 }: HandOverBarProps) {
   const [confirmClose, setConfirmClose] = useState(false);
   // Both are held busy on success: the new deal (or the close) replaces
@@ -32,26 +36,29 @@ export default function HandOverBar({
 
   return (
     <div className={styles.bar}>
-      {/* Only the host can deal the next hand (the server refuses anyone
-          else), and not at a table closing after this hand. */}
-      {table.closingAfterHand ? (
-        <span className={styles.waitingHost}>Closing the table…</span>
-      ) : isHost ? (
-        <button
-          className={`${ds.btn} ${ds.btnAccent} ${dealing.busy ? ds.btnBusy : ""}`}
-          onClick={() => dealing.run(onNextHand, { hold: true })}
-          disabled={dealing.busy}
-          aria-busy={dealing.busy}
-        >
-          Next hand →
-        </button>
-      ) : (
-        <span className={styles.waitingHost}>
-          {table.host
-            ? `Waiting for ${table.host} to deal the next hand…`
-            : "Waiting for the host to deal the next hand…"}
-        </span>
-      )}
+      <div className={styles.primary}>
+        {lastTrick && <span className={styles.lastTrick}>{lastTrick}</span>}
+        {/* Only the host can deal the next hand (the server refuses anyone
+            else), and not at a table closing after this hand. */}
+        {table.closingAfterHand ? (
+          <span className={styles.waitingHost}>Closing the table…</span>
+        ) : isHost ? (
+          <button
+            className={`${ds.btn} ${ds.btnAccent} ${dealing.busy ? ds.btnBusy : ""}`}
+            onClick={() => dealing.run(onNextHand, { hold: true })}
+            disabled={dealing.busy}
+            aria-busy={dealing.busy}
+          >
+            Next hand →
+          </button>
+        ) : (
+          <span className={styles.waitingHost}>
+            {table.host
+              ? `Waiting for ${table.host} to deal…`
+              : "Waiting for the host to deal…"}
+          </span>
+        )}
+      </div>
       <div className={styles.secondary}>
         <button
           className={`${ds.btn} ${ds.btnGhost} ${ds.btnSm}`}

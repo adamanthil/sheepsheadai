@@ -8,6 +8,20 @@
   gap: 10px 24px;
   flex-shrink: 0;
 }
+.primary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+/* Room for the last-trick button, which places itself absolutely. */
+.lastTrick {
+  position: relative;
+  flex: none;
+  width: 36px;
+  height: 44px;
+  margin-left: -10px;
+}
 .secondary {
   display: flex;
   gap: 8px;

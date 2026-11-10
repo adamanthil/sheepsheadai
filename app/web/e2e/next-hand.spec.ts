@@ -17,9 +17,7 @@ test("only the host is offered Next hand when the hand ends", async ({
   await expect(page.getByRole("button", { name: "Next hand →" })).toBeVisible({
     timeout: 100_000,
   });
-  await expect(
-    guest.getByText("Waiting for Host to deal the next hand…"),
-  ).toBeVisible();
+  await expect(guest.getByText("Waiting for Host to deal…")).toBeVisible();
   await expect(guest.getByRole("button", { name: "Next hand →" })).toHaveCount(
     0,
   );

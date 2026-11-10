@@ -30,6 +30,11 @@
     --plate-reach: 199px;
   }
 }
+/* Between hands nothing sits under the stage but the hand-over bar: keep
+   it clear of the "You" under your result. */
+.deskStage:has(.ringSeat[data-seat-rel="0"] .resultTile) {
+  margin-bottom: 24px;
+}
 /* A spectator sees the bottom seat's full name-plate (a player there sees
    only "You"), which hangs below the stage: make room for it before
    whatever comes next. The bottom card's center sits 17% above the stage's foot

@@ -392,6 +392,15 @@ export default function TablePage() {
     );
 
   const actorSeat = lastState.actorSeat;
+  // On mobile the last-trick button rides on the line under the table: the
+  // status line in play, the hand-over bar between hands.
+  const mobLastTrick = isMobile &&
+    showLastTrick({ hasLastTrick, phase, animTrick }) && (
+      <LastTrickButton
+        open={lastTrickOpen}
+        onToggle={() => setLastTrickOpen(!lastTrickOpen)}
+      />
+    );
   const status = (
     <TableStatus
       context={context}
@@ -402,15 +411,7 @@ export default function TablePage() {
       }
       secondsLeft={secondsLeft}
       isMobile={isMobile}
-      lastTrick={
-        isMobile &&
-        showLastTrick({ hasLastTrick, phase, animTrick }) && (
-          <LastTrickButton
-            open={lastTrickOpen}
-            onToggle={() => setLastTrickOpen(!lastTrickOpen)}
-          />
-        )
-      }
+      lastTrick={mobLastTrick}
       turn={
         yourSeat === null
           ? null
@@ -435,6 +436,7 @@ export default function TablePage() {
       isHost={isHost}
       onCloseTable={closeTable}
       onLeave={() => router.push("/")}
+      lastTrick={mobLastTrick}
     />
   );
 
@@ -582,7 +584,8 @@ export default function TablePage() {
                 {resultLine(final, table, yourSeat)}
               </div>
             )}
-            {status}
+            {/* No status line: the result on the table says what it said
+                of the hand in play, and the phone needs the room. */}
             <div className={styles.mobHandOver}>{handOver}</div>
             {spectatorBar}
             <div className={styles.mobChat}>
@@ -625,11 +628,15 @@ export default function TablePage() {
             aria-label={connected ? "Connected" : "Disconnected"}
           />
           {stage}
-          {status}
+          {/* Between hands the result on the table says what the status
+              line said of the hand in play. */}
           {handOver ? (
             <div className={styles.deskHandOver}>{handOver}</div>
           ) : (
-            hand
+            <>
+              {status}
+              {hand}
+            </>
           )}
           {spectatorBar}
         </div>
