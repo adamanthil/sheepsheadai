@@ -148,3 +148,38 @@ def test_pick_seat_mode_trains_only_the_residual_and_critics():
     assert all(n.startswith("pick_seat_residual") for n in trainable)
     assert not any(p.requires_grad for p in agent.encoder.parameters())
     assert all(p.requires_grad for p in agent.critic.parameters())
+
+
+def _aux_outputs(agent, player):
+    agent.reset_recurrent_state()
+    out = agent.encoder.encode_batch([observation_for(player, agent)])
+    return agent.critic.aux_predictions(out)[:2]
+
+
+def test_win_and_return_residuals_are_inert_at_init():
+    base, agent = migrated_pair()
+    _, player = seated_at_pick(4, mode=1)
+    assert _aux_outputs(agent, player) == _aux_outputs(base, player)
+
+
+def test_win_and_return_residuals_read_the_seat():
+    agent = PPOAgent(len(ACTIONS), arch=ARCH)
+    with torch.no_grad():
+        # Seat 5 -> leader_rel 2; partner mode 1 -> context 4.
+        agent.critic.pick_seat_win_residual.offset.weight[4] = 1.0
+        agent.critic.pick_seat_return_residual.offset.weight[4] = 0.5
+    game, seat5 = seated_at_pick(5, mode=1)
+    state = observation_for(seat5, agent)
+    out = agent.encoder.encode_batch([state])
+    win, ret = agent.critic.aux_predictions(out)[:2]
+    feat = agent.critic._aux_features_single(out)
+    plain_win = torch.sigmoid(agent.critic.win_head(feat)).item()
+    plain_ret = agent.critic.return_head(feat).item()
+    assert win > plain_win
+    assert ret == pytest.approx(plain_ret + 0.5, abs=1e-5)
+    _, seat1 = seated_at_pick(1, mode=1)
+    out = agent.encoder.encode_batch([observation_for(seat1, agent)])
+    feat = agent.critic._aux_features_single(out)
+    assert agent.critic.aux_predictions(out)[1] == pytest.approx(
+        agent.critic.return_head(feat).item(), abs=1e-6
+    )

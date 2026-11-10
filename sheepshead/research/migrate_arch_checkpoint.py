@@ -57,7 +57,7 @@ def migrate(src: str, arch: str) -> tuple[PPOAgent, list[str]]:
     c_missing, c_unexpected = agent.critic.load_state_dict(
         checkpoint["critic_state_dict"], strict=False
     )
-    c_missing = [k for k in c_missing if not k.startswith("pick_seat_residual")]
+    c_missing = [k for k in c_missing if not k.startswith("pick_seat_")]
     if c_missing or c_unexpected:
         raise SystemExit(
             f"critic mismatch: missing={c_missing} unexpected={c_unexpected}"

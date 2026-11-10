@@ -767,7 +767,8 @@ register(
         name="perceiver-recall-pickseat",
         description=(
             "perceiver-recall plus zero-initialized seat residuals on the "
-            "pick head and limited critic, for surgery onto a trained "
+            "pick head, limited critic, and win and return heads, for "
+            "surgery onto a trained "
             "seat-blind checkpoint; loads one bit-identically via "
             "research/migrate_arch_checkpoint.py. The trunk still sees "
             "leader_rel = 0 before play."

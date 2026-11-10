@@ -1336,8 +1336,8 @@ class PPOAgent:
             # to encoder); token-readout critics override the seam to feed the
             # adapter from their own attention readout.
             aux_feat_bt = self.critic.aux_sequence_features(encoder_out_seq)
-            win_logits_bt = self.critic.win_head(aux_feat_bt).squeeze(-1)
-            ret_pred_bt = self.critic.return_head(aux_feat_bt).squeeze(-1)
+            win_logits_bt = self.critic.win_logits(aux_feat_bt, encoder_out_seq)
+            ret_pred_bt = self.critic.expected_returns(aux_feat_bt, encoder_out_seq)
             secret_logits_bt = self.critic.secret_partner_head(aux_feat_bt).squeeze(-1)
             points_pred_bt = self.critic.points_head(aux_feat_bt)
             seen_trump_mask_logits_bt = self.critic.seen_trump_mask_logits(

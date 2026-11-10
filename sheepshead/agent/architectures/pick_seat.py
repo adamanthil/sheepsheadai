@@ -2,9 +2,9 @@
 
 ``perceiver-recall-pickseat`` surgery onto a trained seat-blind trunk: the
 frozen trunk keeps seeing ``leader_rel = 0`` before play, and this module
-adds the seat directly at the pick head and limited critic. Both of its
-output paths start at zero, so a migrated checkpoint is bit-identical until
-training moves it.
+adds the seat directly at the pick head, the limited critic, and the critic's
+win and expected-return heads. Both of its output paths start at zero, so a
+migrated checkpoint is bit-identical until training moves it.
 """
 
 import torch
