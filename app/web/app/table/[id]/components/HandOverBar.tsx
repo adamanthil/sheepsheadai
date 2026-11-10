@@ -17,6 +17,12 @@ interface HandOverBarProps {
   lastTrick?: React.ReactNode;
 }
 
+/** What everyone but the host waits on between hands. */
+export function waitingForDeal(table: TableView): string {
+  if (table.closingAfterHand) return "Closing the table…";
+  return `Waiting for ${table.host || "the host"} to deal…`;
+}
+
 /** What to do between hands, in the hand's place under the table: the
  * result itself is on the ring, and nothing covers the chat. */
 export default function HandOverBar({
@@ -40,9 +46,7 @@ export default function HandOverBar({
         {lastTrick && <span className={styles.lastTrick}>{lastTrick}</span>}
         {/* Only the host can deal the next hand (the server refuses anyone
             else), and not at a table closing after this hand. */}
-        {table.closingAfterHand ? (
-          <span className={styles.waitingHost}>Closing the table…</span>
-        ) : isHost ? (
+        {isHost && !table.closingAfterHand ? (
           <button
             className={`${ds.btn} ${ds.btnAccent} ${dealing.busy ? ds.btnBusy : ""}`}
             onClick={() => dealing.run(onNextHand, { hold: true })}
@@ -52,11 +56,7 @@ export default function HandOverBar({
             Next hand →
           </button>
         ) : (
-          <span className={styles.waitingHost}>
-            {table.host
-              ? `Waiting for ${table.host} to deal…`
-              : "Waiting for the host to deal…"}
-          </span>
+          <span className={styles.waitingHost}>{waitingForDeal(table)}</span>
         )}
       </div>
       <div className={styles.secondary}>

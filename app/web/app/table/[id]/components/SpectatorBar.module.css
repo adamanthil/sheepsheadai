@@ -54,6 +54,19 @@
   color: var(--muted);
   text-align: center;
 }
+/* The last-trick button places itself absolutely: give it a box at the
+   left end of the helper line. */
+.mobHelper {
+  position: relative;
+}
+.lastTrick {
+  position: absolute;
+  left: -16px;
+  top: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translateY(-50%);
+}
 .mobRow {
   display: flex;
   gap: 8px;

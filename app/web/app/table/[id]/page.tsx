@@ -42,7 +42,7 @@ import {
   useCallout,
   useStagedActions,
 } from "./hooks";
-import HandOverBar from "./components/HandOverBar";
+import HandOverBar, { waitingForDeal } from "./components/HandOverBar";
 import ScoresOverlay from "./components/ScoresOverlay";
 import CheatSheet from "../../how-to-play/CheatSheet";
 import TableHeader from "./components/TableHeader";
@@ -427,8 +427,12 @@ export default function TablePage() {
     />
   );
 
-  // Between hands, the next step takes the hand's place.
-  const handOver = betweenHands && !departure && (
+  // Between hands, the next step takes the hand's place; for a spectator
+  // the SpectatorBar says what the table waits on instead, unless they
+  // are the host and it is theirs to deal.
+  const between = betweenHands && !departure;
+  const watchingBetween = between && yourSeat === null && !isHost;
+  const handOver = between && !watchingBetween && (
     <HandOverBar
       table={table}
       onNextHand={nextHand}
@@ -449,6 +453,8 @@ export default function TablePage() {
       secondsLeft={secondsLeft}
       homeOccupant={lastState.homeOccupant}
       queuedOccupant={lastState.queuedOccupant}
+      waitingNote={watchingBetween ? waitingForDeal(table) : undefined}
+      lastTrick={watchingBetween ? mobLastTrick : undefined}
     />
   );
 
@@ -570,7 +576,7 @@ export default function TablePage() {
     return (
       <div className={styles.root}>
         {header}
-        {handOver ? (
+        {between ? (
           // Between hands the chat takes the hand's place, open: the time
           // between hands is when the table talks.
           <div className={`${styles.mobBody} ${styles.mobBetween}`}>
@@ -586,7 +592,7 @@ export default function TablePage() {
             )}
             {/* No status line: the result on the table says what it said
                 of the hand in play, and the phone needs the room. */}
-            <div className={styles.mobHandOver}>{handOver}</div>
+            {handOver && <div className={styles.mobHandOver}>{handOver}</div>}
             {spectatorBar}
             <div className={styles.mobChat}>
               <ChatPanel {...chat} />
@@ -630,7 +636,7 @@ export default function TablePage() {
           {stage}
           {/* Between hands the result on the table says what the status
               line said of the hand in play. */}
-          {handOver ? (
+          {between ? (
             <div className={styles.deskHandOver}>{handOver}</div>
           ) : (
             <>

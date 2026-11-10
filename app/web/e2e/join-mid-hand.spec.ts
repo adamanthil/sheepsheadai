@@ -24,6 +24,11 @@ test("a mid-hand joiner watches, then sits down at the next deal", async ({
 
   const nextHand = page.getByRole("button", { name: "Next hand →" });
   await expect(nextHand).toBeVisible({ timeout: 100_000 });
+  // Between hands the next deal seats them anyway: no button, just the wait.
+  await expect(guest.getByText("Waiting for Host to deal…")).toBeVisible();
+  await expect(
+    guest.getByRole("button", { name: "Take seat now" }),
+  ).toHaveCount(0);
   await nextHand.click();
 
   await expect(guest.getByText(/^Watching/)).toHaveCount(0);

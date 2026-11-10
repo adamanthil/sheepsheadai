@@ -31,6 +31,11 @@ interface SpectatorBarProps {
   /** Set for a newcomer who joined mid-hand: the AI they take over from
    * when the next hand is dealt. */
   queuedOccupant?: string | null;
+  /** Between hands: what the table waits on, in place of "Watching". */
+  waitingNote?: string;
+  /** Between hands on mobile: the last-trick button, whose usual line
+   * under the table is gone. */
+  lastTrick?: React.ReactNode;
 }
 
 /** Stands in for the hand while you watch: one button per AI seat
@@ -38,7 +43,8 @@ interface SpectatorBarProps {
  * stands. A player the turn clock moved out is offered only their own seat
  * back while its AI still holds it (the server enforces both rules). A
  * newcomer who joined mid-hand is told whose seat they get at the next
- * deal, with Take seat now as the quieter option. */
+ * deal, with Take seat now as the quieter option. Between hands it also
+ * says what the table waits on, standing in for the hand-over bar. */
 export default function SpectatorBar(props: SpectatorBarProps) {
   // Held on success: the bar goes away when the seat's state arrives.
   const taking = useBusy();
@@ -50,11 +56,17 @@ export default function SpectatorBar(props: SpectatorBarProps) {
   const homeSeat = seatOf(props.homeOccupant);
   const queuedSeat =
     homeSeat === undefined ? seatOf(props.queuedOccupant) : undefined;
+  // An earmarked newcomer may sit down mid-hand; between hands the next
+  // deal seats them anyway.
+  const queuedSeats =
+    queuedSeat === undefined || props.waitingNote !== undefined
+      ? []
+      : [queuedSeat].filter((s) => isTakeableSeat(s, props.table));
   const aiSeats =
     homeSeat !== undefined
       ? [homeSeat]
       : queuedSeat !== undefined
-        ? [queuedSeat].filter((s) => isTakeableSeat(s, props.table))
+        ? queuedSeats
         : [1, 2, 3, 4, 5].filter(
             (s) => isAiSeat(s, props.table) && isTakeableSeat(s, props.table),
           );
@@ -63,9 +75,11 @@ export default function SpectatorBar(props: SpectatorBarProps) {
       You take over from {nameForSeat(queuedSeat, props.table)} next hand
     </span>
   );
-  const status = props.actorName
-    ? `Watching · waiting for ${props.actorName}…`
-    : "Watching";
+  const status =
+    props.waitingNote ??
+    (props.actorName
+      ? `Watching · waiting for ${props.actorName}…`
+      : "Watching");
 
   const seatButtons = aiSeats.map((seat) => (
     <button
@@ -89,6 +103,9 @@ export default function SpectatorBar(props: SpectatorBarProps) {
     return (
       <div className={styles.mob}>
         <div className={styles.mobHelper}>
+          {props.lastTrick && (
+            <span className={styles.lastTrick}>{props.lastTrick}</span>
+          )}
           {status}
           <TurnClock secondsLeft={props.secondsLeft} />
         </div>
