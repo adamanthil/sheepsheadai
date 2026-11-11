@@ -21,12 +21,12 @@ const PAGES: { title: string; note: string; scene: (n: boolean) => Scene }[] = [
 ];
 
 /**
- * A reminder of card power and points, brought up from the table. Two pages
- * of the lesson's stage; switching between them glides the cards from one
- * arrangement to the other. Tapping or swiping the stage, or the arrow
- * keys, flip to the other page too.
+ * A reminder of card power and points: two pages of the lesson's stage;
+ * switching between them glides the cards from one arrangement to the
+ * other. Tapping or swiping the stage, or the arrow keys, flip to the
+ * other page too. Shown over the table, and on its own at /help.
  */
-export default function QuickReference({ onClose }: { onClose: () => void }) {
+export function QuickReferenceBody() {
   const narrow = useMediaQuery("(max-width: 600px)");
   const [page, setPage] = useState(0);
   const flip = () => setPage((p) => 1 - p);
@@ -44,36 +44,39 @@ export default function QuickReference({ onClose }: { onClose: () => void }) {
   const scene = useMemo(() => current.scene(narrow), [current, narrow]);
 
   return (
+    <div className={styles.body}>
+      <div className={styles.tabs} role="tablist" aria-label="Quick reference">
+        {PAGES.map((p, i) => (
+          <button
+            key={p.title}
+            type="button"
+            role="tab"
+            aria-selected={i === page}
+            className={`${styles.tab} ${i === page ? styles.tabOn : ""}`}
+            onClick={() => setPage(i)}
+          >
+            {p.title}
+          </button>
+        ))}
+      </div>
+      <CardStage scene={scene} narrow={narrow} onSwipe={flip} onTap={flip} />
+      <p key={page} className={styles.note} aria-live="polite">
+        {current.note}
+      </p>
+    </div>
+  );
+}
+
+/** The quick reference brought up from the table. */
+export default function QuickReference({ onClose }: { onClose: () => void }) {
+  return (
     <ModalSheet
       overline="Quick reference"
       title="Power & points"
       onClose={onClose}
       narrowSheet
     >
-      <div className={styles.body}>
-        <div
-          className={styles.tabs}
-          role="tablist"
-          aria-label="Quick reference"
-        >
-          {PAGES.map((p, i) => (
-            <button
-              key={p.title}
-              type="button"
-              role="tab"
-              aria-selected={i === page}
-              className={`${styles.tab} ${i === page ? styles.tabOn : ""}`}
-              onClick={() => setPage(i)}
-            >
-              {p.title}
-            </button>
-          ))}
-        </div>
-        <CardStage scene={scene} narrow={narrow} onSwipe={flip} onTap={flip} />
-        <p key={page} className={styles.note} aria-live="polite">
-          {current.note}
-        </p>
-      </div>
+      <QuickReferenceBody />
     </ModalSheet>
   );
 }
