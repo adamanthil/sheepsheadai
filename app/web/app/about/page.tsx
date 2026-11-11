@@ -23,9 +23,10 @@ export default function AboutPage() {
         </p>
         <p>
           I hope you enjoy playing Sheepshead on the site. One of the goals is
-          to learn how the AI's skill compares to real people, and the only way
-          to find that out is with real people playing games here! If you like
-          it, please share it with your friends.
+          for the AI to be good enough that it's genuinely fun to play 5 handed
+          solo. I also hope to learn how the AI's skill compares to real people,
+          and the only way to find that out is with real people playing games
+          here. If you like it, please share it with your friends!
         </p>
         <p>Feel free to send any comments to feedback@sheepshead.ai.</p>
         <div className={`${ds.overline} ${styles.sectionHead}`}>Support</div>
