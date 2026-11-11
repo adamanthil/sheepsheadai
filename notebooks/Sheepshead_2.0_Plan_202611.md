@@ -385,15 +385,15 @@ limited critic's value, win and expected-return heads. The trunk keeps seeing
 variance to the GAE baseline at picks but no bias. Training freezes everything except
 the actor's residual and the critics, so any gain is attributable to seat.
 
-| | Run 1 (complete, fallback) | Run 2 (in progress, planned 1.1) |
+| | Run 1 (complete, fallback) | Run 2 (complete, ships as 1.1) |
 |---|---|---|
-| Episodes | 200,000 (about 10¼ hours) | 500,000 (about 26 hours at 5.4 eps/s) |
+| Episodes | 200,000 (about 10¼ hours) | 500,000 (about 24 hours at 5.2–5.4 eps/s) |
 | Pick entropy coefficient | 0.08 fixed | 0.8 → 0.08, linear over 400k, then held for 100k (`53ad37d`) |
 | Seat residuals | Pick, `V` | Pick, `V`, `Win %`, expected final return (`b9d5e4f`) |
 | Start | `theta6_pickseat.pt` | `theta6_pickseat_v2.pt` |
 | League copy | `league_snapshot` | `league_snapshot2` |
 | Output | `runs/pick_seat_202611/run1/final.pt` | `runs/pick_seat_202611/run2/final.pt`, log `run2.log`, checkpoints every 50k |
-| Certification vs 1.0 | PASS, +0.0018 ± 0.0015 | Pending |
+| Certification vs 1.0 | PASS, +0.0018 ± 0.0015 | PASS, +0.0103 ± 0.0030 |
 
 Both starting checkpoints reproduce θ₆ exactly: every shared tensor is identical,
 including the oracle, with zero difference in action probabilities and values over 400
@@ -445,6 +445,65 @@ episodes. Otherwise:
 3. Ship run 2 as 1.1 unless it is clearly worse: behind run 1 by more than 2 SE, or
    failing certification against 1.0.
 
+**Run 2 results.** Run 2 ships as 1.1: it beats both 1.0 and run 1 by about 3.4 SE.
+
+Training finished without incident. Greedy health over 200 games every 50k: PICK
+28–36%, leaster 3.5–15.5%. The 15.5% at 150k fell back to 12.0%, then 5.0% (noise at
+n = 200). The 500k check: PICK 33.6%, leaster 6.5%, t0 trump lead 0.0%, partner trump
+lead 98.7%. Sampled pick rate held at 17–18% throughout.
+
+Certification against 1.0 (`runs/pick_seat_202611/cert_run2/cert.json`, same settings
+as run 1): edge **+0.0103 ± 0.0030** (called +0.0044, JD +0.0162; leaster hands
+−0.0055 ± 0.0106), with 14.1% of deal-seats deviating, against 3.3% for run 1. Against
+run 1 on the same instrument (`h2h_run2_vs_run1/cert.json`, bars not enforced): edge
+**+0.0092 ± 0.0027** (called +0.0034, JD +0.0149).
+
+| Probe (4 seeds) | Run 2 | Run 1 | θ₆ |
+|---|---|---|---|
+| PICK | 31.6% | 31.4% | 33.1% |
+| Leaster | 6.6% | 10.3% | 8.4% |
+| ALONE | 13.1% | 14.3% | 13.4% |
+| Partner trump lead (bar 96.5) | 97.4% | 96.6% | 97.1% |
+| t0 trump lead (bar 4.0) | 1.4% | 0.8% | 0.6% |
+| Called-suit lead | 93.2% | 90.8% | 93.3% |
+
+Pick decisions scored against §1's forced PICK/PASS outcomes (2,687 hands × 5 seats ×
+4 reps, played out under θ₆, weighted back to natural frequency and to the chance that
+earlier seats pass). Value of the pick decisions over always passing, ×1000 points per
+pick decision: θ₆ +425.5, run 1 +434.5, run 2 +454.2. Run 2 − θ₆ **+28.7 ± 3.6**; run 2
+− run 1 **+19.7 ± 3.5**.
+
+| Seat | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|
+| θ₆ PICK % (natural weights) | 27.0 | 30.5 | 36.0 | 44.5 | 61.9 |
+| Run 2 PICK % | 22.1 | 25.3 | 32.7 | 54.1 | 75.6 |
+| Measured PICK − PASS, θ₆ near-threshold hands (points) | −0.94 | −0.81 | −0.38 | +0.54 | +1.43 |
+| Run 2 log-odds on those hands (run 1) | −3.84 (−1.64) | −3.32 (−1.55) | −1.73 (−0.92) | +2.86 (−0.22) | +5.08 (+0.08) |
+| Decision value change vs θ₆ (×1000) | +39 | +29 | +7 | −12 | +108 |
+
+The seat 5 gain comes from picking hands θ₆ passed into a leaster: from θ₆ log-odds −6
+to −1, picking is worth +0.8 to +1.1 points there, and run 2 picks 98–100% of them.
+Seat 4's −12 is almost all the weakest bin (−21 ± 21), so it is noise. The outcomes
+were played with θ₆ in the earlier seats, which now pass more often, so this score
+shows direction and calibration; the h2h is the deciding read.
+
+In the tool (1,500 hands, earlier seats passing): `Win %` by seat 43.7, 39.3, 39.4,
+41.9, 46.7 (per-hand spread 12.0 points, p90 18.1); expected return +0.04, −0.20,
+−0.14, +0.03, +0.83 (spread 1.05); `V` +0.16, +0.01, −0.05, +0.10, +1.03 (spread 1.13,
+run 1 0.87). PICK probability moves more than 5 points across seats on 29% of hands and
+more than 25 points on 22% (run 1: 7.9% and 2.9%). In θ₆ and run 1, `Win %` and
+expected return do not vary by seat.
+
+**Release.** `runs/pick_seat_202611/run2/final.pt`, byte-identical, is
+`sheepsheadai-1.1-202611.pt` (sha256 `f21ea6d9f13e`, 14,977,443 bytes, arch
+`perceiver-recall-pickseat`). It is smaller than 1.0's file because the
+optimizer state covers only the residual and critics. The manifest moves the
+`deploy` role and 1.0's sampling (T 0.5 on pick, partner and play, bury 0, band
+1.0) onto it. The temperature sweep was not rerun, because the play path is
+unchanged. 1.0 stays pinned with the new `reference` role (`2c5d0d4`) for the
+final comparison in §5. The app's pick analysis and game simulation run on the
+file.
+
 ## Appendix: partner-seat probe (why no new aux head)
 
 `Called_Suit_Schmear_202611.md` §7.2. Linear probe for "the next seat holds the called
@@ -472,3 +531,7 @@ read at the WRONG nodes (§7.1 there) has not been run.
   read. Run 2 launched (`b9d5e4f`, `53ad37d`). History oracle, bury head and leaster
   search designed; oracle gate thresholds pre-registered; architecture name set to
   `perceiver-recall-v2`. Notebook created.
+- **2026-11-10.** Run 2 complete (500k). Certified against 1.0 at +0.0103 ± 0.0030 and
+  beat run 1 by +0.0092 ± 0.0027; pick decisions score +0.029 ± 0.004 points per
+  decision above θ₆ on the forced PICK/PASS hands. Ships as 1.1
+  (`models/sheepsheadai-1.1-202611.pt`); manifest deploy entry moved to it.

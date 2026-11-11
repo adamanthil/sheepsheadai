@@ -1,16 +1,16 @@
 {
   "release_base": "https://github.com/adamanthil/sheepsheadai/releases/download",
   "artifacts": {
-    "sheepsheadai-1.0-202610": {
-      "tag": "artifact/sheepsheadai-1.0-202610",
-      "asset": "sheepsheadai-1.0-202610.pt",
-      "sha256": "d96a6224ecc3e5e1135f9cbd0f5ed822581c20cb3878d49a563ac515d0d280fb",
-      "bytes": 21140707,
+    "sheepsheadai-1.1-202611": {
+      "tag": "artifact/sheepsheadai-1.1-202611",
+      "asset": "sheepsheadai-1.1-202611.pt",
+      "sha256": "f21ea6d9f13eb24827de94f05797e75a95a1989a9b74f3bc66ac53b0e12a88fe",
+      "bytes": 14977443,
       "roles": [
         "deploy"
       ],
-      "arch": "perceiver-recall",
-      "provenance": "First fully trained model on the 4 phase PPO + ExIt training pipeline. runs/202609_recall_rc/final/release.pt (= pi/iter6/bidding/final.pt); 202609_recall_rc release theta_6, Training_Program_Redesign decision log 2026-10-25",
+      "arch": "perceiver-recall-pickseat",
+      "provenance": "Seat-aware pick: 1.0 plus a zero-init pick-seat residual (pick, V, win, return), 500k pick_seat PPO episodes. runs/pick_seat_202611/run2/final.pt; Sheepshead_2.0_Plan_202611 section 6, log 2026-11-10",
       "sampling": {
         "pick": 0.5,
         "partner": 0.5,
@@ -18,6 +18,17 @@
         "play": 0.5,
         "band": 1.0
       }
+    },
+    "sheepsheadai-1.0-202610": {
+      "tag": "artifact/sheepsheadai-1.0-202610",
+      "asset": "sheepsheadai-1.0-202610.pt",
+      "sha256": "d96a6224ecc3e5e1135f9cbd0f5ed822581c20cb3878d49a563ac515d0d280fb",
+      "bytes": 21140707,
+      "roles": [
+        "reference"
+      ],
+      "arch": "perceiver-recall",
+      "provenance": "First fully trained model on the 4 phase PPO + ExIt training pipeline. runs/202609_recall_rc/final/release.pt (= pi/iter6/bidding/final.pt); 202609_recall_rc release theta_6, Training_Program_Redesign decision log 2026-10-25"
     },
     "pfsp-swish-30m": {
       "tag": "artifact/panels-2026-10",
