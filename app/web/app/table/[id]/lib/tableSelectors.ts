@@ -231,15 +231,19 @@ const ORDINALS = ["1st", "2nd", "3rd", "4th", "5th"];
 /**
  * The line under the table: what the hand was declared as, kept in view
  * as a reference, e.g. "A♣ called", "A♥ called under", "J♦ partner",
- * "Kyle goes alone", "Leaster", followed by the doubler when one is on.
- * It doesn't change as the hand is played; once the partner is revealed
- * it fades. While the player has the last trick open it says only that;
+ * "Kyle goes alone", "Leaster · Blind to 1st trick", followed by the
+ * doubler when one is on.
+ * It doesn't change as the hand is played, except that a leaster drops
+ * the blind once the first trick is off the table (``trickOnShow``: the
+ * trick just taken is still held there or being collected); once the
+ * partner is revealed it fades. While the player has the last trick open it says only that;
  * a trick held on the table after it is taken keeps the usual line.
  */
 export function computeContext(
   lastState: TableStateMsg,
   phase: TablePhase,
   lastTrickOpen: boolean,
+  trickOnShow = false,
 ): HandContext {
   if (lastTrickOpen) return { parts: ["Last trick"], faded: false };
   const { view, table, yourSeat } = lastState;
@@ -254,7 +258,13 @@ export function computeContext(
     // Seats are numbered in pick order from the dealer's left.
     facts.push([`${ORDINALS[yourSeat - 1]} Position`]);
   } else if (view.is_leaster) {
+    // Where the blind goes varies from table to table, and it shapes
+    // play, so say so until the trick that takes it leaves the table.
     facts.push(["Leaster"]);
+    const trick = view.current_trick_index;
+    if (trick === 0 || (trick === 1 && trickOnShow)) {
+      facts.push(["Blind to 1st trick"]);
+    }
   } else if (picker) {
     if (view.alone) {
       facts.push([

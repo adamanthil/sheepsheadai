@@ -296,7 +296,7 @@ export default function TablePage() {
   const stakeBadge = stakeBadgeText(table.scoreMultiplier);
   const hasLastTrick = computeHasLastTrick(view);
   const handInPlay = table.status === "playing" && !view.is_done;
-  const context = computeContext(lastState, phase, lastTrickOpen);
+  const context = computeContext(lastState, phase, lastTrickOpen, trickOnShow);
 
   const shownChat = mutes.visible(chatMessages);
 

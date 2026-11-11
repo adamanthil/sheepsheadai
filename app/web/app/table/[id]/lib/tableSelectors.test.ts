@@ -105,11 +105,33 @@ describe("computeContext", () => {
 
   it("adds the stake after a doubler", () => {
     const ctx = computeContext(
-      tableState({ view: { is_leaster: true }, table: { scoreMultiplier: 4 } }),
+      tableState({ view: { picker: 3 }, table: { scoreMultiplier: 4 } }),
       "play",
       false,
     );
-    expect(text(ctx.parts)).toBe("Leaster · 4× Doubler");
+    expect(text(ctx.parts)).toBe("Bo picked · 4× Doubler");
+  });
+
+  it("says where a leaster's blind goes until that trick is cleared", () => {
+    const first = computeContext(
+      tableState({ view: { is_leaster: true, current_trick_index: 0 } }),
+      "play",
+      false,
+    );
+    expect(text(first.parts)).toBe("Leaster · Blind to 1st trick");
+    const held = computeContext(
+      tableState({ view: { is_leaster: true, current_trick_index: 1 } }),
+      "play",
+      false,
+      true,
+    );
+    expect(text(held.parts)).toBe("Leaster · Blind to 1st trick");
+    const later = computeContext(
+      tableState({ view: { is_leaster: true, current_trick_index: 1 } }),
+      "play",
+      false,
+    );
+    expect(text(later.parts)).toBe("Leaster");
   });
 
   it("gives your pick position from the dealer while picking", () => {
