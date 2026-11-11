@@ -1,7 +1,8 @@
 """Fetch and verify the model artifacts pinned in ``models/manifest.json``.
 
-Every checkpoint the repository depends on — the deployed model and the
-frozen evaluation panels — is a GitHub Release asset (tag namespace
+Every checkpoint the repository depends on — the deployed model, earlier
+deployed models kept for comparison (role ``reference``) and the frozen
+evaluation panels — is a GitHub Release asset (tag namespace
 ``artifact/<name>``, immutable), pinned in the committed manifest by sha256
 and size. This tool downloads the selected artifacts into ``models/``
 (gitignored) and verifies them; a file that does not hash to the manifest
@@ -147,7 +148,7 @@ def lint(manifest: dict[str, Any]) -> list[str]:
     deploy = [k for k, e in artifacts.items() if "deploy" in e.get("roles", [])]
     if len(deploy) != 1:
         errors.append(f"exactly one artifact must have role deploy, found {deploy}")
-    known_roles = {"deploy"} | {name.lower() for name in panels}
+    known_roles = {"deploy", "reference"} | {name.lower() for name in panels}
     for key, e in artifacts.items():
         where = f"artifacts.{key}"
         if not str(e.get("tag", "")).startswith("artifact/"):
@@ -187,7 +188,9 @@ def lint(manifest: dict[str, Any]) -> list[str]:
             errors.append(f"panels.{name} lists a key twice")
     for key, e in artifacts.items():
         for role in e.get("roles", []):
-            if role != "deploy" and key not in panels.get(role.upper(), []):
+            if role in ("deploy", "reference"):
+                continue
+            if key not in panels.get(role.upper(), []):
                 errors.append(
                     f"artifacts.{key} has role {role} but is not in that panel"
                 )

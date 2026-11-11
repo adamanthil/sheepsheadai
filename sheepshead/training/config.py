@@ -136,6 +136,22 @@ class BiddingHyperparams(LeagueHyperparams):
 
 
 @dataclass
+class PickSeatHyperparams(BiddingHyperparams):
+    """The ``pick_seat`` phase: the bidding recipe with a linearly annealed
+    pick entropy coefficient, from ``entropy_pick_start`` down to
+    ``entropy_pick`` over ``entropy_pick_decay_episodes``, then held there.
+
+    The pick head is nearly deterministic after the bidding phase, and both
+    the policy gradient and the entropy gradient shrink with p(1 - p), so
+    the residual gets little signal on the near-threshold hands that seat
+    can flip. The temporary bonus acts mostly on those hands.
+    """
+
+    entropy_pick_start: float = 0.8
+    entropy_pick_decay_episodes: int = 400_000
+
+
+@dataclass
 class CommitteeConfig:
     """The ISMCTS committee that labels corpus rows (CE_Teacher_Design
     §1.2, §20) and the shrinkage noise model built on its replicates. The

@@ -41,7 +41,8 @@ ROLES = (ROLE_PAST_MAIN, ROLE_HOF_ANCHOR)
 PARTNER_MODES = (PARTNER_BY_JD, PARTNER_BY_CALLED_ACE)
 
 # Sentinel returned by League.sample_table for a "current training agent" seat;
-# the driver substitutes its own frozen copy of the training agent.
+# the driver seats the training agent itself (the worker pool, its current-
+# weights copy), so the seat samples its actions and collects training rows.
 SELF_PLAY = "self"
 
 
@@ -209,10 +210,11 @@ class League:
         """Sample opponents for one training table.
 
         Returns a list of length ``n_seats`` whose entries are LeagueMembers
-        or the SELF_PLAY sentinel (driver substitutes a frozen copy of the
-        current training agent). Members are sampled without replacement;
-        an empty or exhausted roster falls back to self seats, which is how
-        the bootstrap phase (empty league) plays pure self-play."""
+        or the SELF_PLAY sentinel (the driver seats the current training
+        agent, which also collects on that seat). Members are sampled
+        without replacement; an empty or exhausted roster falls back to self
+        seats, which is how the bootstrap phase (empty league) plays pure
+        self-play."""
         p_self = self.config.self_play_share
         pool_past = self.by_role(ROLE_PAST_MAIN) + self.by_role(ROLE_HOF_ANCHOR)
         seats: list = []

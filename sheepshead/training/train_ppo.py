@@ -82,6 +82,7 @@ from sheepshead.training.config import (
     BootstrapHyperparams,
     LeagueConfig,
     LeagueHyperparams,
+    PickSeatHyperparams,
 )
 from sheepshead.training.league import ROLE_PAST_MAIN, SELF_PLAY, League
 from sheepshead.training.league_streams import (
@@ -92,7 +93,7 @@ from sheepshead.training.league_streams import (
 )
 from sheepshead.training.league_worker import league_worker_init, publish_weights
 
-PHASES = ("bootstrap", "league", "bidding")
+PHASES = ("bootstrap", "league", "bidding", "pick_seat")
 
 # training_progress.csv schema (append-only: add at the end, never rename;
 # ensure_csv_columns migrates pre-existing files on resume).
@@ -266,7 +267,7 @@ class PhaseSpec:
     name: str
     reward_mode: str  # "shaped" | "terminal"
     critic_mode: str  # "limited" | "oracle"
-    trainable_heads: str  # "all" | "bidding"
+    trainable_heads: str  # "all" | "bidding" | "pick_seat"
     seat_rotation: bool
     grad_accum: bool
     gamma: float
@@ -300,6 +301,17 @@ PHASE_SPECS = {
         grad_accum=True,
         gamma=1.0,
     ),
+    # The bidding recipe, training only the pick seat residual
+    # (architectures/pick_seat.py) on a migrated checkpoint.
+    "pick_seat": PhaseSpec(
+        name="pick_seat",
+        reward_mode="terminal",
+        critic_mode="oracle",
+        trainable_heads="pick_seat",
+        seat_rotation=True,
+        grad_accum=True,
+        gamma=1.0,
+    ),
 }
 
 
@@ -308,6 +320,8 @@ def hyperparams_for(phase: str):
         return BootstrapHyperparams()
     if phase == "bidding":
         return BiddingHyperparams()
+    if phase == "pick_seat":
+        return PickSeatHyperparams()
     return LeagueHyperparams()
 
 
@@ -329,7 +343,9 @@ def apply_schedules(episode: int, context: MainPhaseContext) -> None:
     linearly over its own length (BootstrapHyperparams); the league phase
     holds the fixed LeagueHyperparams values unless the entropy controller
     owns them (it overwrites these right after, see _ppo_update); the
-    bidding phase holds BiddingHyperparams' fixed values."""
+    bidding phase holds BiddingHyperparams' fixed values; the pick_seat
+    phase holds them too except for its annealed pick coefficient
+    (PickSeatHyperparams)."""
     args = context.args
     hp = context.hyperparams
     agent = context.training_agent
@@ -353,6 +369,11 @@ def apply_schedules(episode: int, context: MainPhaseContext) -> None:
         agent.entropy_coeff_partner = hp.entropy_partner
         agent.entropy_coeff_bury = hp.entropy_bury
         agent.entropy_coeff_play = hp.entropy_play
+    if isinstance(hp, PickSeatHyperparams):
+        frac = min(1.0, episode / hp.entropy_pick_decay_episodes)
+        agent.entropy_coeff_pick = (
+            hp.entropy_pick_start + (hp.entropy_pick - hp.entropy_pick_start) * frac
+        )
     agent.set_learning_rates(hp.lr_actor, hp.lr_critic)
 
 

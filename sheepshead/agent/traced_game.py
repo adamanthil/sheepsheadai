@@ -17,7 +17,11 @@ from typing import Any, Callable, Collection, Dict, List, Optional, Set
 import numpy as np
 import torch
 
-from sheepshead.agent.observation import last_trick_observation_for, observation_for
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+    oracle_observation_for,
+)
 from sheepshead.agent.ppo import PPOAgent
 from sheepshead.agent.sampling import DeploySampling
 from sheepshead.game import ACTION_LOOKUP, Game, Player
@@ -368,7 +372,7 @@ def play_traced_game(
             # Must be captured at decision time: hands shrink as cards play.
             seq = traced.oracle_events.setdefault(actor_seat, [])
             traced.oracle_decision_pos.append((actor_seat, len(seq)))
-            seq.append(actor_player.get_oracle_state_dict())
+            seq.append(oracle_observation_for(actor_player, agent))
 
         action_id = select_action_id(
             inference.action_probs,

@@ -7,6 +7,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 from sheepshead.agent.architectures.registry import get_spec
+from sheepshead.agent.observation import LegacyObservation
 from sheepshead.game import (
     ACTION_IDS,
     BURY_ACTIONS,
@@ -363,11 +364,10 @@ class PPOAgent:
         self.reset_storage()
 
     @property
-    def needs_picker_memory(self) -> bool:
-        """Whether this agent's architecture consumes the legacy
-        picker-memory interface (``Player.get_picker_memory``); the
-        registry's ``ArchitectureSpec.legacy_picker_memory`` is the truth."""
-        return bool(get_spec(self.arch_name).legacy_picker_memory)
+    def legacy_observation(self) -> LegacyObservation | None:
+        """How this agent's observation differs from the current one;
+        ``ArchitectureSpec.legacy_observation`` is the truth."""
+        return get_spec(self.arch_name).legacy_observation
 
     @property
     def observation_keys(self) -> tuple[str, ...]:
@@ -548,14 +548,21 @@ class PPOAgent:
                     is what makes the phase composable with search-driven
                     policy iteration — the two improvement operators never
                     touch the same parameters.
+        ``"pick_seat"`` only the actor's pick seat residual trains; every
+                    other actor and encoder parameter is frozen while the
+                    critics keep training, so a gain is attributable to
+                    the seat input.
         Frozen parameters keep ``requires_grad=False``; Adam skips them.
         """
-        if mode not in ("all", "bidding"):
+        if mode not in ("all", "bidding", "pick_seat"):
             raise ValueError(f"unknown trainable-heads mode: {mode!r}")
         train_all = mode == "all"
         for prm in self.encoder.parameters():
             prm.requires_grad_(train_all)
         for name, prm in self.actor.named_parameters():
+            if mode == "pick_seat":
+                prm.requires_grad_(name.startswith("pick_seat_residual"))
+                continue
             is_play = name.startswith(self.PLAY_HEAD_PREFIXES)
             prm.requires_grad_(train_all or not is_play)
         self.trainable_heads = mode
@@ -1303,6 +1310,11 @@ class PPOAgent:
             all_mask_bt.reshape(B * T, -1) if all_mask_bt is not None else None
         )
 
+        pick_context_bt = encoder_out_seq.get("pick_context")  # (B, T)
+        flat_pick_context = (
+            pick_context_bt.reshape(B * T) if pick_context_bt is not None else None
+        )
+
         logits_flat = self.actor._build_logits_from_features(
             actor_features=flat_feat,
             hand_ids=flat_hand,
@@ -1311,6 +1323,7 @@ class PPOAgent:
             action_mask=flat_mask,
             all_tokens=flat_all_tokens,
             all_mask=flat_all_mask,
+            pick_context=flat_pick_context,
         )
         logits_bt = logits_flat.view(B, T, -1)
 
@@ -1323,8 +1336,8 @@ class PPOAgent:
             # to encoder); token-readout critics override the seam to feed the
             # adapter from their own attention readout.
             aux_feat_bt = self.critic.aux_sequence_features(encoder_out_seq)
-            win_logits_bt = self.critic.win_head(aux_feat_bt).squeeze(-1)
-            ret_pred_bt = self.critic.return_head(aux_feat_bt).squeeze(-1)
+            win_logits_bt = self.critic.win_logits(aux_feat_bt, encoder_out_seq)
+            ret_pred_bt = self.critic.expected_returns(aux_feat_bt, encoder_out_seq)
             secret_logits_bt = self.critic.secret_partner_head(aux_feat_bt).squeeze(-1)
             points_pred_bt = self.critic.points_head(aux_feat_bt)
             seen_trump_mask_logits_bt = self.critic.seen_trump_mask_logits(

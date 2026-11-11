@@ -5,6 +5,7 @@ from typing import Dict
 import torch
 import torch.nn as nn
 
+from sheepshead.agent.architectures.pick_seat import PickSeatResidual
 from sheepshead.game import DECK_IDS, TRUMP
 
 
@@ -124,6 +125,7 @@ class RecurrentCriticNetwork(nn.Module):
         d_card: int | None = None,
         use_aux_heads: bool = True,
         d_model: int = 256,
+        pick_seat_residual: bool = False,
     ):
         super().__init__()
         self.has_aux_heads = bool(use_aux_heads)
@@ -191,6 +193,15 @@ class RecurrentCriticNetwork(nn.Module):
             self.unseen_trump_higher_than_hand_head = nn.Linear(128, 1)
 
         self.apply(self._init_weights)
+        self.pick_seat_residual = (
+            PickSeatResidual(d_model) if pick_seat_residual else None
+        )
+        self.pick_seat_win_residual = (
+            PickSeatResidual(d_model) if pick_seat_residual else None
+        )
+        self.pick_seat_return_residual = (
+            PickSeatResidual(d_model) if pick_seat_residual else None
+        )
 
     def _require_aux(self, what: str):
         if not self.has_aux_heads:
@@ -219,6 +230,10 @@ class RecurrentCriticNetwork(nn.Module):
         """
         feat = self.value_trunk(encoder_out["features"])
         value = self.value_head(feat)
+        if self.pick_seat_residual is not None:
+            value = value + self.pick_seat_residual(
+                feat, encoder_out["pick_context"]
+            ).unsqueeze(-1)
         return value
 
     def sequence_values(self, encoder_out_seq: Dict[str, torch.Tensor]):
@@ -226,7 +241,12 @@ class RecurrentCriticNetwork(nn.Module):
         token-readout critics (PerceiverCriticNetwork) consume the token set
         instead of the fused features."""
         value_feat_bt = self.value_trunk(encoder_out_seq["features"])
-        return self.value_head(value_feat_bt).squeeze(-1)
+        values_bt = self.value_head(value_feat_bt).squeeze(-1)
+        if self.pick_seat_residual is not None:
+            values_bt = values_bt + self.pick_seat_residual(
+                value_feat_bt, encoder_out_seq["pick_context"]
+            )
+        return values_bt
 
     def aux_sequence_features(self, encoder_out_seq: Dict[str, torch.Tensor]):
         """Adapter features for the aux heads over a sequence batch,
@@ -239,6 +259,30 @@ class RecurrentCriticNetwork(nn.Module):
         """Single-step adapter features for aux_predictions. Same seam as
         aux_sequence_features, batch-of-one shape."""
         return self.critic_adapter(encoder_out["features"])
+
+    def win_logits(
+        self, aux_feat: torch.Tensor, encoder_out: Dict[str, torch.Tensor]
+    ) -> torch.Tensor:
+        """Win logits, shape ``aux_feat.shape[:-1]``, with the seat residual
+        at pick decisions on architectures that have one."""
+        logits = self.win_head(aux_feat).squeeze(-1)
+        if self.pick_seat_win_residual is None:
+            return logits
+        return logits + self.pick_seat_win_residual(
+            aux_feat, encoder_out["pick_context"]
+        )
+
+    def expected_returns(
+        self, aux_feat: torch.Tensor, encoder_out: Dict[str, torch.Tensor]
+    ) -> torch.Tensor:
+        """Expected final returns, shape ``aux_feat.shape[:-1]``, with the
+        seat residual at pick decisions on architectures that have one."""
+        returns = self.return_head(aux_feat).squeeze(-1)
+        if self.pick_seat_return_residual is None:
+            return returns
+        return returns + self.pick_seat_return_residual(
+            aux_feat, encoder_out["pick_context"]
+        )
 
     def aux_predictions(self, encoder_out: Dict[str, torch.Tensor]):
         """Return auxiliary predictions as scalars and per-seat point estimates.
@@ -262,8 +306,8 @@ class RecurrentCriticNetwork(nn.Module):
         self._require_aux("aux_predictions")
         with torch.no_grad():
             aux_feat = self._aux_features_single(encoder_out)
-            win_logit = self.win_head(aux_feat).squeeze(-1)
-            expected_return = self.return_head(aux_feat).squeeze(-1)
+            win_logit = self.win_logits(aux_feat, encoder_out)
+            expected_return = self.expected_returns(aux_feat, encoder_out)
             secret_logit = self.secret_partner_head(aux_feat).squeeze(-1)
             points_pred = torch.clamp(self.points_head(aux_feat), min=0.0, max=120)
         win_prob_t = torch.sigmoid(win_logit)

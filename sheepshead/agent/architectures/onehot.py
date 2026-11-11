@@ -274,9 +274,10 @@ class FlatHeadActorNetwork(nn.Module):
         action_mask: "torch.Tensor | None" = None,
         all_tokens=None,
         all_mask=None,
+        pick_context=None,
     ) -> torch.Tensor:
         # unused by flat heads
-        del hand_ids, card_embedding, hand_tokens, all_tokens, all_mask
+        del hand_ids, card_embedding, hand_tokens, all_tokens, all_mask, pick_context
         K = actor_features.size(0)
         logits = torch.full((K, self.action_size), -1e8, device=actor_features.device)
         feat = self.actor_adapter(actor_features)

@@ -806,6 +806,8 @@ class CardReasoningEncoder(nn.Module):
         # the full token set (TokenReadEncoder); stays None for the base class.
         all_tokens_out = None
         all_mask_out = None
+        # Likewise for PickSeatRecallEncoder's per-row pick context.
+        pick_context_out = None
 
         # Initialize memory
         if memory_in is None:
@@ -853,6 +855,13 @@ class CardReasoningEncoder(nn.Module):
                     )
                 all_tokens_out[:, t, :, :] = step_all_tokens
                 all_mask_out[:, t, :] = encoder_out["all_mask"]
+            step_pick_context = encoder_out.get("pick_context")
+            if step_pick_context is not None:
+                if pick_context_out is None:
+                    pick_context_out = torch.zeros(
+                        (B, T), dtype=torch.long, device=device
+                    )
+                pick_context_out[:, t] = step_pick_context
 
             # Update memory for next timestep
             memory_state = encoder_out["memory_out"]
@@ -865,4 +874,6 @@ class CardReasoningEncoder(nn.Module):
         if all_tokens_out is not None and all_mask_out is not None:
             out["all_tokens"] = all_tokens_out
             out["all_mask"] = all_mask_out
+        if pick_context_out is not None:
+            out["pick_context"] = pick_context_out
         return out

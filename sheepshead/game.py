@@ -1015,7 +1015,10 @@ class Player:
         Card ids: 0 = PAD/none, 1..32 = real cards, 33 = UNDER.
 
         Relative seats are with respect to this player: 1=self, 2=LHO, 3=+2, 4=+3, 5=+4.
-        Also includes absolute picker position (1..5, 0 if unknown) for pick-strength context.
+        Also includes the picker's absolute seat (1..5, 0 until someone picks), so
+        later decisions can read how many players passed before the pick. The acting
+        player's own seat before play comes from leader_rel: seat 1 leads the first
+        trick, so its relative seat places this player relative to the dealer.
         """
 
         def rel(seat: int | None) -> int:
@@ -1045,7 +1048,7 @@ class Player:
         )
         picker_rel = np.uint8(rel(self.game.picker))
         partner_rel = np.uint8(rel(self.game.partner) if self.game.partner else 0)
-        leader_rel = np.uint8(rel(self.game.leader) if self.game.play_started else 0)
+        leader_rel = np.uint8(rel(self.game.leader if self.game.play_started else 1))
         picker_position = np.uint8(self.game.picker if self.game.picker else 0)
 
         # Sets (fixed sizes)

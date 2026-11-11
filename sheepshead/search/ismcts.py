@@ -107,6 +107,7 @@ import torch
 from sheepshead.agent.observation import (
     last_trick_observation_for,
     observation_for,
+    oracle_observation_for,
 )
 from sheepshead.game import ACTION_IDS, ACTIONS, Game
 from sheepshead.rewards import RETURN_SCALE
@@ -572,17 +573,18 @@ class _OracleCapture:
     along its own descent/rollout path. Prefix dicts are shared
     immutably across sims, never mutated."""
 
-    __slots__ = ("enabled", "_prefix_by_world")
+    __slots__ = ("enabled", "_agent", "_prefix_by_world")
 
-    def __init__(self, enabled: bool):
+    def __init__(self, enabled: bool, agent=None):
         self.enabled = enabled
+        self._agent = agent
         self._prefix_by_world: dict[int, list] = {}
 
     def record_decision(self, stream: list, player) -> None:
         """Append the observer's pre-action oracle state (call only for the
         observer's own decisions)."""
         if self.enabled:
-            stream.append(player.get_oracle_state_dict())
+            stream.append(oracle_observation_for(player, self._agent))
 
     def record_trick(self, stream: list, observer_player) -> None:
         """Append the observer's post-trick oracle frame."""
@@ -786,7 +788,8 @@ class ISMCTSTeacher:
         self._oracle = _OracleCapture(
             self.config.leaf_evaluator == "oracle"
             and getattr(self.agent, "oracle_critic", None) is not None
-            and self._eff_d_rollout <= ORACLE_LEAF_MAX_BOOTSTRAP_DEPTH
+            and self._eff_d_rollout <= ORACLE_LEAF_MAX_BOOTSTRAP_DEPTH,
+            self.agent,
         )
         self._seat_policies = (
             {
@@ -850,7 +853,8 @@ class ISMCTSTeacher:
         self._oracle = _OracleCapture(
             self.config.leaf_evaluator == "oracle"
             and getattr(self.agent, "oracle_critic", None) is not None
-            and self._eff_d_rollout <= ORACLE_LEAF_MAX_BOOTSTRAP_DEPTH
+            and self._eff_d_rollout <= ORACLE_LEAF_MAX_BOOTSTRAP_DEPTH,
+            self.agent,
         )
         self._seat_policies = (
             {
@@ -1574,7 +1578,7 @@ class ISMCTSTeacher:
             sim = requests[req_idx].sim
             seqs.append(
                 sim.oracle_seq
-                + [sim.world.players[observer - 1].get_oracle_state_dict()]
+                + [oracle_observation_for(sim.world.players[observer - 1], self.agent)]
             )
         with torch.no_grad():
             oracle_vals = self.agent.oracle_critic.forward_sequences(
