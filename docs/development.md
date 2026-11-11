@@ -22,6 +22,7 @@ variable; `app/server/config.py` is the authoritative list with defaults.
 |---|---|---|
 | `SHEEPSHEAD_MODEL_PATH` | always | Checkpoint to serve. `run_server.sh --model` sets it. Only load checkpoints you trust. |
 | `SHEEPSHEAD_MODEL_LABEL` | always | Human-readable name for the loaded model. |
+| `SHEEPSHEAD_TEMPERATURE_*`, `SHEEPSHEAD_LOGIT_BAND` | optional | Sampling for the table AI, tuned per checkpoint. Defaults to argmax. |
 | `DATABASE_URL` | always | Postgres connection string. |
 | `SHEEPSHEAD_CORS_ORIGINS` | production | Comma-separated allowed origins. In development it adds to the built-in localhost allowance. |
 | `SHADOW_DATABASE_URL`, `ROOT_DATABASE_URL` | migrations | Used by graphile-migrate in dev and CI. Never set in production. |

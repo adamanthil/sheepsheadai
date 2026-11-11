@@ -69,8 +69,8 @@ docker compose -f app/docker-compose.yml up -d postgres
 set -a && source .env && set +a
 npm --prefix app/db run migrate
 
-# backend, in one terminal
-./app/server/run_server.sh --model models/pfsp-swish-30m.pt
+# backend, in one terminal (serves the model named in .env)
+./app/server/run_server.sh
 
 # frontend, in another
 npm --prefix app/web run dev
