@@ -46,7 +46,7 @@ import {
 } from "./hooks";
 import HandOverBar, { waitingForDeal } from "./components/HandOverBar";
 import ScoresOverlay from "./components/ScoresOverlay";
-import CheatSheet from "../../how-to-play/CheatSheet";
+import QuickReference from "../../how-to-play/QuickReference";
 import TableHeader from "./components/TableHeader";
 import TableMenu from "./components/TableMenu";
 import Stage from "./components/Stage";
@@ -159,7 +159,7 @@ export default function TablePage() {
   const [showScores, setShowScores] = useState(false);
   const [showMobileLog, setShowMobileLog] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
-  const [showCheatSheet, setShowCheatSheet] = useState(false);
+  const [showQuickReference, setShowQuickReference] = useState(false);
 
   // The after-hand choices (leave, or as host close) show the moment they
   // are made, ahead of the server's table_update; a refusal puts the
@@ -548,8 +548,8 @@ export default function TablePage() {
       {showScores && (
         <ScoresOverlay table={table} onClose={() => setShowScores(false)} />
       )}
-      {showCheatSheet && (
-        <CheatSheet onClose={() => setShowCheatSheet(false)} />
+      {showQuickReference && (
+        <QuickReference onClose={() => setShowQuickReference(false)} />
       )}
     </>
   );
@@ -579,7 +579,7 @@ export default function TablePage() {
       leave={leave}
       close={close}
       onShowScores={() => setShowScores(true)}
-      onShowCheatSheet={() => setShowCheatSheet(true)}
+      onShowQuickReference={() => setShowQuickReference(true)}
       onShowChat={() => setShowMobileLog(true)}
       chatUnread={chatUnread}
       onShowMenu={() => setShowMenu(true)}

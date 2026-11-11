@@ -801,7 +801,7 @@ function suitRows(narrow: boolean, showTrump: boolean): Scene {
 }
 
 /** Trump in power order over the three fail suits, ace down to seven: the
- * lesson's last trump beat, and the table cheat sheet's Power page. */
+ * lesson's last trump beat, and the table quick reference's Power page. */
 export function trumpAndFail(narrow: boolean): Scene {
   let cards: Cards;
   const labels: StageLabel[] = [];
@@ -878,7 +878,7 @@ export function trumpAndFail(narrow: boolean): Scene {
 }
 
 /** The deck in columns by point value: the lesson's first points beat, and
- * the table cheat sheet's Points page. */
+ * the table quick reference's Points page. */
 export function pointGroups(narrow: boolean): Scene {
   const cards: Cards = {};
   const labels: StageLabel[] = [];

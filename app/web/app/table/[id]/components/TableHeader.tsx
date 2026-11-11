@@ -33,7 +33,7 @@ interface TableHeaderProps {
   /** Host only. */
   close: CloseControls | null;
   onShowScores: () => void;
-  onShowCheatSheet: () => void;
+  onShowQuickReference: () => void;
   /** Mobile: chat and the menu live behind header buttons. */
   onShowChat: () => void;
   chatUnread: boolean;
@@ -57,8 +57,8 @@ function HelpButton({ onClick }: { onClick: () => void }) {
       type="button"
       className={styles.iconBtn}
       onClick={onClick}
-      aria-label="Cheat sheet: card power and points"
-      title="Cheat sheet"
+      aria-label="Quick reference: card power and points"
+      title="Quick reference"
     >
       <span className={styles.help}>
         <HelpGlyph />
@@ -77,7 +77,7 @@ function MobileHeader({
   handNumber,
   leave,
   close,
-  onShowCheatSheet,
+  onShowQuickReference,
   onShowChat,
   chatUnread,
   onShowMenu,
@@ -92,7 +92,7 @@ function MobileHeader({
         <div className={styles.mobMeta}>H{handNumber}</div>
       </div>
       <div className={styles.mobRight}>
-        <HelpButton onClick={onShowCheatSheet} />
+        <HelpButton onClick={onShowQuickReference} />
         <button
           type="button"
           className={`${styles.iconBtn} ${chatUnread ? styles.unread : ""}`}
@@ -127,7 +127,7 @@ function DesktopHeader({
   leave,
   close,
   onShowScores,
-  onShowCheatSheet,
+  onShowQuickReference,
 }: TableHeaderProps) {
   return (
     <header className={styles.desk}>
@@ -150,7 +150,7 @@ function DesktopHeader({
           <span className={styles.statNum}>{handNumber}</span>
         </div>
         <div className={styles.links}>
-          <HelpButton onClick={onShowCheatSheet} />
+          <HelpButton onClick={onShowQuickReference} />
           <button type="button" className={styles.link} onClick={onShowScores}>
             Scores
           </button>

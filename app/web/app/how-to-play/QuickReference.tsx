@@ -5,7 +5,7 @@ import { useMediaQuery } from "../../lib/ds";
 import { pointGroups, trumpAndFail, type Scene } from "./lessonScenes";
 import CardStage from "./CardStage";
 import ModalSheet from "./ModalSheet";
-import styles from "./CheatSheet.module.css";
+import styles from "./QuickReference.module.css";
 
 const PAGES: { title: string; note: string; scene: (n: boolean) => Scene }[] = [
   {
@@ -26,7 +26,7 @@ const PAGES: { title: string; note: string; scene: (n: boolean) => Scene }[] = [
  * arrangement to the other. Tapping or swiping the stage, or the arrow
  * keys, flip to the other page too.
  */
-export default function CheatSheet({ onClose }: { onClose: () => void }) {
+export default function QuickReference({ onClose }: { onClose: () => void }) {
   const narrow = useMediaQuery("(max-width: 600px)");
   const [page, setPage] = useState(0);
   const flip = () => setPage((p) => 1 - p);
@@ -45,13 +45,17 @@ export default function CheatSheet({ onClose }: { onClose: () => void }) {
 
   return (
     <ModalSheet
-      overline="Cheat sheet"
+      overline="Quick reference"
       title="Power & points"
       onClose={onClose}
       narrowSheet
     >
       <div className={styles.body}>
-        <div className={styles.tabs} role="tablist" aria-label="Cheat sheet">
+        <div
+          className={styles.tabs}
+          role="tablist"
+          aria-label="Quick reference"
+        >
           {PAGES.map((p, i) => (
             <button
               key={p.title}
