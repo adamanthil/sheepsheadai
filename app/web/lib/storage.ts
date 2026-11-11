@@ -4,4 +4,5 @@ export const STORAGE_KEYS = {
   displayName: "sheepshead_display_name",
   sessionToken: "sheepshead_session_token",
   chatMutes: (tableId: string) => `sheepshead_chat_mutes_${tableId}`,
+  chatDraft: (tableId: string) => `sheepshead_chat_draft_${tableId}`,
 } as const;

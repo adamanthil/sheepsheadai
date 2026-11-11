@@ -6,6 +6,7 @@ import type { Rules, TableSummary } from "../../../lib/types";
 import { apiFetch } from "../../../lib/api";
 import { useTableSocket } from "../../../lib/hooks/useTableSocket";
 import { useBusy } from "../../../lib/hooks/useBusy";
+import { useChatDraft } from "../../../lib/hooks/useChatDraft";
 import { useChatMutes } from "../../../lib/hooks/useChatMutes";
 import { useChatUnread } from "../../../lib/hooks/useChatUnread";
 import { STORAGE_KEYS } from "../../../lib/storage";
@@ -281,6 +282,7 @@ export default function WaitingRoom() {
   const humanCount = seatItems.filter((s) => !s.isAI).length;
   const visibleChat = mutes.visible(chatMessages);
   const chatUnread = useChatUnread(visibleChat, clientId, chatOpen);
+  const [chatDraft, setChatDraft] = useChatDraft(params?.id);
 
   // Anyone can mute another player's chat for themselves; the host can
   // also remove them.
@@ -290,6 +292,8 @@ export default function WaitingRoom() {
       onSendMessage={sendChatMessage}
       muted={mutes.muted}
       onUnmute={mutes.unmute}
+      draft={chatDraft}
+      onDraftChange={setChatDraft}
       authorActions={(msg) => {
         const author = msg.author_id;
         if (!author || author === clientId) return null;

@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 
 import { STORAGE_KEYS } from "../../../lib/storage";
 import { useCountdown } from "../../../lib/hooks/useCountdown";
+import { useChatDraft } from "../../../lib/hooks/useChatDraft";
 import { useChatMutes } from "../../../lib/hooks/useChatMutes";
 import { useChatUnread } from "../../../lib/hooks/useChatUnread";
 import { ds, useIsMobile, useMediaQuery } from "../../../lib/ds";
@@ -148,6 +149,7 @@ export default function TablePage() {
 
   const secondsLeft = useCountdown(turnDeadline);
   const mutes = useChatMutes(params?.id);
+  const [chatDraft, setChatDraft] = useChatDraft(params?.id);
   const [showScores, setShowScores] = useState(false);
   const [showMobileLog, setShowMobileLog] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -336,6 +338,8 @@ export default function TablePage() {
     authorActions,
     muted: mutes.muted,
     onUnmute: mutes.unmute,
+    draft: chatDraft,
+    onDraftChange: setChatDraft,
   };
 
   const stage = (

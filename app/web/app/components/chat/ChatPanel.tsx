@@ -17,6 +17,10 @@ export interface ChatPanelProps {
    * so they can be unmuted; the caller filters their messages out. */
   muted?: Record<string, string>;
   onUnmute?: (clientId: string) => void;
+  /** The unsent message, when the caller keeps it so it outlives this
+   * panel (e.g. across the panel unmounting when a hand starts). */
+  draft?: string;
+  onDraftChange?: (draft: string) => void;
 }
 
 export function ChatPanel({
@@ -25,8 +29,12 @@ export function ChatPanel({
   authorActions,
   muted,
   onUnmute,
+  draft,
+  onDraftChange,
 }: ChatPanelProps) {
-  const [inputValue, setInputValue] = useState("");
+  const [ownDraft, setOwnDraft] = useState("");
+  const inputValue = draft ?? ownDraft;
+  const setInputValue = onDraftChange ?? setOwnDraft;
   // The message whose author controls are open, if any.
   const [actionsOpenFor, setActionsOpenFor] = useState<string | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
