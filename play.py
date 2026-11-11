@@ -6,6 +6,7 @@ import torch
 
 from sheepshead.agent.observation import last_trick_observation_for, observation_for
 from sheepshead.agent.ppo import load_agent
+from sheepshead.eval.fetch_models import deploy_path, load_manifest
 from sheepshead.game import (
     ACTION_IDS,
     ACTIONS,
@@ -17,6 +18,8 @@ from sheepshead.game import (
     colorize_card,
 )
 
+DEFAULT_MODEL = deploy_path(load_manifest())
+
 parser = ArgumentParser(
     prog="Play Sheepshead",
     description="Interactive Sheepshead AI player and evaluator",
@@ -24,8 +27,8 @@ parser = ArgumentParser(
 parser.add_argument(
     "-m",
     "--model",
-    default="models/pfsp-swish-30m.pt",
-    help="PyTorch model file. Default: models/pfsp-swish-30m.pt",
+    default=str(DEFAULT_MODEL),
+    help=f"PyTorch model file. Default: the released model, {DEFAULT_MODEL.name}",
 )
 parser.add_argument(
     "--partner-mode",

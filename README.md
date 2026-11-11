@@ -42,13 +42,14 @@ each imports only from those listed above it. Nothing imports `research/` or
 
 ## CLI game
 
-Watch the agent play a game:
-
 ```bash
 uv sync
-uv run python -m sheepshead.eval.fetch_models   # download checkpoints to models/
+uv run python -m sheepshead.eval.fetch_models --role deploy   # download the released model
 uv run play.py
 ```
+
+At the prompt, `play` runs a sample game and `pick` scores a hand you enter.
+`--model` loads a different checkpoint.
 
 ## Web app
 

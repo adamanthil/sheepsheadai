@@ -194,6 +194,13 @@ def lint(manifest: dict[str, Any]) -> list[str]:
     return errors
 
 
+def deploy_path(manifest: dict[str, Any], models_dir: Path = MODELS_DIR) -> Path:
+    """Where the deployed model (the one artifact with role ``deploy``)
+    lands under ``models_dir``. The file may not have been fetched yet."""
+    (key,) = select(manifest, None, ["deploy"])
+    return models_dir / _entry(manifest, key)["asset"]
+
+
 def select(
     manifest: dict[str, Any], keys: list[str] | None, roles: list[str] | None
 ) -> list[str]:
