@@ -4,6 +4,7 @@ from argparse import ArgumentParser
 
 import torch
 
+from sheepshead.agent.observation import last_trick_observation_for, observation_for
 from sheepshead.agent.ppo import load_agent
 from sheepshead.game import (
     ACTION_IDS,
@@ -72,7 +73,7 @@ def play(agent):
 
             # print(list(map(lambda i: ACTIONS[i - 1], valid_actions)))
             while valid_actions:
-                state = player.get_state_dict()
+                state = observation_for(player, agent)
                 action, _, _ = agent.act(
                     state, valid_actions, player.position, deterministic=True
                 )
@@ -102,7 +103,8 @@ def play(agent):
                 if player.game.was_trick_just_completed:
                     for seat in player.game.players:
                         agent.observe(
-                            seat.get_last_trick_state_dict(), player_id=seat.position
+                            last_trick_observation_for(seat, agent),
+                            player_id=seat.position,
                         )
                 # print(list(map(lambda i: ACTIONS[i - 1], valid_actions)))
 
@@ -121,7 +123,7 @@ def pick_evaluator(agent):
         player = Player(game, position, hand)
         game.last_passed = position - 1
 
-        state = player.get_state_dict()
+        state = observation_for(player, agent)
         valid_actions = player.get_valid_action_ids()
 
         # Get action probabilities from PPO actor network
