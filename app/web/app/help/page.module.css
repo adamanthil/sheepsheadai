@@ -1,0 +1,41 @@
+.page {
+  min-height: 100dvh;
+  background: var(--bg-page);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  overflow-x: hidden;
+}
+.inner {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 16px 16px 48px;
+}
+
+/* A small running head rather than a display title: overline over the
+   name on the left, the page switch on the right, a hairline under both. */
+.head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--rule);
+}
+.overline {
+  margin: 0;
+}
+.title {
+  margin: 2px 0 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: clamp(30px, 6vw, 40px);
+  line-height: 1;
+  letter-spacing: -0.01em;
+}
+
+/* Sit on the title's baseline row, not the top of the header. */
+.tabs {
+  align-self: flex-end;
+  flex-shrink: 0;
+}
