@@ -143,6 +143,19 @@ def test_lint_rejects(release, mutate, message):
     assert any(message in e for e in lint(manifest))
 
 
+def test_lint_accepts_reference_role(release):
+    # A superseded deploy model stays pinned for comparisons, with no sampling.
+    manifest = copy.deepcopy(release[0])
+    manifest["release_base"] = "https://example.invalid"
+    previous = copy.deepcopy(manifest["artifacts"]["toy"])
+    del previous["sampling"]
+    previous.update(asset="previous.pt", roles=["reference"])
+    manifest["artifacts"]["previous"] = previous
+    assert lint(manifest) == []
+    previous["sampling"] = manifest["artifacts"]["toy"]["sampling"]
+    assert any("deploy artifact only" in e for e in lint(manifest))
+
+
 def test_panel_files_follow_manifest_order():
     manifest = load_manifest()
     for name, keys in manifest["panels"].items():
