@@ -577,7 +577,9 @@ def main() -> int:
         for ka, kb in pairs:
             cell = {"all": paired_dmse(preds[ka], preds[kb], g, ep_ids)}
             for s in STRATA_ORDER[1:]:
-                idx = np.asarray([i for i, ss in enumerate(strata) if s in ss])
+                idx = np.asarray(
+                    [i for i, ss in enumerate(strata) if s in ss], dtype=np.intp
+                )
                 if len(idx) >= 20:
                     cell[s] = paired_dmse(
                         preds[ka][idx], preds[kb][idx], g[idx], ep_ids[idx]

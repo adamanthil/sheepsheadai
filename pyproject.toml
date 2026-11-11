@@ -5,13 +5,13 @@ description = "Reinforcement Learning agent for the trick-taking card game Sheep
 readme = "README.md"
 requires-python = "~=3.14.0"
 dependencies = [
-    "matplotlib>=3.10.8",
-    "numpy>=2.4.2",
+    "matplotlib>=3.11.2",
+    "numpy>=2.5.4",
     "openskill>=6.2.0",
-    "pip-tools>=7.5.3",
-    "scikit-learn>=1.8.0",
-    "scipy>=1.17.0",
-    "torch>=2.13.0",
+    "pip-tools>=7.6.2",
+    "scikit-learn>=1.9.1",
+    "scipy>=1.18.1",
+    "torch>=2.15.0",
 ]
 
 [project.scripts]
@@ -28,21 +28,21 @@ exclude = ["sheepshead/tests"]
 
 [project.optional-dependencies]
 server = [
-    "fastapi>=0.129.0",
-    "uvicorn[standard]>=0.41.0",
-    "pydantic>=2.12.5",
-    "pydantic-settings>=2.0.0",
-    "websockets>=16.0",
-    "asyncpg>=0.30.0",
-    "slowapi>=0.1.9",
+    "fastapi>=0.162.4",
+    "uvicorn[standard]>=0.54.0",
+    "pydantic>=2.14.3",
+    "pydantic-settings>=2.16.2",
+    "websockets>=17.4",
+    "asyncpg>=0.32.0",
+    "slowapi>=0.1.10",
     "argon2-cffi>=25.1.0",
-    "email-validator>=2.2.0",
-    "httpx2>=2.13",
+    "email-validator>=2.3.0",
+    "httpx2>=2.16.0",
 ]
 dev = [
-    "ruff>=0.8.0",
-    "pytest>=8.0",
-    "pytest-asyncio>=0.25",
+    "ruff>=0.17.4",
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.4.1.post1",
     # Pinned exactly: the pre-commit gate and CI must agree with the editor's
     # language server to the patch level, or a version bump silently reports
     # errors in one place and not the other. Point the editor at
@@ -50,15 +50,24 @@ dev = [
     "basedpyright==1.39.10",
 ]
 
-# Ruff's default rule set (E4/E7/E9 + F) plus `I` -- isort. `ruff format` does
-# not touch import order, so import sorting rides on the lint pass instead:
-# `ruff check` flags it (I001) and `ruff check --fix` rewrites it. That is what
-# both CI and .githooks/pre-commit already run, so neither needed a new step.
+# Ruff's pre-0.16 default rule set (E4/E7/E9 + F) plus `I` -- isort. `ruff
+# format` does not touch import order, so import sorting rides on the lint pass
+# instead: `ruff check` flags it (I001) and `ruff check --fix` rewrites it.
+# That is what both CI and the prek hooks already run, so neither needed a new
+# step.
 [tool.ruff.lint]
+# Named explicitly: ruff 0.16 grew its default set from 59 rules to 413 and
+# dropped some of these. Adopting any of the new defaults is its own change.
+select = ["E4", "E7", "E9", "F"]
 # BLE: a blanket `except Exception` must say why (noqa) or catch less.
 # RUF100: a noqa that no longer suppresses anything is an error, so stale
 # suppressions cannot pile up.
 extend-select = ["I", "BLE", "RUF100"]
+
+# Since 0.16 `ruff format` also rewrites Python code blocks in Markdown. The
+# Markdown here is notes and plans, whose snippets are quoted as written.
+[tool.ruff.format]
+exclude = ["*.md"]
 
 # `server` is rooted at app/, not at the project root, so ruff cannot infer it
 # as first-party the way it does `sheepshead`. Name both explicitly to keep
@@ -83,7 +92,7 @@ markers = [
 torch = [
     { index = "pytorch-cpu", marker = "sys_platform == 'darwin'" },
     { index = "pytorch-cpu", marker = "sys_platform == 'linux'" },
-    { index = "pytorch-cu130", marker = "sys_platform == 'win32'" },
+    { index = "pytorch-cu132", marker = "sys_platform == 'win32'" },
 ]
 
 [[tool.uv.index]]
@@ -92,6 +101,6 @@ url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
 [[tool.uv.index]]
-name = "pytorch-cu130"
-url = "https://download.pytorch.org/whl/cu130"
+name = "pytorch-cu132"
+url = "https://download.pytorch.org/whl/cu132"
 explicit = true
