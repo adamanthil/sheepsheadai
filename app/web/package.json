@@ -15,22 +15,22 @@
     "e2e": "playwright test"
   },
   "dependencies": {
-    "next": "^16.4.3",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
+    "next": "^16.4.6",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@next/eslint-plugin-next": "^16.4.3",
-    "@playwright/test": "^1.62.1",
-    "@types/node": "^22.0.0",
-    "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.4",
-    "eslint": "^10.8.1",
+    "@next/eslint-plugin-next": "^16.4.6",
+    "@playwright/test": "^1.65.0",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "eslint": "^10.14.0",
     "openapi-typescript": "^7.13.0",
-    "prettier": "^3.9.6",
-    "typescript": "^5.8.0",
-    "typescript-eslint": "^8.67.0",
-    "vitest": "^5.0.5"
+    "prettier": "^3.10.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.72.2",
+    "vitest": "^5.1.0"
   }
 }
