@@ -8,6 +8,7 @@ import { useTableSocket } from "../../../lib/hooks/useTableSocket";
 import { useBusy } from "../../../lib/hooks/useBusy";
 import { useChatDraft } from "../../../lib/hooks/useChatDraft";
 import { useChatMutes } from "../../../lib/hooks/useChatMutes";
+import { useTypingSignal } from "../../../lib/hooks/useTypingSignal";
 import { useChatUnread } from "../../../lib/hooks/useChatUnread";
 import { STORAGE_KEYS } from "../../../lib/storage";
 import { tableRoute } from "../../../lib/tableRoute";
@@ -95,23 +96,29 @@ export default function WaitingRoom() {
 
   // Shared socket hook: lobby updates, chat, auto-navigation on game start,
   // and reconnect-with-backoff all come from useTableSocket.
-  const { lastState, chatMessages, sendChatMessage, kickPlayer } =
-    useTableSocket(params?.id, clientId, {
-      onTableUpdate: (t, hostFlag) => {
-        setTable(t as TableInfo);
-        if (typeof hostFlag === "boolean") setIsHost(hostFlag);
-        const rules = t.rules ?? {};
-        if (rules.partnerMode !== undefined) setPartnerMode(rules.partnerMode);
-        if (rules.allPassMode !== undefined) setAllPassMode(rules.allPassMode);
-        if (rules.doubleOnTheBump !== undefined)
-          setScoringMode(rules.doubleOnTheBump ? 1 : 0);
-      },
-      onLobbyEvent: (msg) => {
-        setCallout(msg);
-        setTimeout(() => setCallout(null), 1800);
-      },
-      onTableClosed: () => setCallout("Table closed"),
-    });
+  const {
+    lastState,
+    chatMessages,
+    sendChatMessage,
+    kickPlayer,
+    sendTyping,
+    typists,
+  } = useTableSocket(params?.id, clientId, {
+    onTableUpdate: (t, hostFlag) => {
+      setTable(t as TableInfo);
+      if (typeof hostFlag === "boolean") setIsHost(hostFlag);
+      const rules = t.rules ?? {};
+      if (rules.partnerMode !== undefined) setPartnerMode(rules.partnerMode);
+      if (rules.allPassMode !== undefined) setAllPassMode(rules.allPassMode);
+      if (rules.doubleOnTheBump !== undefined)
+        setScoringMode(rules.doubleOnTheBump ? 1 : 0);
+    },
+    onLobbyEvent: (msg) => {
+      setCallout(msg);
+      setTimeout(() => setCallout(null), 1800);
+    },
+    onTableClosed: () => setCallout("Table closed"),
+  });
 
   // Once the first hand is dealt, the table page is where this table is
   // played -- between hands too, where only it offers the next deal. The
@@ -253,6 +260,15 @@ export default function WaitingRoom() {
     [isHost, clientId],
   );
 
+  const mutes = useChatMutes(params?.id);
+  const signalTyping = useTypingSignal(sendTyping);
+  const { visibleTypists } = mutes;
+  const shownTypists = useMemo(
+    () => visibleTypists(typists),
+    [visibleTypists, typists],
+  );
+  const typingNames = shownTypists.map((t) => t.name);
+
   const seatItems = useMemo(() => {
     if (!table) return [] as SeatInfo[];
     const out: SeatInfo[] = [];
@@ -267,13 +283,13 @@ export default function WaitingRoom() {
         account: table.seatAccount?.[String(i)] ?? null,
         removableId: isAI ? null : removableId(occupant),
         takeable: Boolean(table.seatTakeable?.[String(i)]),
+        typing: !!occupant && shownTypists.some((t) => t.clientId === occupant),
       });
     }
     return out;
-  }, [table, removableId, clientId]);
+  }, [table, removableId, clientId, shownTypists]);
 
   const isMobile = useIsMobile();
-  const mutes = useChatMutes(params?.id);
   const shortId = `#${String(params?.id || "")
     .slice(0, 4)
     .toUpperCase()}`;
@@ -293,7 +309,11 @@ export default function WaitingRoom() {
       muted={mutes.muted}
       onUnmute={mutes.unmute}
       draft={chatDraft}
-      onDraftChange={setChatDraft}
+      onDraftChange={(draft) => {
+        setChatDraft(draft);
+        signalTyping(draft);
+      }}
+      typing={typingNames}
       authorActions={(msg) => {
         const author = msg.author_id;
         if (!author || author === clientId) return null;
@@ -349,6 +369,7 @@ export default function WaitingRoom() {
     onLeave: () => router.push("/"),
     chat,
     rules,
+    typing: typingNames,
   };
 
   return (

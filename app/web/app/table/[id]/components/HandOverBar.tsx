@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ds } from "../../../../lib/ds";
+import { ds, TypingNote } from "../../../../lib/ds";
 import { useBusy } from "../../../../lib/hooks/useBusy";
 import type { TableView } from "../../../../lib/types";
 import styles from "./HandOverBar.module.css";
@@ -15,6 +15,9 @@ interface HandOverBarProps {
   /** The last-trick button, set on mobile, where the status line that holds
    * it in play is gone between hands. */
   lastTrick?: React.ReactNode;
+  /** Names of the others typing in the chat, shown to the host so the
+   * next deal doesn't cut a conversation off. */
+  typing?: string[];
 }
 
 /** What everyone but the host waits on between hands. */
@@ -33,6 +36,7 @@ export default function HandOverBar({
   onCloseTable,
   onLeave,
   lastTrick,
+  typing = [],
 }: HandOverBarProps) {
   const [confirmClose, setConfirmClose] = useState(false);
   // Both are held busy on success: the new deal (or the close) replaces
@@ -42,6 +46,11 @@ export default function HandOverBar({
 
   return (
     <div className={styles.bar}>
+      {isHost && typing.length > 0 && (
+        <div className={styles.typing}>
+          <TypingNote names={typing} />
+        </div>
+      )}
       <div className={styles.primary}>
         {lastTrick && <span className={styles.lastTrick}>{lastTrick}</span>}
         {/* Only the host can deal the next hand (the server refuses anyone

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { ds } from "../../../lib/ds";
+import { ds, TypingNote } from "../../../lib/ds";
 import styles from "./ChatPanel.module.css";
 import type { ChatMessage } from "../../../lib/types";
 
@@ -21,6 +21,8 @@ export interface ChatPanelProps {
    * panel (e.g. across the panel unmounting when a hand starts). */
   draft?: string;
   onDraftChange?: (draft: string) => void;
+  /** Names of the others typing a message right now. */
+  typing?: string[];
 }
 
 export function ChatPanel({
@@ -31,6 +33,7 @@ export function ChatPanel({
   onUnmute,
   draft,
   onDraftChange,
+  typing = [],
 }: ChatPanelProps) {
   const [ownDraft, setOwnDraft] = useState("");
   const inputValue = draft ?? ownDraft;
@@ -146,6 +149,10 @@ export function ChatPanel({
             );
           })
         )}
+      </div>
+      {/* Always there, empty or not, so the messages never jump. */}
+      <div className={styles.typingRow}>
+        <TypingNote names={typing} />
       </div>
       <form onSubmit={handleSubmit} className={styles.inputForm}>
         <input

@@ -1,0 +1,73 @@
+/* Three dots pulsing in turn: someone is typing. */
+.dots {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--dot-gap, 3px);
+}
+.dots span {
+  width: var(--dot, 4px);
+  height: var(--dot, 4px);
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.3;
+  animation: typingPulse 1.2s ease-in-out infinite;
+}
+.dots span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.dots span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes typingPulse {
+  0%,
+  60%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-1.5px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dots span {
+    animation: none;
+    opacity: 0.7;
+  }
+}
+
+/* A speech bubble off an avatar's top-right corner, the one corner the
+   dealer button, AI badge and account seal leave free. */
+.bubble {
+  position: absolute;
+  top: -9px;
+  right: -14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 5px;
+  background: var(--card-paper);
+  color: var(--ink);
+  border: 1px solid var(--rule-strong);
+  border-radius: 8px 8px 8px 2px;
+  box-shadow: var(--shadow-1);
+  --dot: 3px;
+  --dot-gap: 2px;
+  line-height: 0;
+}
+
+/* "Kyle is typing" as a line of text. */
+.note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}

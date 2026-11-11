@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ChatMessage } from "../types";
+import type { Typist } from "../typing";
 import { STORAGE_KEYS } from "../storage";
 
 export interface ChatMutes {
@@ -9,6 +10,8 @@ export interface ChatMutes {
   unmute: (clientId: string) => void;
   /** ``messages`` without the muted authors' player messages. */
   visible: (messages: ChatMessage[]) => ChatMessage[];
+  /** ``typists`` without the muted authors. */
+  visibleTypists: (typists: Typist[]) => Typist[];
 }
 
 /** Chat mutes for one viewer at one table. Client-side only: muting hides
@@ -61,5 +64,10 @@ export function useChatMutes(tableId: string | undefined): ChatMutes {
     [muted],
   );
 
-  return { muted, mute, unmute, visible };
+  const visibleTypists = useCallback(
+    (typists: Typist[]) => typists.filter((t) => !(t.clientId in muted)),
+    [muted],
+  );
+
+  return { muted, mute, unmute, visible, visibleTypists };
 }

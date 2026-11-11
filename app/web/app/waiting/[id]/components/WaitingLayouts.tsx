@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { MiniCardMark, ds, Wordmark } from "../../../../lib/ds";
+import { MiniCardMark, TypingNote, ds, Wordmark } from "../../../../lib/ds";
 import { useBusy } from "../../../../lib/hooks/useBusy";
 import { SeatChip, SeatTile, type SeatInfo } from "./Seat";
 import WaitingMenu from "./WaitingMenu";
@@ -26,6 +26,9 @@ export interface WaitingLayoutProps {
   onLeave: () => void;
   chat: React.ReactNode;
   rules: React.ReactNode;
+  /** Names of the others typing in the chat, shown to the host by Deal
+   * cards. */
+  typing: string[];
 }
 
 interface MobileWaitingLayoutProps extends WaitingLayoutProps {
@@ -213,6 +216,9 @@ export function MobileWaitingLayout(props: MobileWaitingLayoutProps) {
       </div>
 
       <div className={styles.mobFoot}>
+        {isHost && (
+          <TypingNote names={props.typing} className={styles.dealTyping} />
+        )}
         {isHost ? (
           <button
             type="button"
@@ -371,6 +377,9 @@ export function DesktopWaitingLayout(props: WaitingLayoutProps) {
                 </button>
               ))}
           </div>
+          {isHost && (
+            <TypingNote names={props.typing} className={styles.dealTyping} />
+          )}
           {isHost ? (
             <button
               className={`${ds.btn} ${ds.btnAccent} ${ds.btnLg} ${props.starting ? ds.btnBusy : ""}`}

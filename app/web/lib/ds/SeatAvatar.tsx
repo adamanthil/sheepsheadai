@@ -1,4 +1,5 @@
 import React from "react";
+import { TypingBubble } from "./TypingDots";
 
 export type SeatTone = "default" | "picker" | "partner" | "you";
 
@@ -13,6 +14,8 @@ interface SeatAvatarProps {
   dealer?: boolean;
   size?: number;
   tone?: SeatTone;
+  /** Draws a typing bubble in the top-right corner. */
+  typing?: boolean;
 }
 
 const TONES: Record<SeatTone, { bg: string; border: string; fg: string }> = {
@@ -43,6 +46,7 @@ export default function SeatAvatar({
   dealer,
   size = 44,
   tone = "default",
+  typing,
 }: SeatAvatarProps) {
   const initial = (name || "?").slice(0, 1).toUpperCase();
   const s = TONES[tone] ?? TONES.default;
@@ -86,6 +90,7 @@ export default function SeatAvatar({
       )}
       {!isAI && account && <AccountSeal username={account} size={size} />}
       {dealer && <DealerButton size={size} />}
+      {typing && <TypingBubble name={name} />}
     </div>
   );
 }

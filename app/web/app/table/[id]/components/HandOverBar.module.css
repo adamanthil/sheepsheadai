@@ -34,6 +34,15 @@
   color: var(--muted);
 }
 
+/* The host's heads-up that someone is still typing, on its own line
+   above the buttons. */
+.typing {
+  flex-basis: 100%;
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+}
+
 /* A phone's full width: the next step at the left edge, the rest at the
    right. */
 @media (max-width: 560px) {

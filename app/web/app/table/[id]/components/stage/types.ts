@@ -22,6 +22,8 @@ export interface SeatView {
   leaving: boolean;
   /** Dealt this hand (see DEALER_SEAT). */
   dealer: boolean;
+  /** Typing a chat message right now. */
+  typing: boolean;
 }
 
 export interface CallOption {

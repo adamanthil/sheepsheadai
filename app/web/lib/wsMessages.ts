@@ -128,6 +128,12 @@ export const wsMessageSchema = z.discriminatedUnion("type", [
     type: z.literal("chat:append"),
     message: chatMessage,
   }),
+  z.looseObject({
+    type: z.literal("chat:typing"),
+    client_id: z.string(),
+    name: z.string(),
+    typing: z.boolean(),
+  }),
   z.looseObject({ type: z.literal("server_restart") }),
   z.looseObject({ type: z.literal("kicked") }),
   z.looseObject({ type: z.literal("left") }),

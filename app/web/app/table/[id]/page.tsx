@@ -7,6 +7,7 @@ import { STORAGE_KEYS } from "../../../lib/storage";
 import { useCountdown } from "../../../lib/hooks/useCountdown";
 import { useChatDraft } from "../../../lib/hooks/useChatDraft";
 import { useChatMutes } from "../../../lib/hooks/useChatMutes";
+import { useTypingSignal } from "../../../lib/hooks/useTypingSignal";
 import { useChatUnread } from "../../../lib/hooks/useChatUnread";
 import { ds, useIsMobile, useMediaQuery } from "../../../lib/ds";
 import styles from "./page.module.css";
@@ -124,6 +125,8 @@ export default function TablePage() {
     takeSeat,
     kickPlayer,
     sendChatMessage,
+    sendTyping,
+    typists,
   } = useTableSocket(params?.id, clientId, {
     onTrickComplete: triggerCollect,
     onPickerAnnounced: (name) => showCallout("PICK", `${name} picked`),
@@ -150,6 +153,9 @@ export default function TablePage() {
   const secondsLeft = useCountdown(turnDeadline);
   const mutes = useChatMutes(params?.id);
   const [chatDraft, setChatDraft] = useChatDraft(params?.id);
+  const signalTyping = useTypingSignal(sendTyping);
+  const shownTypists = mutes.visibleTypists(typists);
+  const typingNames = shownTypists.map((t) => t.name);
   const [showScores, setShowScores] = useState(false);
   const [showMobileLog, setShowMobileLog] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -285,7 +291,15 @@ export default function TablePage() {
   // What your turn asks of you, for the turn line.
   const kind = computeKind(phase, yourMode);
 
-  const seats = buildSeats(lastState, table, yourSeat, started);
+  // On a phone between hands the chat is on screen, and says who is
+  // typing; the seats don't repeat it.
+  const seats = buildSeats(
+    lastState,
+    table,
+    yourSeat,
+    started,
+    isMobile && betweenHands ? [] : shownTypists.map((t) => t.clientId),
+  );
   const yourRole = getYourRole(lastState);
 
   const displayCards = computeDisplayCards(showPrev, view);
@@ -339,7 +353,11 @@ export default function TablePage() {
     muted: mutes.muted,
     onUnmute: mutes.unmute,
     draft: chatDraft,
-    onDraftChange: setChatDraft,
+    onDraftChange: (draft: string) => {
+      setChatDraft(draft);
+      signalTyping(draft);
+    },
+    typing: typingNames,
   };
 
   const stage = (
@@ -451,6 +469,7 @@ export default function TablePage() {
       onCloseTable={closeTable}
       onLeave={leaveNow}
       lastTrick={mobLastTrick}
+      typing={isMobile ? [] : typingNames}
     />
   );
 

@@ -226,3 +226,13 @@
   font-weight: 600;
   color: var(--ink);
 }
+
+/* Who is typing, between the messages and the input. */
+.typingRow {
+  height: 22px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  min-width: 0;
+}

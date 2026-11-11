@@ -3,6 +3,7 @@ export type { PlayingCardProps } from "./PlayingCard";
 export { default as CardText } from "./CardText";
 export { default as SeatAvatar } from "./SeatAvatar";
 export type { SeatTone } from "./SeatAvatar";
+export { TypingBubble, TypingDots, TypingNote, typingText } from "./TypingDots";
 export { default as Wordmark } from "./Wordmark";
 export { default as MiniCardMark } from "./MiniCardMark";
 export { parseCard, suitSymbol, isRedSuit, cardName } from "./cardUtils";

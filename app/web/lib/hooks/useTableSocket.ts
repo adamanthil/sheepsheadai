@@ -5,6 +5,7 @@ import { STORAGE_KEYS } from "../storage";
 import { parseWsMessage } from "../wsMessages";
 import { diffCallouts } from "../callouts";
 import { applyPendingMove, isPredicted, type PendingMove } from "../optimistic";
+import { applyTyping, dropStale, type Typist } from "../typing";
 
 export interface TableSocketCallbacks {
   /** A trick was taken. ``shownForMs`` is how long it has already been on
@@ -57,6 +58,8 @@ export interface UseTableSocketReturn {
   turnSeconds: number | null;
   actionLookup: Record<string, string>;
   chatMessages: ChatMessage[];
+  /** The others typing in the chat now, in the order they started. */
+  typists: Typist[];
   /** POST one action, shown at once where it can be predicted. Resolves
    * true when the server accepted it. */
   takeAction: (actionId: number) => Promise<boolean>;
@@ -76,6 +79,9 @@ export interface UseTableSocketReturn {
   /** Host only: remove a player (by client id) from the table. */
   kickPlayer: (targetClientId: string) => Promise<boolean>;
   sendChatMessage: (message: string) => void;
+  /** Tell the others this player is typing in the chat, or stopped.
+   * Returns whether it went out (the socket may be down). */
+  sendTyping: (typing: boolean) => boolean;
 }
 
 export function useTableSocket(
@@ -94,6 +100,7 @@ export function useTableSocket(
   const [turnSeconds, setTurnSeconds] = useState<number | null>(null);
   const [actionLookup, setActionLookup] = useState<Record<string, string>>({});
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [typists, setTypists] = useState<Typist[]>([]);
   const [pending, setPending] = useState<PendingMove | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const callbacksRef = useRef(callbacks);
@@ -152,6 +159,9 @@ export function useTableSocket(
         // new one owns the connection, so this close schedules nothing.
         if (wsRef.current !== socket) return;
         wsRef.current = null;
+        // Nobody's repeats reach a closed socket; the reconnect starts
+        // from nobody typing rather than letting them go stale.
+        setTypists([]);
         if (disposed) return;
         if (e.code === TABLE_GONE_WS_CODE) {
           // The table closed while we were away: forget it so the lobby
@@ -261,6 +271,23 @@ export function useTableSocket(
           setChatMessages(data.messages);
         } else if (data.type === "chat:append") {
           setChatMessages((prev) => [...prev, data.message]);
+          // A typist whose message arrives has stopped typing it.
+          const author = data.message.author_id;
+          if (author) {
+            setTypists((prev) =>
+              applyTyping(prev, author, "", false, Date.now()),
+            );
+          }
+        } else if (data.type === "chat:typing") {
+          setTypists((prev) =>
+            applyTyping(
+              prev,
+              data.client_id,
+              data.name,
+              data.typing,
+              Date.now(),
+            ),
+          );
         } else if (data.type === "kicked") {
           // Forget this table's connection so the lobby's Join doesn't try
           // to resume it, and say why on the home page.
@@ -450,6 +477,29 @@ export function useTableSocket(
     [post],
   );
 
+  // Drop a typist when their repeats stop arriving.
+  useEffect(() => {
+    if (typists.length === 0) return;
+    const next = Math.min(...typists.map((t) => t.until));
+    const timer = setTimeout(
+      () => setTypists((prev) => dropStale(prev, Date.now())),
+      Math.max(0, next - Date.now()) + 50,
+    );
+    return () => clearTimeout(timer);
+  }, [typists]);
+
+  const sendTyping = useCallback((typing: boolean) => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+    try {
+      ws.send(JSON.stringify({ type: "chat:typing", typing }));
+      return true;
+    } catch (err) {
+      console.warn("Failed to send typing:", err);
+      return false;
+    }
+  }, []);
+
   const sendChatMessage = useCallback((message: string) => {
     if (!wsRef.current || !message.trim()) return;
     try {
@@ -493,5 +543,7 @@ export function useTableSocket(
     takeSeat,
     kickPlayer,
     sendChatMessage,
+    sendTyping,
+    typists,
   };
 }

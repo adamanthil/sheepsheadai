@@ -126,6 +126,8 @@ export function buildSeats(
   table: TableView,
   yourSeat: number | null,
   started: boolean,
+  /** Client ids of the others typing in the chat. */
+  typing: string[] = [],
 ): SeatView[] {
   // A spectator sees the ring from seat 1, with no seat marked as theirs.
   const pov = yourSeat ?? 1;
@@ -139,6 +141,7 @@ export function buildSeats(
     you: absSeat === yourSeat,
     leaving: !!table.seatLeavingAfterHand[String(absSeat)],
     dealer: absSeat === DEALER_SEAT,
+    typing: typing.includes(table.seatOccupants[String(absSeat)] ?? ""),
   }));
 }
 

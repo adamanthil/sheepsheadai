@@ -14,6 +14,8 @@ export interface SeatInfo {
   removableId: string | null;
   /** Whether the viewer may move into this seat (an AI holds it). */
   takeable: boolean;
+  /** Typing a chat message right now. */
+  typing?: boolean;
 }
 
 interface SeatProps {
@@ -32,6 +34,7 @@ function avatar(seat: SeatInfo, size: number) {
       isAI={seat.isAI}
       account={seat.account}
       size={size}
+      typing={seat.typing}
       tone={seat.isYou ? "you" : "default"}
     />
   );

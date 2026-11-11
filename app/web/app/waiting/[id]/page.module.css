@@ -150,6 +150,10 @@
   gap: 8px;
   align-items: center;
 }
+/* The host's heads-up that someone is still typing, beside Deal cards. */
+.dealTyping {
+  margin-left: auto;
+}
 .dangerLink {
   color: var(--accent-2);
   border-color: transparent;
@@ -265,11 +269,17 @@
 .mobFoot {
   flex-shrink: 0;
   display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
   justify-content: center;
   padding: 12px 20px max(20px, env(safe-area-inset-bottom));
 }
 .deal {
   width: 100%;
+}
+.mobFoot .dealTyping {
+  margin-left: 0;
 }
 
 /* Mobile chat: a full screen opened from the menu. */
