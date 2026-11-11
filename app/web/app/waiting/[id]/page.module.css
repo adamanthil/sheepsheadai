@@ -222,16 +222,16 @@
   border-radius: 6px;
 }
 /* Unread chat. */
-.dot::after {
+.unread::after {
   content: "";
   position: absolute;
   top: 9px;
   right: 8px;
-  width: 7px;
-  height: 7px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   background: var(--accent-2);
-  border: 1.5px solid var(--bg-page);
+  border: 2px solid var(--bg-page);
 }
 /* Scrolls only on a phone too short for the seats and every house rule. */
 .mobBody {

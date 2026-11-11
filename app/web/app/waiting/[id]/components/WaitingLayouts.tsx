@@ -153,7 +153,7 @@ export function MobileWaitingLayout(props: MobileWaitingLayoutProps) {
         <div className={styles.mobIcons}>
           <button
             type="button"
-            className={`${styles.iconBtn} ${chatUnread ? styles.dot : ""}`}
+            className={`${styles.iconBtn} ${chatUnread ? styles.unread : ""}`}
             onClick={() => setChatOpen(true)}
             aria-label={chatUnread ? "Chat, new messages" : "Chat"}
           >

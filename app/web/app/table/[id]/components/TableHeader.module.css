@@ -160,6 +160,18 @@
   background: var(--accent-2);
   border: 1.5px solid var(--bg-page);
 }
+/* Unread chat: larger than the menu's flag, as it is easy to miss. */
+.unread::after {
+  content: "";
+  position: absolute;
+  top: 9px;
+  right: 8px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent-2);
+  border: 2px solid var(--bg-page);
+}
 
 /* Mobile */
 .mob {

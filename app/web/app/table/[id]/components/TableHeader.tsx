@@ -95,7 +95,7 @@ function MobileHeader({
         <HelpButton onClick={onShowCheatSheet} />
         <button
           type="button"
-          className={`${styles.iconBtn} ${chatUnread ? styles.dot : ""}`}
+          className={`${styles.iconBtn} ${chatUnread ? styles.unread : ""}`}
           onClick={onShowChat}
           aria-label={chatUnread ? "Chat, new messages" : "Chat"}
         >
