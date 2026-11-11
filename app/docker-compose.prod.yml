@@ -46,7 +46,7 @@ services:
   # One-shot migration runner; invoked by the deploy script:
   #   docker compose ... run --rm migrate
   migrate:
-    image: node:22.23.4-alpine
+    image: node:26.13.1-alpine
     profiles: ["tools"]
     logging: *logging
     working_dir: /db
