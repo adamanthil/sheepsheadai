@@ -326,6 +326,24 @@
   padding: 16px 0;
 }
 
+/* A quiet footnote at the foot of the lobby, level with Start a table. */
+.lobbyFoot {
+  margin-top: auto;
+  display: flex;
+  justify-content: flex-end;
+}
+.refLink {
+  text-decoration: none;
+  transition: color 0.18s ease;
+}
+.refLink:hover {
+  color: var(--ink);
+}
+.refLink:focus-visible {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: 4px;
+}
+
 /* A phone's lobby: a smaller title, and no column heads over the rows. */
 @media (max-width: 768px) {
   .lobby {

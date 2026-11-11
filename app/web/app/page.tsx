@@ -424,6 +424,14 @@ export default function HomePage() {
               })
             )}
           </div>
+
+          {/* For players who already know the game: it sits under the
+              lobby rather than beside How to play. */}
+          <div className={styles.lobbyFoot}>
+            <Link href="/help" className={`${ds.overline} ${styles.refLink}`}>
+              Quick reference →
+            </Link>
+          </div>
         </div>
       </div>
     </div>
