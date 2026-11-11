@@ -49,6 +49,9 @@ class ClientConn:
     # The AI occupant a mid-hand newcomer takes over from at the next deal
     # (seating.seat_queued_joiners); they watch the hand in play until then.
     queued_occupant: Optional[str] = None
+    # When the others were last told this player is typing in the chat
+    # (realtime.chat.relay_typing); None while they are not.
+    typing_relayed_at: Optional[float] = None
 
     @property
     def connected(self) -> bool:

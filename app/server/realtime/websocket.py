@@ -18,6 +18,7 @@ from server.realtime.chat import (
     broadcast_chat_append,
     is_chat_rate_limited,
     post_presence_notice,
+    relay_typing,
     send_chat_init,
 )
 from server.runtime.ai_loop import schedule_ai_turns
@@ -224,6 +225,11 @@ async def _serve_connection(
                                     author_id=conn.client_id,
                                 )
                                 await broadcast_chat_append(table, msg_dict)
+                                # The others drop a typist whose message
+                                # arrives; the next keystroke relays anew.
+                                conn.typing_relayed_at = None
+                    elif isinstance(data, dict) and data.get("type") == "chat:typing":
+                        await relay_typing(table, conn, data.get("typing") is True)
                 except json.JSONDecodeError:
                     pass
             except ValueError:
@@ -242,6 +248,7 @@ async def _serve_connection(
             # take the game away from someone still sitting at it.
             if not c.sockets:
                 c.disconnected_at = time.time()
+                await relay_typing(table, c, False)
                 if client_id == table.host_client_id:
                     schedule_host_handoff(table)
                 try:

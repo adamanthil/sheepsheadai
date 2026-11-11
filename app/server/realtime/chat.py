@@ -8,7 +8,7 @@ from typing import Any, Dict, Optional
 
 from fastapi import WebSocket
 
-from server.realtime.broadcast import broadcast_table_event
+from server.realtime.broadcast import broadcast_table_event, send_to_client
 from server.runtime.models import ClientConn, Table
 from server.runtime.views import json_default
 from sheepshead.game import CARD_FULL_NAMES
@@ -19,6 +19,10 @@ CHAT_MAX_LEN = 500
 PRESENCE_NOTICE_COOLDOWN_SECONDS = 60.0
 _CHAT_RATE_LIMIT = 5  # max messages
 _CHAT_RATE_WINDOW = 5.0  # seconds
+# A typing client repeats "typing" every few seconds while it keeps typing
+# (others drop a typist they stop hearing from); repeats closer together
+# than this are not passed on.
+TYPING_RELAY_INTERVAL_SECONDS = 2.0
 
 
 def is_chat_rate_limited(conn: ClientConn) -> bool:
@@ -31,6 +35,37 @@ def is_chat_rate_limited(conn: ClientConn) -> bool:
         return True
     conn.chat_timestamps.append(now)
     return False
+
+
+async def relay_typing(table: Table, conn: ClientConn, typing: bool) -> None:
+    """Tell everyone else at the table that ``conn`` started (or is still)
+    typing a chat message, or stopped.
+
+    Nothing is kept beyond when it was last relayed: the client repeats
+    "typing" while it types and expires a typist it stops hearing from, so
+    a dropped "stopped" can't leave anyone typing forever.
+    """
+    now = time.monotonic()
+    if typing:
+        last = conn.typing_relayed_at
+        if last is not None and now - last < TYPING_RELAY_INTERVAL_SECONDS:
+            return
+        conn.typing_relayed_at = now
+    else:
+        if conn.typing_relayed_at is None:
+            return
+        conn.typing_relayed_at = None
+    payload = json.dumps(
+        {
+            "type": "chat:typing",
+            "client_id": conn.client_id,
+            "name": conn.display_name,
+            "typing": typing,
+        }
+    )
+    for other in list(table.clients.values()):
+        if other is not conn:
+            await send_to_client(table, other, payload)
 
 
 async def add_chat_message(
