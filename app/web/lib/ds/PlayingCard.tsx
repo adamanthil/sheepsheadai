@@ -14,10 +14,9 @@ export interface PlayingCardProps {
   playable?: boolean;
   dim?: boolean;
   /**
-   * Jumbo-index face: the rank and suit large and centred across the top,
-   * no mirrored corner, a small pip at the bottom. For cards drawn too
-   * small for the classic face to read, such as the quick reference on a
-   * phone.
+   * Jumbo-index face: the rank and suit large in the top-left corner and
+   * nothing else. For cards drawn too small for the classic face to read,
+   * such as the quick reference on a phone.
    */
   largeIndex?: boolean;
   /** Face-down cards only: a word printed on the back, e.g. "under". */
