@@ -67,6 +67,7 @@ export default function CardStage({
   narrow,
   onSwipe,
   onTap,
+  largeIndex = false,
   children,
 }: {
   scene: Scene;
@@ -74,6 +75,9 @@ export default function CardStage({
   /** A horizontal swipe: 1 for onward (leftward), -1 for back. */
   onSwipe?: (dir: 1 | -1) => void;
   onTap?: () => void;
+  /** Draw the faces with jumbo indexes (see PlayingCard); the lesson keeps
+   * the classic face. */
+  largeIndex?: boolean;
   children?: React.ReactNode;
 }) {
   // Placements land without transitions until the first narrow/wide answer
@@ -164,7 +168,12 @@ export default function CardStage({
                 <div
                   className={`${styles.flip} ${p.faceDown ? styles.flipped : ""}`}
                 >
-                  <PlayingCard code={code} className={styles.face} ariaHidden />
+                  <PlayingCard
+                    code={code}
+                    className={styles.face}
+                    largeIndex={largeIndex}
+                    ariaHidden
+                  />
                   <PlayingCard code="__" className={styles.back} ariaHidden />
                 </div>
               </div>

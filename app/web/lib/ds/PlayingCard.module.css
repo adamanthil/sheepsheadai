@@ -183,3 +183,39 @@
     font-size: calc(var(--pcw) * 0.45);
   }
 }
+
+/* Jumbo index: the rank and suit set side by side the way you'd write the
+   card ("10♥"), centred across the top at about twice the classic size, so
+   a card tucked under another still shows both. The mirrored corner goes,
+   and a small faint pip centred at the bottom keeps the card reading as a
+   playing card. Doubled class selectors outrank the container-query rules
+   above, which would otherwise shrink the corner on narrow cards. */
+.largeIndex.largeIndex {
+  grid-template-rows: auto 1fr;
+}
+.largeIndex .corner.corner {
+  flex-direction: row;
+  align-items: baseline;
+  justify-self: center;
+  font-size: calc(var(--pcw) * 0.48);
+  padding: calc(var(--pcw) * 0.06) calc(var(--pcw) * 0.05);
+  gap: calc(var(--pcw) * 0.03);
+  font-weight: 600;
+}
+.largeIndex .rank {
+  letter-spacing: -0.06em;
+}
+.largeIndex .suitSm.suitSm {
+  font-size: calc(var(--pcw) * 0.46);
+}
+.largeIndex .cornerBr {
+  display: none;
+}
+.largeIndex .center.center {
+  align-self: end;
+  justify-self: center;
+  font-size: calc(var(--pcw) * 0.28);
+  padding-bottom: calc(var(--pcw) * 0.08);
+  opacity: 0.55;
+  transform: none;
+}

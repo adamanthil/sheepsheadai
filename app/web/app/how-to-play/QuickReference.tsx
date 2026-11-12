@@ -16,7 +16,7 @@ const PAGES: { title: string; note: string; scene: (n: boolean) => Scene }[] = [
   {
     title: "Points",
     note: "120 points in the deck. A team needs 61 to win the hand.",
-    scene: pointGroups,
+    scene: (narrow) => pointGroups(narrow, true),
   },
 ];
 
@@ -88,7 +88,13 @@ export function ReferenceStage({
 
   return (
     <div className={styles.body}>
-      <CardStage scene={scene} narrow={narrow} onSwipe={flip} onTap={flip} />
+      <CardStage
+        scene={scene}
+        narrow={narrow}
+        onSwipe={flip}
+        onTap={flip}
+        largeIndex
+      />
       <p key={page} className={styles.note} aria-live="polite">
         {current.note}
       </p>

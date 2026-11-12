@@ -877,20 +877,47 @@ export function trumpAndFail(narrow: boolean): Scene {
   return { cards, labels };
 }
 
+/** Gap between cards stacked in a pointGroups column, in stage units: the
+ * point cards fan enough to show each rank, the pointless pile barely.
+ * Jumbo indexes are taller, so on a phone their fan opens wider. */
+const STACK_STEP = {
+  classic: {
+    narrow: { points: 4.5, zero: 2 },
+    wide: { points: 3.4, zero: 1.4 },
+  },
+  large: {
+    narrow: { points: 7.6, zero: 7.6 },
+    wide: { points: 3.8, zero: 3.8 },
+  },
+} as const;
+
+/** The pointless column with jumbo indexes: one each of 9, 8 and 7, fanned
+ * like the point cards, since all twelve would pile up as a blur. */
+const ZERO_SAMPLE = ["9C", "8S", "7H"];
+
 /** The deck in columns by point value: the lesson's first points beat, and
- * the table quick reference's Points page. */
-export function pointGroups(narrow: boolean): Scene {
+ * the table quick reference's Points page, which passes largeIndex for its
+ * jumbo-index faces (see STACK_STEP and ZERO_SAMPLE). */
+export function pointGroups(narrow: boolean, largeIndex = false): Scene {
   const cards: Cards = {};
   const labels: StageLabel[] = [];
   POINT_GROUPS.forEach((g, i) => {
-    const codes = DECK.filter((c) => g.ranks.includes(rankOf(c)));
     const zero = g.points === "0";
+    const codes =
+      zero && largeIndex
+        ? ZERO_SAMPLE
+        : DECK.filter((c) => g.ranks.includes(rankOf(c)));
     const [x, top] = narrow
-      ? [17 + (i % 3) * 33, i < 3 ? 26 : 82]
+      ? [17 + (i % 3) * 33, i < 3 ? 26 : largeIndex ? 90 : 82]
       : [9 + i * 16.4, 22];
-    const dy = zero ? (narrow ? 2 : 1.4) : narrow ? 4.5 : 3.4;
+    const step =
+      STACK_STEP[largeIndex ? "large" : "classic"][narrow ? "narrow" : "wide"];
+    const dy = zero ? step.zero : step.points;
     codes.forEach((c, j) => {
-      cards[c] = { x, y: top + j * dy, tone: zero ? "dim" : undefined };
+      // Faded cards are see-through, so a faded fan of jumbo indexes shows
+      // each card's suit through the next; the "0" over it says enough.
+      const tone = zero && !largeIndex ? "dim" : undefined;
+      cards[c] = { x, y: top + j * dy, tone };
     });
     const bottom = top + (codes.length - 1) * dy;
     labels.push(
