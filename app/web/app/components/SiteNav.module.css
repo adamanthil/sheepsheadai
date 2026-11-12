@@ -171,3 +171,22 @@
     display: none;
   }
 }
+
+/* The smallest phones (320px): the strip at the sizes above runs about
+   40px past the edge and cuts off the account link, so the gutters, gaps
+   and tracking tighten once more. */
+@media (max-width: 359px) {
+  .inner {
+    padding: 0 10px;
+    gap: 8px;
+  }
+  .sections {
+    gap: 8px;
+  }
+  .actions {
+    gap: 8px;
+  }
+  .item {
+    letter-spacing: 0.1em;
+  }
+}
