@@ -24,6 +24,7 @@
 }
 .overline {
   margin: 0;
+  white-space: nowrap;
 }
 .title {
   margin: 2px 0 0;
@@ -38,4 +39,14 @@
 .tabs {
   align-self: flex-end;
   flex-shrink: 0;
+}
+
+/* The smallest phones (320px) can't fit the label, title and switch on
+   one row at the switch's usual padding; tighten its tabs so the label
+   doesn't wrap onto two lines. */
+@media (max-width: 359px) {
+  .tabs > button {
+    padding-inline: 11px;
+    letter-spacing: 0.1em;
+  }
 }
