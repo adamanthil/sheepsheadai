@@ -24,6 +24,7 @@ from server.runtime.timing import (
 )
 from server.runtime.views import record_hand_result
 from server.services.persistence.game_table import close_game_table
+from server.services.persistence.games import wait_for_game_hooks
 from server.services.persistence.pool import get_db_pool
 
 # Set on SIGTERM (deploy/restart): new tables/games are refused with a 503
@@ -109,6 +110,9 @@ async def close_table(
                         table.id,
                     )
             conn.sockets.clear()
+        # The hand may have ended on a move whose result is still being
+        # written by the AI loop cancelled above; nothing settled it.
+        await wait_for_game_hooks(table)
         await close_game_table(get_db_pool(), table.id)
     finally:
         # Registry removal is the one step that must not be skippable: a table

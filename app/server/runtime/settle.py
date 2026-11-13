@@ -20,7 +20,7 @@ from server.runtime.dealing import hand_passed_out
 from server.runtime.models import Table
 from server.runtime.turn_timer import cancel_turn_timer
 from server.runtime.views import get_actor_seat, record_hand_result
-from server.services.persistence.games import fire_game_hooks
+from server.services.persistence.games import fire_game_hooks, wait_for_game_hooks
 
 
 async def _stop(task: Optional[asyncio.Task]) -> None:
@@ -47,6 +47,8 @@ async def settle_hand(table: Table, charge: Callable[[int], bool]) -> None:
     timer = table.turn_timer_task
     cancel_turn_timer(table)
     await _stop(timer)
+    # A move either task made is played on from only once it is recorded.
+    await wait_for_game_hooks(table)
     for seat, is_ai in table.game_player_is_ai.items():
         if not is_ai and not charge(seat):
             table.excused_seats.add(seat)

@@ -18,6 +18,7 @@ or failed), so a partial-write hand is simply absent from the DB.
 
 from __future__ import annotations
 
+import asyncio
 from typing import TYPE_CHECKING, Any, Dict
 
 from server.runtime.rules import plays_doublers
@@ -51,7 +52,35 @@ async def fire_game_hooks(
     dereference the live ``Game`` here so that concurrent ``player.act()``
     cannot race with our DB I/O. ``seat`` made the move, and ``by_ai`` says
     whether the AI chose it.
+
+    The writes run in a task of their own that the caller's cancellation
+    does not reach: settlement cancels the AI turn loop and the turn
+    timer, and a hook cut off mid-transaction would roll back, silently
+    losing a trick or, on the last move, the hand's result. A move's
+    hooks start only once the previous move's have landed, so they stay
+    in order across a cancellation; ``wait_for_game_hooks`` waits for
+    the last of them.
     """
+    await wait_for_game_hooks(table)
+    task = asyncio.create_task(_fire_game_hooks(table, pre, post, seat, by_ai))
+    table.hooks_task = task
+    await asyncio.shield(task)
+
+
+async def wait_for_game_hooks(table: "Table") -> None:
+    """Wait until the hooks of every move made so far have been written."""
+    task = table.hooks_task
+    if task is not None and not task.done():
+        await asyncio.wait({task})
+
+
+async def _fire_game_hooks(
+    table: "Table",
+    pre: Dict[str, Any],
+    post: Dict[str, Any],
+    seat: int,
+    by_ai: bool,
+) -> None:
     if table.current_game_id is None:
         return  # Hook 1 never ran; skip all subsequent hooks.
     pool = get_db_pool()

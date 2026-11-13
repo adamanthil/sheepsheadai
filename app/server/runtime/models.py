@@ -113,6 +113,8 @@ class Table:
     state_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     ai_agent: Optional[PPOAgent] = None
     ai_task: Optional[asyncio.Task] = None
+    # The persistence hooks of the latest move (persistence.games).
+    hooks_task: Optional[asyncio.Task] = None
     # background task to auto-close the table when humans disconnect
     autoclose_task: Optional[asyncio.Task] = None
     # pending host handoff after the host's last tab closed

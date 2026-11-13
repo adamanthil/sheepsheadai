@@ -3,21 +3,23 @@ by the AI and recorded, never dropped."""
 
 from __future__ import annotations
 
+import asyncio
 import uuid
+from contextlib import asynccontextmanager
 
 import httpx2
 import pytest
 from fastapi import Request
 
 from server.api.auth import PlayerIdentity, current_player
-from server.runtime import lifecycle
+from server.runtime import ai_loop, lifecycle
 from server.runtime.ai_loop import schedule_ai_turns
 from server.runtime.dealing import new_game_for_table
 from server.runtime.manager import tables
 from server.runtime.models import ClientConn, Occupant, Table
 from server.runtime.settle import settle_hand
 from server.services.persistence import games as games_hooks
-from server.tests.recording_pool import RecordingPool
+from server.tests.recording_pool import RecordingConn, RecordingPool
 from sheepshead.game import ACTION_IDS
 
 
@@ -201,3 +203,99 @@ async def test_autoclose_after_everyone_left_charges_everyone(pool):
     counters = _finalized_counters(pool)
     for gp_id in (102, 103):
         assert counters[gp_id][0] > 0 and counters[gp_id][1] == 0
+
+
+class GatedConn(RecordingConn):
+    """Holds the first statement matching ``gate.pattern`` until the test
+    releases it, so a hook can be caught mid-write. A statement is logged
+    only once it is through, as a cancelled transaction writes nothing."""
+
+    def __init__(self, log: list, gate: "Gate") -> None:
+        super().__init__(log)
+        self.gate = gate
+
+    async def _pass(self, sql: str) -> None:
+        if self.gate.pattern in sql and not self.gate.reached.is_set():
+            self.gate.reached.set()
+            await self.gate.release.wait()
+
+    async def execute(self, sql: str, *args) -> None:
+        await self._pass(sql)
+        await super().execute(sql, *args)
+
+    async def fetchval(self, sql: str, *args) -> int:
+        await self._pass(sql)
+        return await super().fetchval(sql, *args)
+
+
+class Gate:
+    def __init__(self, pattern: str) -> None:
+        self.pattern = pattern
+        self.reached = asyncio.Event()
+        self.release = asyncio.Event()
+
+
+def _gated_pool(monkeypatch, pool: RecordingPool, gate: Gate) -> None:
+    @asynccontextmanager
+    async def acquire():
+        yield GatedConn(pool.log, gate)
+
+    monkeypatch.setattr(pool, "acquire", acquire)
+
+
+def _ai_plays_every_seat(monkeypatch, table: Table) -> None:
+    """Both humans have left and the AI holds their seats, so the AI turn
+    loop plays the whole hand; its pauses are dropped."""
+    for seat in (2, 3):
+        table.occupants[f"sub{seat}"] = Occupant(
+            id=f"sub{seat}", display_name="AI", is_ai=True
+        )
+        table.seats[seat] = f"sub{seat}"
+    for name in (
+        "AI_PLAY_PAUSE_SECONDS",
+        "AI_PASS_PAUSE_SECONDS",
+        "TRICK_COLLECT_SECONDS",
+        "THROW_IN_PAUSE_SECONDS",
+    ):
+        monkeypatch.setattr(ai_loop, name, 0.0)
+
+
+async def _close_mid_write(table: Table, gate: Gate) -> None:
+    """Close the table while the AI loop's hook is held at ``gate``, and
+    let the write through only once the loop has been cancelled."""
+    schedule_ai_turns(table)
+    await asyncio.wait_for(gate.reached.wait(), 5)
+    closing = asyncio.create_task(lifecycle.close_table(table))
+    while table.ai_task is not None and not table.ai_task.done():
+        await asyncio.sleep(0)
+    gate.release.set()
+    await asyncio.wait_for(closing, 5)
+
+
+async def test_close_keeps_a_trick_the_ai_loop_was_writing(monkeypatch, pool):
+    table = _table_in_play()
+    _ai_plays_every_seat(monkeypatch, table)
+    gate = Gate("INSERT INTO trick")
+    _gated_pool(monkeypatch, pool, gate)
+
+    await _close_mid_write(table, gate)
+
+    # Every trick lands, in order, the held one before settlement's.
+    tricks = [
+        args[1] for sql, args in pool.log if sql.startswith("INSERT INTO trick (")
+    ]
+    assert tricks == list(range(6))
+    assert _finalized_counters(pool)
+
+
+async def test_close_keeps_the_result_the_ai_loop_was_writing(monkeypatch, pool):
+    table = _table_in_play()
+    _ai_plays_every_seat(monkeypatch, table)
+    gate = Gate("SET score")
+    _gated_pool(monkeypatch, pool, gate)
+
+    await _close_mid_write(table, gate)
+
+    # The hand ended on the loop's move, so settlement has nothing to
+    # replay: the held write is the only record of the result.
+    assert set(_finalized_counters(pool)) == {101, 102, 103, 104, 105}
