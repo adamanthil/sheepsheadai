@@ -14,8 +14,8 @@ GRU memory state and trick context. Captured decision types:
 
 All five scenarios come from the SAME seat — the eventual picker — so the
 walkthrough follows a single player's perspective through the whole hand.
-A seed is scanned until one hand contains all five decision types from
-that seat.
+The hand is DEFAULT_SEED (override with --seed). --scan instead takes the
+first seed whose hand contains all five decision types from that seat.
 
 The agent sees the human-recall observation (agent/observation.py): 15
 tokens, no blind/bury re-injection. What the picker nonetheless KNOWS about
@@ -94,6 +94,11 @@ ROOT = HERE.parent
 # The released deploy model (fetch with `python -m sheepshead.devtools.fetch_models`);
 # it carries its own oracle_state_dict, so both walkthroughs come from it.
 DEFAULT_CHECKPOINT = ROOT / "models" / "sheepsheadai-1.0-202610.pt"
+# Seed 211 under the 1.0 release: a borderline pick from the last seat after
+# four passes (P(PICK)=0.65), a weak blind, a split bury between the two
+# fail aces, and a contested lead and follow; the picker team wins 75-45.
+# Chosen from a seed scan over [0, 1500) for those contested decisions.
+DEFAULT_SEED = 211
 OUT_JSON = HERE / "ppo_forward_pass.json"
 
 # Oracle critic: seed for the random-init fallback, used only when neither
@@ -355,6 +360,20 @@ def select_snapshots(game, snapshots):
     if any(picked[k] is None for k in SCENARIO_ORDER):
         return None
     return picked
+
+
+def hand_for_seed(agent, seed):
+    """Play `seed` and select its snapshots, or exit if the hand lacks one of
+    the five scenario kinds for the picker (no forced-pick fallback: a pinned
+    seed should show the policy's own choices)."""
+    game, snapshots = play_hand(agent, seed)
+    picked = select_snapshots(game, snapshots)
+    if picked is None:
+        raise SystemExit(
+            f"Seed {seed} does not give the picker all five decision types "
+            f"under this checkpoint; pick another --seed or use --scan."
+        )
+    return seed, game, picked, False
 
 
 def find_hand(agent, max_seeds=500):
@@ -1076,6 +1095,21 @@ def main():
         default=ORACLE_INIT_SEED,
         help="torch seed for the random-init oracle (ignored with a checkpoint).",
     )
+    hand = parser.add_mutually_exclusive_group()
+    hand.add_argument(
+        "--seed",
+        type=int,
+        default=DEFAULT_SEED,
+        help=f"Game seed of the hand to capture (default {DEFAULT_SEED}).",
+    )
+    hand.add_argument(
+        "--scan",
+        action="store_true",
+        help=(
+            "Ignore --seed and take the first seed whose hand has all five "
+            "decision types for the picker."
+        ),
+    )
     args = parser.parse_args()
 
     print(f"Loading checkpoint: {args.checkpoint}")
@@ -1110,8 +1144,12 @@ def main():
         f"aux heads {'on' if oracle_net.has_aux_heads else 'off'}"
     )
 
-    print("Scanning seeds for a hand with all five decision types...")
-    seed, game, picked, forced_pick = find_hand(agent)
+    if args.scan:
+        print("Scanning seeds for a hand with all five decision types...")
+        seed, game, picked, forced_pick = find_hand(agent)
+    else:
+        print(f"Playing seed {args.seed}...")
+        seed, game, picked, forced_pick = hand_for_seed(agent, args.seed)
     print(
         f"  seed={seed} picker=seat {game.picker} partner=seat {game.partner} "
         f"called={game.called_card}"

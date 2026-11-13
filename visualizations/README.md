@@ -109,7 +109,8 @@ Use the project venv — the system python lacks torch.
   `models/sheepsheadai-1.0-202610.pt`, the 1.0 release, fetched by
   `python -m sheepshead.devtools.fetch_models`; override with
   `--checkpoint`; loaded via `ppo.load_agent`
-  so arch metadata is honored), plays one deterministic hand with the agent
+  so arch metadata is honored), plays one deterministic hand (`--seed`, default
+  211) with the agent
   in all five seats (per-seat GRU memory, observations via
   `observation_for`), snapshots the five decision points with their
   pre-decision memory and the picker's blind/bury knowledge, and re-runs
@@ -153,11 +154,18 @@ observations, zero-init per hand). Oracle transformer attention is stored sparse
 (top-400 directed `[head, i, j, w]` triples per layer) to keep the JSON
 small; the readout attention (4×4×51) stays dense.
 
-**Different hand:** `find_hand()` scans seeds from 0 and keeps the first hand
-containing all five decision types. To force another hand, start the scan past
-the current winner (e.g. `range(4, max_seeds)`) or hardcode a seed. Any seed
-works as long as someone picks, calls a partner, and the hand plays out
-(leasters are rejected in `select_snapshots()`).
+**Different hand:** the hand is `DEFAULT_SEED` (211), overridable with
+`--seed N`. Seed 211 was picked from a scan of seeds 0–1499 under the 1.0
+release for contested decisions: a borderline pick from the last seat after
+four passes (P(PICK) = 0.65), a weak blind (9S KS), a bury split between the
+two fail aces, and a lead and follow that are both well short of certain.
+The picker team wins 75–45. A seed works only if the picker gets all five
+decision types, each with ≥2 legal actions; leasters are rejected in
+`select_snapshots()`, and the dump exits on a seed that fails. `--scan`
+restores the old behavior: `find_hand()` keeps the first seed from 0 that
+qualifies, forcing a pick if no hand picks naturally. A new checkpoint plays
+differently, so check the pinned seed's decisions in the dump's printout
+after changing `--checkpoint`.
 
 **Different moment per scenario:** edit `select_snapshots()`. It currently
 takes the eventual picker's pick decision, the first call/bury/lead, and the
