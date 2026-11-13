@@ -1865,8 +1865,7 @@
             "enum": [
               "total",
               "sph",
-              "win_pct",
-              "pick_pct"
+              "win_pct"
             ],
             "title": "Sort",
             "type": "string"
@@ -3026,8 +3025,7 @@
               "enum": [
                 "total",
                 "sph",
-                "win_pct",
-                "pick_pct"
+                "win_pct"
               ],
               "title": "Sort",
               "type": "string"

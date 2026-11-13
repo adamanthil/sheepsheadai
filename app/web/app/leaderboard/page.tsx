@@ -15,8 +15,9 @@ import type {
 import PageShell from "../components/PageShell";
 import styles from "./leaderboard.module.css";
 
-/** Hands is shown but can't be ranked by: the server doesn't offer it. */
-type ColumnKey = LeaderboardSort | "hands";
+/** Hands and pick rate are shown but can't be ranked by: the server
+ * doesn't offer them. */
+type ColumnKey = LeaderboardSort | "hands" | "pick_pct";
 const COLUMNS: { key: ColumnKey; label: string; short: string }[] = [
   { key: "hands", label: "Hands", short: "Hands" },
   { key: "total", label: "Total Score", short: "Total" },
@@ -24,7 +25,8 @@ const COLUMNS: { key: ColumnKey; label: string; short: string }[] = [
   { key: "win_pct", label: "Win rate", short: "Win" },
   { key: "pick_pct", label: "Pick rate", short: "Pick" },
 ];
-const isSort = (key: ColumnKey): key is LeaderboardSort => key !== "hands";
+const isSort = (key: ColumnKey): key is LeaderboardSort =>
+  key !== "hands" && key !== "pick_pct";
 const SORTS = COLUMNS.map((c) => c.key).filter(isSort);
 
 /** Each board counts only its own kind of hand; `hands` names that kind

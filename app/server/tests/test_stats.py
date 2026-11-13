@@ -448,8 +448,9 @@ async def test_leaderboard_serves_only_the_top_of_eligible_accounts(seeded):
     assert (top["username"], top["is_you"]) == (f"lb00_{tag}", True)
     assert r.json()["you"] is None
 
-    # Unknown keys are rejected, and so is hands: it isn't rankable.
-    for key in ("worst", "hands"):
+    # Unknown keys are rejected, and so are hands and pick rate: neither
+    # is rankable.
+    for key in ("worst", "hands", "pick_pct"):
         bad = await client.get("/api/leaderboard", params={"sort": key})
         assert bad.status_code == 422
 
