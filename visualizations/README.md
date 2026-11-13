@@ -262,13 +262,15 @@ back to the system sans unless the fonts are also served to it.
 
 `training_program.html` is a single, self-contained page (no build step, no
 dependencies): a vertical flowchart of the training pipeline run by
-`sheepshead/training/run_training_program.py`, written for the blog. Five
+`sheepshead/training/run_training_program.py`, written for the blog. Four
 stage cards (bootstrap, oracle critic, league, search-guided policy
-iteration, certification) with an icon, one line each and a pill naming the
+iteration) with an icon, one line each and a pill naming the
 stage's learning signal; decision diamonds between them, and loop-back
 arrows on the two iterative stages. Clicking a card opens the same three
 bullets on every stage (method with a paper reference, why, ends when);
-clicking a dotted term opens a one-sentence popover. It deliberately names
+clicking a dotted term opens a one-sentence popover. The pipeline's
+certification stage is left out on purpose, since it measures the agent and
+does not train it. It deliberately names
 no scripts, flags or files; update it when the pipeline's shape changes,
 not when its parameters do.
 
