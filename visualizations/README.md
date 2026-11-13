@@ -106,8 +106,9 @@ init and the UI badges the network **untrained** everywhere.
 Use the project venv — the system python lacks torch.
 
 - `dump_forward_pass.py` loads a perceiver-recall checkpoint (default
-  `runs/202609_recall_rc/league/checkpoints/checkpoint_3000000.pt`, the
-  gen-3 boundary; override with `--checkpoint`; loaded via `ppo.load_agent`
+  `models/sheepsheadai-1.0-202610.pt`, the 1.0 release, fetched by
+  `python -m sheepshead.devtools.fetch_models`; override with
+  `--checkpoint`; loaded via `ppo.load_agent`
   so arch metadata is honored), plays one deterministic hand with the agent
   in all five seats (per-seat GRU memory, observations via
   `observation_for`), snapshots the five decision points with their

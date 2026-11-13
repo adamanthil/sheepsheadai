@@ -91,14 +91,9 @@ from sheepshead.game import (
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 
-DEFAULT_CHECKPOINT = (
-    ROOT
-    / "runs"
-    / "202609_recall_rc"
-    / "league"
-    / "checkpoints"
-    / "checkpoint_3000000.pt"
-)
+# The released deploy model (fetch with `python -m sheepshead.devtools.fetch_models`);
+# it carries its own oracle_state_dict, so both walkthroughs come from it.
+DEFAULT_CHECKPOINT = ROOT / "models" / "sheepsheadai-1.0-202610.pt"
 OUT_JSON = HERE / "ppo_forward_pass.json"
 
 # Oracle critic: seed for the random-init fallback, used only when neither
