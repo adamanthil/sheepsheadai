@@ -165,7 +165,7 @@ export default function PickAnalysisPage() {
             disabled={loading}
           >
             {loading && <span className={styles.spinner} />}
-            {loading ? "Analyzing…" : "Analyze decisions"}
+            {loading ? "Analyzing…" : "Shuffle & Analyze"}
           </button>
         </div>
       </section>
