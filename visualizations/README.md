@@ -246,8 +246,23 @@ cannot grow past its own box by itself):
 </script>
 ```
 
-The blog's Transat webfonts don't reach into the frame, so the figure falls
-back to the system sans unless the fonts are also served to it.
+**Preview mode.** Framed with `#preview` on the URL
+(`ppo_architecture_3d.html#preview`), the page shows only the scene, with
+an "Explore the network" button: no caption, tools or menu, and the host
+sets the frame's size. A click anywhere (a drag still orbits) expands to
+the full walkthrough through the same `sheepshead-viz:expand` message;
+collapsing returns to the overview. The host can also collapse it by
+posting `{type: "sheepshead-viz:collapse"}` to the frame, which the blog
+does when Escape is pressed outside the frame. The blog embeds the page
+this way: its copy lives at `assets/sheepshead/network.html` in the
+bender.io repository, with the host side in `assets/js/figures.js`. After
+a rebuild, copy the built file there and re-capture the poster
+(`images/posts/sheepshead-network.jpg`, a 1560×878 screenshot of the
+preview).
+
+Served over http inside a frame, the page loads the host's
+`/css/MyFontsWebfontsKit.css` and `/css/TransatTextWebfonts.css`, so on
+the blog it is set in Transat. Elsewhere it falls back to the system sans.
 
 ## Files
 

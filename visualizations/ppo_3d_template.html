@@ -8,7 +8,7 @@
   /* A dark glowing scene framed by a light page and caption that match the
      blog (white card, grey ink, Transat type). */
   :root {
-    --sans: TransatStandard, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --sans: TransatText, TransatStandard, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     --bold: TransatBold, var(--sans);
     --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     color-scheme: light;
@@ -192,6 +192,29 @@
     .viz.expanded .viz-chapters button { font-size: 0; padding: 10px 0 0; }
     .viz.expanded .viz-chapters button::before { left: 0; right: 0; top: 0; bottom: auto; width: auto; height: 3px; }
   }
+  /* Expanded, the collapse button says what it does. */
+  .viz.expanded #btn-expand { width: auto; display: flex; gap: 6px; padding: 0 10px; font-size: 13px; }
+  .viz.expanded #btn-expand::after { content: "Close"; }
+
+  /* ---------- preview: framed with #preview, the page is only the scene ----------
+     The host draws the frame; a click anywhere expands to the full
+     walkthrough (chapters, narration and options). */
+  .viz-cta { display: none; }
+  body.preview { overflow: hidden; }
+  body.preview .viz:not(.expanded) { max-width: none; }
+  body.preview .viz:not(.expanded) .viz-stage {
+    position: fixed; inset: 0; aspect-ratio: auto; margin: 0; border: 0; box-shadow: none; cursor: pointer;
+  }
+  body.preview .viz:not(.expanded) :is(.viz-panel, .viz-tools, .viz-menu, .viz-hint) { display: none; }
+  body.preview .viz:not(.expanded) .viz-cta {
+    display: inline-flex; align-items: center; gap: 8px;
+    position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 5;
+    padding: 6px 16px; border-radius: 999px; cursor: pointer; white-space: nowrap;
+    border: 1px solid rgba(255, 255, 255, 0.28); background: rgba(20, 21, 24, 0.72);
+    color: #f0f0f0; font-size: 14px; backdrop-filter: blur(6px);
+  }
+  body.preview .viz:not(.expanded) .viz-cta:hover { border-color: rgba(255, 255, 255, 0.6); }
+  .viz-cta svg { width: 13px; height: 13px; }
   @media (prefers-reduced-motion: reduce) { .viz-hint { transition: none; } }
 </style>
 </head>
@@ -219,6 +242,9 @@
       <h4>Key</h4>
       <div class="legend" id="legend"></div>
     </div>
+    <button class="viz-cta" id="btn-cta">Explore the network
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M10 2h4v4M6 14H2v-4M14 2 9.5 6.5M2 14l4.5-4.5"/></svg>
+    </button>
     <div class="viz-hint" id="viz-hint"></div>
     <div id="tooltip"></div>
   </div>
@@ -4171,6 +4197,7 @@ function updateCameraTween() {
   if (t >= 1) controls.autoRotate = chkRotate.checked;
 }
 const ZOOM_OUT = 1.6; // >1 frames more of each stage; 1 = original distances
+const PREVIEW_ZOOM = 0.9; // a preview has no caption to clear, so it frames tighter
 // Stage cameras were framed for a ~16:10 view; narrower views pull back so
 // the same content still fits across.
 function frameFactor() {
@@ -4180,7 +4207,7 @@ function frameFactor() {
 function frameStage(s) {
   const tgt = new THREE.Vector3(...s.cam.target);
   const pos = new THREE.Vector3(...s.cam.pos).sub(tgt)
-    .multiplyScalar(ZOOM_OUT * frameFactor()).add(tgt);
+    .multiplyScalar(ZOOM_OUT * frameFactor() * (preview && !expanded ? PREVIEW_ZOOM : 1)).add(tgt);
   tweenTo([pos.x, pos.y, pos.z], s.cam.target);
 }
 
@@ -4450,6 +4477,16 @@ const expandBtn = document.getElementById("btn-expand");
 const panelEl = document.querySelector(".viz-panel");
 const inFrame = window.parent !== window;
 document.body.classList.toggle("embedded", inFrame);
+// Framed with #preview, the page shows only the scene until it is expanded
+// (see the README's embed section).
+const preview = inFrame && location.hash === "#preview";
+document.body.classList.toggle("preview", preview);
+if (inFrame && location.protocol.startsWith("http")) {
+  // Pick up the host's webfonts when it serves them (the blog does).
+  for (const href of ["/css/MyFontsWebfontsKit.css", "/css/TransatTextWebfonts.css"]) {
+    document.head.appendChild(Object.assign(document.createElement("link"), { rel: "stylesheet", href }));
+  }
+}
 function setExpanded(on) {
   if (on === expanded) return;
   expanded = on;
@@ -4461,9 +4498,16 @@ function setExpanded(on) {
     ? "M14 6h-4V2M2 10h4v4M10 6l4.5-4.5M6 10l-4.5 4.5"
     : "M10 2h4v4M6 14H2v-4M14 2 9.5 6.5M2 14l4.5-4.5");
   setActive(on);
-  requestAnimationFrame(() => { onResize(); showStage(curStage); });
+  // Collapsing a preview returns it to the overview it opened from.
+  if (preview && !on) { stopTour(); setMenu(false); }
+  requestAnimationFrame(() => { onResize(); showStage(preview && !on ? 0 : curStage); });
 }
 expandBtn.addEventListener("click", () => setExpanded(!expanded));
+document.getElementById("btn-cta").addEventListener("click", () => setExpanded(true));
+// The host forwards Escape pressed while its own page has the focus.
+window.addEventListener("message", (e) => {
+  if (e.source === window.parent && e.data && e.data.type === "sheepshead-viz:collapse") setExpanded(false);
+});
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   if (!menuEl.hidden) setMenu(false);
@@ -4563,6 +4607,7 @@ renderer.domElement.addEventListener("pointerup", (e) => {
   // A drag (orbit) is not a click.
   if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 6) return;
   downAt = null;
+  if (preview && !expanded) { setExpanded(true); return; }
   if (!active) {
     setActive(true);
     flashHint(e.pointerType === "mouse"
@@ -4595,7 +4640,7 @@ new ResizeObserver(onResize).observe(stageEl);
 if (inFrame) {
   // Let an embedding page size its iframe to the figure + caption.
   new ResizeObserver(() => {
-    if (expanded) return;
+    if (expanded || preview) return;
     window.parent.postMessage(
       { type: "sheepshead-viz:height", height: Math.ceil(document.documentElement.scrollHeight) }, "*");
   }).observe(vizEl);
