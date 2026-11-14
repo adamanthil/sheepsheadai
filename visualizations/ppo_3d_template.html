@@ -2972,7 +2972,7 @@ function buildCriticAux() {
       title: "return_head", body: `<p>Linear head: expected final chip return for this seat.</p>` },
     { name: "P(secret partner)", val: aux.secret_partner_prob, fmt: `${(aux.secret_partner_prob * 100).toFixed(0)}%`,
       color: 0xffc65c, strength: aux.secret_partner_prob,
-      title: "secret_partner_head", body: `<p>Sigmoid head: is there a still-unrevealed partner at the table? Tracks the called card's owner staying hidden.</p>` },
+      title: "secret_partner_head", body: `<p>Sigmoid head: is this seat secretly the partner, holding the partner card in its hand?</p>` },
   ];
   for (let i = 0; i < gaugeDefs.length; i++) {
     const gd = gaugeDefs[i];
@@ -3833,7 +3833,7 @@ function buildPolicyStages() {
     cam: { pos: [42, 42, 80], target: [8, 3, 0] },
     body: () => `<p><b>${S.label}.</b> ${S.description}</p>
       <p>Left to right: the cards and game state become ${DATA.dims.n_tokens} tokens, a ${N_LAYERS}-layer transformer reasons over them, a recurrent memory carries the hand so far, and one shared readout produces the features that both the policy's heads and the critic read. The network observes only what a human player may see or is entitled to remember without bookkeeping; everything else, including the picker's own blind and bury, has to live in its memory.</p>
-      <p>Step through the chapters below, or drag to orbit and click anything in the scene for its details. Every number is from a real forward pass of <code>${DATA.arch}</code> on a hand it played against itself (seed ${DATA.seed}).</p>`,
+      <p>Step through the chapters, or drag to orbit and click anything in the scene for its details. Every number is from a real forward pass of the released 1.0 network on a hand it played against itself.</p>`,
   },
   {
     title: "1 · Observation",
@@ -3854,12 +3854,12 @@ function buildPolicyStages() {
     label: "embed",
     badge: "enc",
     cam: { pos: [XS.embed + 14, 4, 16], target: [XS.embed, 0, 0] },
-    body: () => `<p>The shared 34×${DATA.dims.d_card} table. The lit-up rows are the cards this scenario touches. With <code>use_informed_init=True</code>, the first 10 dims start as a hand-designed prior (suit / rank / points / UNDER flag); the rest are free for the network to use.</p>
+    body: () => `<p>The shared 34×${DATA.dims.d_card} table. The lit-up rows are the cards this scenario touches. The first 10 dims were seeded before training with what any player knows about a card (suit / rank / points / UNDER flag); the rest are free for the network to use.</p>
       <p>This same table is read by:</p>
       <ul>
         <li>the encoder (here)</li>
-        <li>the actor's two-tower CALL scorer (Policy chapter)</li>
-        <li>the critic's trump tracker (Critic chapter)</li>
+        <li>the actor's partner-call head (Policy chapter)</li>
+        <li>the limited critic's seen-trump head (Limited critic chapter)</li>
       </ul>`,
   },
   {
@@ -3874,7 +3874,7 @@ function buildPolicyStages() {
         <li><b>8 hand</b> = card embedding ⊕ actor role → MLP</li>
         <li><b>5 trick</b> = card ⊕ is-picker / is-known-partner flags → MLP</li>
       </ul>
-      <p>No blind or bury tokens: under the recall contract the picker's own blind and bury are never re-shown — the memory token is the only way they reach this decision.</p>
+      <p>No blind or bury tokens: a human picker does not get to look at the blind and bury again, so neither does the network — the memory token is the only way they reach this decision.</p>
       <p>Dim slots are PAD — masked out of attention. From here on, <i>everything</i> the network does is a read of these tokens.</p>`,
   },
   {
@@ -3883,7 +3883,7 @@ function buildPolicyStages() {
     badge: "enc",
     cam: { pos: [xfX(1) + 5, RING_CY + 10, 46], target: [xfX(1) + 5, RING_CY, 0] },
     body: () => `<p>${N_LAYERS} reasoning layers, one ring each. Every token rides a straight <i>residual rail</i> through all ${N_LAYERS} rings — each layer only nudges it: self-attention (${N_HEADS} heads — the colored chords), then a position-wise FFN (the lens behind each ring), with residual + LayerNorm after both.</p>
-      <p>This tunnel plus one shared readout (next) is the whole encoder — the per-bag pooling of the old architecture is gone. The tour steps through each layer next.</p>`,
+      <p>This tunnel plus one shared readout (next) is the whole encoder. The tour steps through each layer next.</p>`,
   },
   ...Array.from({ length: N_LAYERS }, (_, l) => xfLayerStage(l)),
   {
@@ -3892,15 +3892,15 @@ function buildPolicyStages() {
     badge: "share",
     cam: { pos: [XS.gru + 8, 30, 32], target: [(XS.input + XS.gru) / 2, 14, 0] },
     body: () => `<p>The post-reasoning <b>${S.memory.driver} token</b> feeds the GRU cell, producing the new ${DATA.dims.d_model}-d memory state (‖in‖ ${vecMag(S.memory.memory_in).toFixed(1)} → ‖out‖ ${vecMag(S.memory.memory_out).toFixed(1)}).</p>
-      <p>The <i>memory</i> token is the transformer's own "what to remember" slot: it attends over everything during reasoning, and the GRU writes what it holds. Under the recall contract this is the only path by which the blind and bury reach later decisions, so the network has to learn to write what it must recall — the context token stays the current-situation summary. The state is stored per player and read back on the next decision step; the orange arc going left is exactly this feedback, the only true recurrence in the whole network.</p>`,
+      <p>The <i>memory</i> token is the transformer's own "what to remember" slot: it attends over everything during reasoning, and the GRU writes what it holds. This is the only path by which the blind and bury reach later decisions, so the network has to learn to write what it must recall — the context token stays the current-situation summary. The state is stored per player and read back on the next decision step; the orange arc going left is exactly this feedback, the only true recurrence in the whole network.</p>`,
   },
   {
     title: `6 · Shared readout · ${DATA.dims.n_readout_queries} learned queries`,
     label: "readout",
     badge: "share",
     cam: { pos: [XS.readout - 16, RING_CY + 10, 34], target: [XS.readout + 5, RING_CY, 0] },
-    body: () => `<p>ONE readout for the whole network: ${DATA.dims.n_readout_queries} learned query gems (the 4×4 grid) cross-attend (${N_HEADS} heads) over the ${DATA.dims.n_tokens} post-reasoning tokens — ${DATA.dims.n_readout_queries}×${N_HEADS} = ${DATA.dims.n_readout_queries * N_HEADS} attention distributions, channel parity with <code>full</code>'s four pools. The answers are concatenated (${DATA.dims.n_readout_queries}×${DATA.dims.d_token}) and projected + LayerNormed to the ${DATA.dims.d_model}-d <b>features</b> vector.</p>
-      <p>Each gem shows only its <b>top-3</b> links, averaged over the enabled heads — the head toggles in the <b>⋯</b> menu re-average them (one head on = its own top-3). <b>Click a gem</b> to expand its full per-head fan (click again to collapse). Actor and critic both read the features hub: decision-time attention runs once, here.</p>`,
+    body: () => `<p>ONE readout for the whole network: ${DATA.dims.n_readout_queries} learned query gems (the 4×4 grid) cross-attend (${N_HEADS} heads) over the ${DATA.dims.n_tokens} post-reasoning tokens — ${DATA.dims.n_readout_queries}×${N_HEADS} = ${DATA.dims.n_readout_queries * N_HEADS} attention distributions. The answers are concatenated (${DATA.dims.n_readout_queries}×${DATA.dims.d_token}) and projected + LayerNormed to the ${DATA.dims.d_model}-d <b>features</b> vector.</p>
+      <p>Each gem shows only its <b>top-3</b> links, averaged over the enabled heads — the head toggles in the <b>⋯</b> menu re-average them (one head on = its own top-3). <b>Click a gem</b> to expand its full per-head fan (click again to collapse). The actor's heads and the limited critic both read the features hub: decision-time attention runs once, here.</p>`,
   },
   {
     title: "7 · Actor heads",
@@ -3944,15 +3944,15 @@ function buildPolicyStages() {
       <p>The agent played ${actionHtml(S.sample.chosen_action)} (✓ bar).</p>`,
   },
   {
-    title: "10 · Critic · features → V(s)",
+    title: "10 · Limited critic · features → V(s)",
     label: "criticV",
     badge: "critic",
     cam: { pos: [52, CRITIC_Y + 7, CRITIC_VZ - 22], target: [46, CRITIC_Y + 1, CRITIC_VZ] },
-    body: () => `<p>The critic reads the <i>same</i> shared ${DATA.dims.d_model}-d features as the actor — no separate readout — through a deep dedicated value trunk: <b>V(s) = ${S.critic.value.toFixed(3)}</b>, the baseline for GAE advantages.</p>
-      <p>Because actor and critic share the trunk, everything the auxiliary heads (next stage) teach the features is also directly available to the policy — <code>full</code>'s forcing mechanism, restored on the token-centric base.</p>`,
+    body: () => `<p>The critic reads the <i>same</i> shared ${DATA.dims.d_model}-d features as the actor — no separate readout — through a deep dedicated value trunk: <b>V(s) = ${S.critic.value.toFixed(3)}</b>, its prediction of the final reward from this seat's own view of the game.</p>
+      <p>Because actor and critic share the trunk, everything the auxiliary heads (next stage) teach the features is also directly available to the policy.</p>`,
   },
   {
-    title: "11 · Critic aux heads",
+    title: "11 · Auxiliary heads",
     label: "criticAux",
     badge: "critic",
     cam: { pos: [58, CRITIC_Y + 11, CRITIC_AZ - 26], target: [56, CRITIC_Y + 2, CRITIC_AZ] },
@@ -3992,7 +3992,7 @@ function buildOracleStages() {
     label: "ointro",
     badge: "critic",
     cam: { pos: [30, 34, 70], target: [0, 5, 0] },
-    body: () => `<p>The CTDE <b>privileged critic</b> (<code>oracle.py</code>) on the same decision: it sees every hand, the true blind/bury, the under card, and the secret partner — and estimates the history-state value <b>U(h,s)</b> used as the GAE baseline during league training. The deployed agent never runs it.</p>
+    body: () => `<p>The <b>oracle critic</b> on the same decision: it sees every hand, the true blind/bury, the under card, and the secret partner — and predicts the final reward, <b>U(h,s)</b>, that league training measures each result against. It exists only at training time; the deployed agent never runs it.</p>
       ${DATA.oracle.untrained ? `<p><span class="badge b-critic">untrained</span> This is a <b>random init</b> (seed ${DATA.oracle.init_seed}) — an architecture smoke test. Values and attention are meaningless; the structure is the point.</p>` : `<p>Loaded from <code>${DATA.oracle.checkpoint}</code>.</p>`}
       <p><b>${S.label}:</b> ${S.description}</p>
       <p>${DATA.oracle.n_params.toLocaleString()} parameters, zero shared with the policy stack${ORACLE_AUX ? ", including two deterministic team aux heads that shape the oracle's own representation and nothing else" : ""}. Switch back with <b>Policy</b> above.</p>`,
@@ -4043,7 +4043,7 @@ function buildOracleStages() {
     label: "oReadout",
     badge: "share",
     cam: { pos: [XSA.readout - 16, RING_CY + 10, 34], target: [XSA.readout + 5, RING_CY, 0] },
-    body: () => `<p>${DATA.oracle.dims.n_readout_queries} learned queries cross-attend (${N_HEADS} heads) over all ${N_TOK} post-reasoning tokens — the 32 hidden-hand tokens reach the value trunk <b>unsqueezed</b> (the old pooled-oracle squeezed them through one bag; that squeeze is gone).</p>
+    body: () => `<p>${DATA.oracle.dims.n_readout_queries} learned queries cross-attend (${N_HEADS} heads) over all ${N_TOK} post-reasoning tokens — the 32 hidden-hand tokens reach the value trunk directly.</p>
       <p>Same interaction as the policy view: top-3 links per gem averaged over the enabled heads (the ⋯ menu's head toggles re-average), <b>click a gem</b> for its full per-head fan.</p>`,
   },
   {
@@ -4052,7 +4052,7 @@ function buildOracleStages() {
     badge: "critic",
     cam: { pos: [XSA.trunk + 8, RING_CY + 6, 28], target: [XSA.trunk + 4, RING_CY, 0] },
     body: () => `<p>Readout → deep value trunk → <b>U(h,s) = ${SO.value.value.toFixed(3)}</b>${DATA.oracle.untrained ? " (random init — meaningless by design)" : ""}.</p>
-      <p>No actor, no deployment: at league-training time this number replaces the limited critic's V(s) in GAE, removing hidden-card variance from the policy's advantages while the actor still learns from its own partial view.</p>
+      <p>No actor, no deployment: at league-training time this number replaces the limited critic's V(s) as the reward prediction, removing hidden-card variance from the policy's advantages while the actor still learns from its own partial view.</p>
       ${ORACLE_AUX ? "<p>The same trunk output also feeds two deterministic auxiliary heads — the next stage.</p>" : ""}`,
   },
   ...(ORACLE_AUX ? [{
@@ -4109,7 +4109,7 @@ const CHAPTER_DEFS = [
       // Land on the head that actually decides this scenario.
       lead: () => (liveHead() === "pointer" ? "pointer" : "actor"),
     },
-    { title: "Critic", stages: [["criticV", "Value"], ["criticAux", "Aux heads"]] },
+    { title: "Limited critic", stages: [["criticV", "Value"], ["criticAux", "Aux heads"]] },
   ],
   [
     { title: "Overview", stages: [["ointro", ""]] },
