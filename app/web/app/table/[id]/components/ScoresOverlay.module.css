@@ -35,9 +35,11 @@
   gap: 8px;
   flex-shrink: 0;
 }
+/* No top padding: the pinned names row sits flush with the scroll edge,
+   so rows scrolling under it can't peek through a padding strip. */
 .scoresBody {
   overflow: auto;
-  padding: 8px 20px 20px;
+  padding: 0 20px 20px;
 }
 
 .lastHand {
@@ -56,6 +58,7 @@
 }
 
 .scoresTable {
+  margin-top: 8px;
   width: 100%;
   border-collapse: collapse;
   font-family: var(--font-ui);
@@ -83,6 +86,17 @@
   text-transform: uppercase;
   color: var(--muted);
   font-weight: 500;
+}
+/* Each block's names row pins to the top of the scrolling body, so a long
+   game's totals stay labelled. Collapsed borders don't travel with a sticky
+   cell, so the rule under it is an inset shadow; a later block's row slides
+   over the earlier one. */
+.headRow th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-card);
+  box-shadow: inset 0 -1px 0 var(--rule);
 }
 /* Caps a name column's width; the full name stays in the DOM (title attr). */
 .thName {
@@ -136,9 +150,10 @@
     font-size: 18px;
   }
   .scoresBody {
-    padding: 6px 14px 14px;
+    padding: 0 14px 14px;
   }
   .scoresTable {
+    margin-top: 6px;
     font-size: 13px;
   }
   .scoresTable th,

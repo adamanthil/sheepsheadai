@@ -25,6 +25,16 @@ export default function ScoresOverlay({
 }: ScoresOverlayProps) {
   const blocks = scoreBlocks(table);
   const signed = (n: number) => (n > 0 ? `+${n}` : String(n));
+  const bodyRef = React.useRef<HTMLDivElement>(null);
+
+  // Open on the latest hand: a long game's newest totals sit at the bottom.
+  // A departure card leads with the last hand's summary, so it stays at the
+  // top. Layout effect, so the first paint is already scrolled.
+  React.useLayoutEffect(() => {
+    const body = bodyRef.current;
+    if (body && !lastHand) body.scrollTop = body.scrollHeight;
+    // Only on open; later hands don't yank the view.
+  }, []);
 
   return (
     <div className={styles.scoresOverlay}>
@@ -44,7 +54,7 @@ export default function ScoresOverlay({
             )}
           </div>
         </div>
-        <div className={styles.scoresBody}>
+        <div ref={bodyRef} className={styles.scoresBody}>
           {lastHand && (
             <div className={styles.lastHand}>
               <div className={styles.lastHandLabel}>
@@ -68,7 +78,7 @@ export default function ScoresOverlay({
             <table className={styles.scoresTable}>
               {blocks.map((block, b) => (
                 <tbody key={b} className={styles.block}>
-                  <tr>
+                  <tr className={styles.headRow}>
                     <th scope="col" className={styles.thLeft}>
                       Hand
                     </th>
