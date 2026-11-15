@@ -2,9 +2,11 @@
 
 Everything derives from game_player rows of finished hands. A hand counts
 once it is closed and scored, which leaves out hands still in play and
-passed-out doublers deals (closed, but never scored). Scores already
-include the doublers stake. Hands the AI finished for a player (timeouts,
-disconnects) count as theirs, so walking away can't hide a loss.
+passed-out doublers deals (closed, but never scored). The one exception is
+pick rate: a pass-out was dealt and everyone declined to pick, so it counts
+there as a hand not picked. Scores already include the doublers stake.
+Hands the AI finished for a player (timeouts, disconnects) count as
+theirs, so walking away can't hide a loss.
 
 Nor can it bank a win: a hand is abandoned when the AI made more than
 ABANDON_AI_ACTIONS of the player's decisions in it (excused moves aside --
@@ -46,21 +48,31 @@ VS_AI_LEADERBOARD_MIN_HANDS = 40
 LEADERBOARD_SIZE = 20
 _CACHE_TTL = 60.0
 
+# A closed hand that was played out and scored, as opposed to a passed-out
+# doublers deal (closed, score NULL).
+SCORED_SQL = "(gp.score IS NOT NULL)"
+HANDS_SQL = f"count(*) FILTER (WHERE {SCORED_SQL})"
+
+# Rows are every closed deal, pass-outs included, but only pick_pct reads
+# the pass-outs: the counts filter on SCORED_SQL, and the score aggregates
+# skip them because their counted score is NULL.
 _HAND_STATS = f"""
     SELECT gp.player_id,
-           count(*)::int                                    AS hands,
+           ({HANDS_SQL})::int                               AS hands,
            sum({COUNTED_SCORE_SQL})::int                    AS total,
            avg({COUNTED_SCORE_SQL})::float8                 AS sph,
            avg(({COUNTED_SCORE_SQL} > 0)::int)::float8      AS win_pct,
            avg((gp.is_picker IS TRUE)::int)::float8         AS pick_pct,
-           (count(*) FILTER (WHERE g.is_leaster))::int      AS leaster_hands,
-           (count(*) FILTER (WHERE {ABANDONED_SQL}))::int   AS abandoned_hands,
-           (count(*) FILTER (WHERE {AI_ASSISTED_SQL}))::int AS ai_assisted_hands,
+           (count(*) FILTER (WHERE {SCORED_SQL} AND g.is_leaster))::int
+                                                            AS leaster_hands,
+           (count(*) FILTER (WHERE {SCORED_SQL} AND {ABANDONED_SQL}))::int
+                                                            AS abandoned_hands,
+           (count(*) FILTER (WHERE {SCORED_SQL} AND {AI_ASSISTED_SQL}))::int
+                                                            AS ai_assisted_hands,
            sum(gp.score - {COUNTED_SCORE_SQL})::int         AS forfeited_score
     FROM game_player gp
     JOIN game g ON g.game_id = gp.game_id
     WHERE g.time_closed IS NOT NULL
-      AND gp.score IS NOT NULL
       AND gp.player_id IS NOT NULL
 """
 
@@ -161,7 +173,8 @@ async def player_stats(pool: asyncpg.Pool, player_id: UUID) -> dict:
     row = await pool.fetchrow(
         _HAND_STATS + " AND gp.player_id = $1 GROUP BY gp.player_id", player_id
     )
-    if row is None:
+    # Only pass-outs so far is no hands yet, not a 0% pick rate.
+    if row is None or row["hands"] == 0:
         return {
             "hands": 0,
             "total": 0,
@@ -220,7 +233,7 @@ async def ranking(
         f"""
         WITH stats AS (
             {_HAND_STATS}{_BOARD_SQL[board]}
-            GROUP BY gp.player_id HAVING count(*) >= $1
+            GROUP BY gp.player_id HAVING {HANDS_SQL} >= $1
         )
         SELECT row_number() OVER (
                    ORDER BY s.{sort} DESC, s.hands DESC, lower(a.username)

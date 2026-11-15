@@ -246,7 +246,8 @@ async def test_personal_stats_count_only_finished_scored_hands(seeded):
     assert (s["hands"], s["total"], s["leaster_hands"]) == (4, 4, 1)
     assert s["sph"] == pytest.approx(1.0)
     assert s["win_pct"] == pytest.approx(0.5)
-    assert s["pick_pct"] == pytest.approx(0.5)
+    # The pass-out was a deal nobody picked: 2 picks in 5 deals.
+    assert s["pick_pct"] == pytest.approx(0.4)
     assert (s["rank"], s["qualifies_in"], s["min_hands"]) == (None, 16, 20)
     assert (s["abandoned_hands"], s["ai_assisted_hands"]) == (0, 0)
     assert s["completion_rate"] == 1.0
@@ -512,3 +513,29 @@ async def test_partner_mode_and_vs_ai_boards_count_only_their_hands(seeded):
 
     bad = await client.get("/api/leaderboard", params={"board": "worst"})
     assert bad.status_code == 422
+
+
+async def test_pass_outs_count_only_toward_pick_rate(seeded):
+    seeder, client = seeded
+    tag = _tag()
+    pid = await seeder.player(username=f"pass_{tag}")
+    # 20 scored hands, 5 of them picked, plus 5 passed-out doublers deals.
+    await seeder.hands(pid, [2] * 20, picker=[True] * 5 + [False] * 15)
+    await seeder.hands(pid, [None] * 5)
+    only = await seeder.player(username=f"onlypass_{tag}")
+    await seeder.hands(only, [None] * 3)
+
+    r = await client.get("/api/leaderboard")
+    row = next(x for x in r.json()["rows"] if x["username"] == f"pass_{tag}")
+    assert (row["hands"], row["total"]) == (20, 40)
+    assert row["sph"] == pytest.approx(2.0)
+    assert row["win_pct"] == pytest.approx(1.0)
+    assert row["pick_pct"] == pytest.approx(5 / 25)
+
+    # Pass-outs alone are no hands: no stats yet, and no 0% pick rate.
+    token = await create_session(seeder.pool, only)
+    r = await client.get(
+        "/api/account/stats", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert r.status_code == 200, r.text
+    assert (r.json()["hands"], r.json()["pick_pct"]) == (0, None)
