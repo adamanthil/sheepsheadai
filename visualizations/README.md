@@ -295,3 +295,24 @@ CSS, ids and script are scoped under `figure.tp`, so the `<style>`,
 picks up the blog's Transat fonts there) or the file can be iframed. Sizing
 uses container queries on the figure, not the viewport. Open it directly in
 a browser to preview.
+
+# Search trace
+
+`dump_search_trace.py` records one real ISMCTS committee search for the
+blog's search walkthrough figure. It plays a called-ace hand with the
+league-final agent up to a first-trick lead by a defender holding the
+called suit, searches that decision the way the first policy iteration's
+corpus does (three searches of 1,024 simulations, `d_rollout` 1, oracle
+leaves), and writes `search_trace.json`: every simulation of the first
+search (the observer's cards chosen in the tree, end of hand or critic
+estimate, backed-up value), a few simulations and sampled deals in full,
+and each search's root values and visit counts. The hand is `DEFAULT_SEED`;
+`--scan N` lists other seeds that reach a qualifying decision. The run is
+deterministic and takes under a minute on CPU.
+
+```bash
+uv run python visualizations/dump_search_trace.py
+```
+
+The blog keeps a copy of the JSON at `assets/sheepshead/search-trace.json`;
+the figure's markup and script live in the blog repository.
