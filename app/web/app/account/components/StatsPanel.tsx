@@ -1,133 +1,198 @@
-import React from "react";
+"use client";
+
+import React, { useState } from "react";
 import { ds } from "../../../lib/ds";
-import type { AccountStats } from "../../../lib/types";
-import styles from "../account.module.css";
+import type { AccountForm, AccountStats } from "../../../lib/types";
+import account from "../account.module.css";
+import {
+  FormChart,
+  Meter,
+  RangePicker,
+  RangeRows,
+  RoleBars,
+  formWindow,
+  type Range,
+} from "./StatsCharts";
+import { count, perHand, signed } from "./statsFormat";
+import styles from "./StatsPanel.module.css";
 
-type Split = AccountStats["vs_ai"];
-
-export const pct = (x: number | null | undefined) =>
-  x == null ? "—" : `${(x * 100).toFixed(1)}%`;
-export const signed = (x: number) => (x > 0 ? `+${x}` : String(x));
-
-function Tiles({ tiles }: { tiles: [string, string][] }) {
+function Head({ title, aside }: { title: string; aside?: React.ReactNode }) {
   return (
-    <dl className={styles.stats}>
-      {tiles.map(([label, value]) => (
-        <div key={label} className={styles.stat}>
-          <dt className={ds.overline}>{label}</dt>
-          <dd className={styles.statValue}>{value}</dd>
-        </div>
-      ))}
-    </dl>
+    <div className={`${ds.headRule} ${account.statsHead} ${styles.head}`}>
+      <span className={ds.overline}>{title}</span>
+      {aside != null && <span className={ds.overline}>{aside}</span>}
+    </div>
   );
 }
 
-const perHand = (x: number) => (x > 0 ? `+${x.toFixed(2)}` : x.toFixed(2));
-
-/** Score/hand and win rate against the AI alone and with other people. */
-function Splits({ vsAi, withPeople }: { vsAi: Split; withPeople: Split }) {
-  const rows: [string, Split][] = [
-    ["Vs the AI", vsAi],
-    ["With people", withPeople],
-  ];
+function Figure({
+  label,
+  value,
+  big = false,
+}: {
+  label: string;
+  value: string;
+  big?: boolean;
+}) {
   return (
-    <table className={styles.splits}>
-      <thead>
-        <tr>
-          <td />
-          <th scope="col" className={ds.overline}>
-            Hands
-          </th>
-          <th scope="col" className={ds.overline}>
-            Score / hand
-          </th>
-          <td />
-          <th scope="col" className={ds.overline}>
-            Win rate
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map(([label, split]) => (
-          <tr key={label}>
-            <th scope="row">{label}</th>
-            <td>{split.hands}</td>
-            <td>{split.sph == null ? "—" : perHand(split.sph)}</td>
-            <td className={styles.margin}>
-              {split.sph_margin != null && `± ${split.sph_margin.toFixed(2)}`}
-            </td>
-            <td>{pct(split.win_pct)}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <div className={`${styles.figure} ${big ? styles.figureBig : ""}`}>
+      <dt className={ds.overline}>{label}</dt>
+      <dd>{value}</dd>
+    </div>
   );
 }
 
-/** The verified account's numbers: score tiles (abandoned wins already
- * counted as 0), then how many hands they saw through, with the rule. */
-export default function StatsPanel({ stats }: { stats: AccountStats }) {
-  const tiles: [string, string][] = [
-    ["Hands", String(stats.hands)],
-    ["Total score", signed(stats.total)],
-    ["Score / hand", stats.sph == null ? "—" : stats.sph.toFixed(2)],
-    ["Win rate", pct(stats.win_pct)],
-    ["Pick rate", pct(stats.pick_pct)],
-    ["Leasters", String(stats.leaster_hands)],
-  ];
-  const picking: [string, string][] = [
-    ["Picks", String(stats.picks)],
-    ["Trump / pick", stats.trump_per_pick?.toFixed(1) ?? "—"],
-    ["Queens / pick", stats.queens_per_pick?.toFixed(1) ?? "—"],
-  ];
-  const completion: [string, string][] = [
-    ["Completed*", pct(stats.completion_rate)],
-    ["Abandoned*", String(stats.abandoned_hands)],
-    ["Forfeited score*", String(stats.forfeited_score)],
-  ];
+const plural = (n: number, word: string) =>
+  `${count(n)} ${word}${n === 1 ? "" : "s"}`;
+
+/** The running-score chart with its range presets. */
+function Form({ form }: { form: AccountForm | null }) {
+  const total = form?.scores.length ?? 0;
+  const [range, setRange] = useState<Range | null>(null);
+  // Recent form by default; every hand until there are more than 100.
+  const shown: Range = range ?? (total > 100 ? 100 : 0);
+  const data = form && total ? formWindow(form, shown) : null;
+  const net = data ? data.scores.reduce((a, b) => a + b, 0) : 0;
   return (
-    <section aria-label="Your stats">
-      <div className={`${ds.headRule} ${styles.statsHead}`}>
-        <span className={ds.overline}>Your stats</span>
-        <span className={ds.overline}>
+    <>
+      <Head
+        title="Form"
+        aside={
+          data &&
+          `${signed(net)} over ${shown === 0 ? "all" : "the last"} ${plural(data.scores.length, "hand")}`
+        }
+      />
+      {form === null ? (
+        <p className={account.note}>Loading…</p>
+      ) : !data ? (
+        <p className={account.note}>
+          Your running score starts with your first finished hand.
+        </p>
+      ) : (
+        <>
+          <div className={styles.filters}>
+            <RangePicker value={shown} onChange={setRange} total={total} />
+          </div>
+          <FormChart data={data} />
+        </>
+      )}
+    </>
+  );
+}
+
+/** The verified account's numbers. Desktop: totals, rates and picking
+ * down the side of the form chart, then role and company side by side.
+ * Narrow screens: one column, chart second (see StatsPanel.module.css). */
+export default function StatsPanel({
+  stats,
+  form,
+}: {
+  stats: AccountStats;
+  form: AccountForm | null;
+}) {
+  return (
+    <div className={styles.panel}>
+      <section aria-label="Your stats" className={styles.figures}>
+        <Head
+          title="Your stats"
+          aside={stats.rank != null ? `Rank #${stats.rank}` : undefined}
+        />
+        <dl className={styles.figureGrid}>
+          <Figure label="Total score" value={signed(stats.total)} big />
+          <Figure label="Score / hand" value={perHand(stats.sph)} />
+          <Figure label="Hands" value={count(stats.hands)} />
+        </dl>
+        <p className={account.note}>
           {stats.rank != null
-            ? `Rank #${stats.rank} by total`
-            : `${stats.qualifies_in} more hand${stats.qualifies_in === 1 ? "" : "s"} to qualify`}
-        </span>
-      </div>
-      <Tiles tiles={tiles} />
-      <p className={styles.note}>
-        The leaderboard lists confirmed accounts with at least {stats.min_hands}{" "}
-        finished hands.
-      </p>
+            ? `Rank #${stats.rank} on the all-time leaderboard by total score.`
+            : `${plural(stats.qualifies_in ?? 0, "more finished hand")} to make the leaderboard, which lists confirmed accounts with at least ${stats.min_hands}.`}
+        </p>
+      </section>
 
-      <div className={`${ds.headRule} ${styles.statsHead} ${styles.subHead}`}>
-        <span className={ds.overline}>Who you played with</span>
-      </div>
-      <Splits vsAi={stats.vs_ai} withPeople={stats.with_people} />
-      <p className={styles.note}>
-        Vs the AI: all other seats played by the AI. ± is a 95% range, after{" "}
-        {stats.split_margin_min_hands} hands.
-      </p>
+      <section aria-label="Form" className={styles.form}>
+        <Form form={form} />
+      </section>
 
-      <div className={`${ds.headRule} ${styles.statsHead} ${styles.subHead}`}>
-        <span className={ds.overline}>When you pick</span>
-      </div>
-      <Tiles tiles={picking} />
-      <p className={styles.note}>Picks the AI made for you are left out.</p>
+      <section aria-label="Rates" className={styles.rates}>
+        <Head title="Rates" />
+        <div className={styles.meters}>
+          <Meter label="Win rate" value={stats.win_pct} note="hands won" />
+          <Meter
+            label="Pick rate"
+            value={stats.pick_pct}
+            note="of every deal"
+          />
+          <Meter
+            label="Pick when offered"
+            value={stats.pick_offered_pct}
+            note={`of ${plural(stats.offered_hands, "deal")} the pick reached you`}
+          />
+          <Meter
+            label="Completed"
+            value={stats.completion_rate}
+            note="hands not abandoned*"
+          />
+        </div>
+      </section>
 
-      <div className={`${ds.headRule} ${styles.statsHead} ${styles.subHead}`}>
-        <span className={ds.overline}>Hand completion</span>
+      <section aria-label="When you pick" className={styles.picking}>
+        <Head title="When you pick" />
+        <dl className={styles.figureRow}>
+          <Figure label="Picks" value={count(stats.picks)} />
+          <Figure
+            label="Trump / pick"
+            value={stats.trump_per_pick?.toFixed(1) ?? "—"}
+          />
+          <Figure
+            label="Queens / pick"
+            value={stats.queens_per_pick?.toFixed(1) ?? "—"}
+          />
+        </dl>
+        <p className={account.note}>
+          Of the six cards dealt to you. Picks the AI made for you are left out.
+        </p>
+      </section>
+
+      <div className={styles.pair}>
+        <section aria-label="By role">
+          <Head title="By role" />
+          <RoleBars roles={stats.roles} hands={stats.hands} />
+        </section>
+        <section aria-label="Who you played with">
+          <Head title="Who you played with" />
+          <RangeRows
+            rows={[
+              { label: "Vs the AI", split: stats.vs_ai },
+              { label: "With people", split: stats.with_people },
+            ]}
+          />
+          <p className={account.note}>
+            Vs the AI: all other seats played by the AI. The bar is a 95% range
+            on score per hand, after {stats.split_margin_min_hands} hands; where
+            ranges overlap, the gap could be luck.
+          </p>
+        </section>
       </div>
-      <Tiles tiles={completion} />
-      <p className={styles.note}>
-        * A hand counts as abandoned when the AI makes more than{" "}
-        {stats.abandon_threshold} of your decisions in it (after a disconnect,
-        leaving mid-hand, or turn timeouts). In an abandoned hand a loss counts
-        in full, but a win counts as 0 and isn&rsquo;t a win. Moves the AI makes
-        because the host closed the table, you were removed, or the server
-        restarted aren&rsquo;t marked as abandoned.
-      </p>
-    </section>
+
+      <section aria-label="Hand completion" className={styles.completion}>
+        <Head title="Hand completion" />
+        <dl className={styles.figureRow}>
+          <Figure label="Abandoned*" value={count(stats.abandoned_hands)} />
+          <Figure
+            label="Forfeited score*"
+            value={String(stats.forfeited_score)}
+          />
+          <Figure label="Leasters" value={count(stats.leaster_hands)} />
+        </dl>
+        <p className={account.note}>
+          * A hand counts as abandoned when the AI makes more than{" "}
+          {stats.abandon_threshold} of your decisions in it (after a disconnect,
+          leaving mid-hand, or turn timeouts). In an abandoned hand a loss
+          counts in full, but a win counts as 0 and isn&rsquo;t a win. Moves the
+          AI makes because the host closed the table, you were removed, or the
+          server restarted aren&rsquo;t marked as abandoned.
+        </p>
+      </section>
+    </div>
   );
 }

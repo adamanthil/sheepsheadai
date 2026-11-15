@@ -1,0 +1,116 @@
+/* The ledger: one grid, so a narrow screen can reorder the same sections
+   with CSS alone. Wide: figures and rates down the side of the form chart
+   with picking under it, then role and company as a pair, then
+   completion. */
+.panel {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  grid-template-areas:
+    "figures form"
+    "rates form"
+    "rates picking"
+    "pair pair"
+    "completion completion";
+  align-items: start;
+  gap: 32px 40px;
+}
+.figures {
+  grid-area: figures;
+}
+.form {
+  grid-area: form;
+}
+.rates {
+  grid-area: rates;
+}
+.picking {
+  grid-area: picking;
+}
+.pair {
+  grid-area: pair;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px 40px;
+}
+.completion {
+  grid-area: completion;
+}
+
+.head {
+  margin-bottom: 14px;
+}
+.filters {
+  display: flex;
+  margin-bottom: 12px;
+}
+
+/* ---- figures ------------------------------------------------------------ */
+.figureGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px 12px;
+  margin: 0 0 12px;
+}
+.figureRow {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px 12px;
+  margin: 0 0 12px;
+}
+.figure {
+  margin: 0;
+}
+.figure dd {
+  margin: 4px 0 0;
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 24px;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.figureBig {
+  grid-column: 1 / -1;
+}
+.figureBig dd {
+  font-size: 40px;
+}
+
+.meters {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Below the side-by-side width: one column, the chart right after the
+   headline figures, and the figures in a 2-up grid like the cards above
+   them. */
+@media (max-width: 760px) {
+  .panel {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "figures"
+      "form"
+      "rates"
+      "pair"
+      "picking"
+      "completion";
+  }
+  .pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .figureBig {
+    grid-column: auto;
+  }
+  .figureBig dd {
+    font-size: 32px;
+  }
+  .figure dd {
+    align-self: end;
+  }
+  .figureGrid {
+    grid-template-columns: repeat(3, auto);
+    justify-content: space-between;
+    align-items: end;
+  }
+}

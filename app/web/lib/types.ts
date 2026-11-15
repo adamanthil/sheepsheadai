@@ -10,6 +10,7 @@ export type AccountPublic = components["schemas"]["AccountPublic"];
 export type AccountMe = components["schemas"]["AccountMeResponse"];
 export type AccountSession = components["schemas"]["AccountSessionResponse"];
 export type AccountStats = components["schemas"]["AccountStatsResponse"];
+export type AccountForm = components["schemas"]["AccountFormResponse"];
 export type HandHistory = components["schemas"]["HandHistoryResponse"];
 export type HandHistoryRow = components["schemas"]["HandHistoryRow"];
 export type Leaderboard = components["schemas"]["LeaderboardResponse"];

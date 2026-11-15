@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ds } from "../../lib/ds";
 import { apiFetch } from "../../lib/api";
 import { useAccount } from "../../lib/account";
-import type { AccountStats } from "../../lib/types";
+import type { AccountForm, AccountStats } from "../../lib/types";
 import AccountShell from "./AccountShell";
 import AuthForms from "./components/AuthForms";
 import ResendVerification from "./components/ResendVerification";
@@ -27,12 +27,14 @@ export default function AccountPage() {
   } else {
     body = <Verified username={account.username} />;
   }
+  const verified = !!account?.email_verified;
 
   return (
     <AccountShell
       title={account ? `@${account.username}` : "Your account"}
       tab="overview"
       signedIn={!!account}
+      wide={verified}
     >
       {body}
     </AccountShell>
@@ -66,19 +68,23 @@ function Unverified({
 
 function Verified({ username }: { username: string }) {
   const [stats, setStats] = useState<AccountStats | null>(null);
+  const [form, setForm] = useState<AccountForm | null>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    const load = async <T,>(path: string, set: (data: T) => void) => {
       try {
-        const res = await apiFetch("/api/account/stats");
+        const res = await apiFetch(path);
         if (!res.ok) throw new Error(String(res.status));
-        const data = (await res.json()) as AccountStats;
-        if (!cancelled) setStats(data);
+        const data = (await res.json()) as T;
+        if (!cancelled) set(data);
       } catch {
         if (!cancelled) setFailed(true);
       }
-    })();
+    };
+    // Separately, so the figures show while a long history loads.
+    void load<AccountStats>("/api/account/stats", setStats);
+    void load<AccountForm>("/api/account/form", setForm);
     return () => {
       cancelled = true;
     };
@@ -87,7 +93,7 @@ function Verified({ username }: { username: string }) {
   return (
     <div className={styles.form}>
       {failed && <p className={styles.error}>Couldn&rsquo;t load stats.</p>}
-      {stats && <StatsPanel stats={stats} />}
+      {stats && <StatsPanel stats={stats} form={form} />}
       <div className={styles.actions}>
         <Link
           href="/account/history"

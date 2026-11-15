@@ -1,0 +1,413 @@
+/* Chart colors: see StatsCharts.tsx for the validation note. */
+.form,
+.meter,
+.ranges,
+.roles {
+  --win: #23804f;
+  --loss: #c4472c;
+  --wash-win: rgba(35, 128, 79, 0.1);
+  --wash-loss: rgba(196, 71, 44, 0.1);
+  --track: var(--bg-sunk);
+}
+
+/* ---- segmented range presets ------------------------------------------ */
+.seg {
+  display: inline-flex;
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--rule-strong);
+  border-radius: 3px;
+}
+.seg button {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  white-space: nowrap;
+  padding: 5px 10px;
+  border: none;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.seg button + button {
+  border-left: 1px solid var(--rule-strong);
+}
+.seg button:hover {
+  color: var(--accent);
+}
+.seg .segOn,
+.seg .segOn:hover {
+  background: var(--ink);
+  color: var(--bg-page);
+}
+
+/* ---- form chart --------------------------------------------------------- */
+.form {
+  --plot-h: 300px;
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) 44px;
+  grid-template-rows: var(--plot-h) auto auto;
+  margin: 0;
+}
+.formTicks,
+.formEnd {
+  position: relative;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.formTicks span {
+  position: absolute;
+  right: 8px;
+  transform: translateY(-50%);
+}
+.formEnd span {
+  position: absolute;
+  left: 8px;
+  transform: translateY(-50%);
+  color: var(--ink);
+  font-weight: 600;
+}
+.formPlot {
+  position: relative;
+}
+.formSvg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.grid {
+  stroke: var(--rule);
+  stroke-width: 1;
+  opacity: 0.6;
+}
+.zero {
+  stroke: var(--rule-strong);
+  stroke-width: 1;
+}
+.line {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.washWin {
+  fill: var(--wash-win);
+}
+.washLoss {
+  fill: var(--wash-loss);
+}
+.crosshair {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--rule-strong);
+  pointer-events: none;
+}
+.dot {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border-radius: 50%;
+  background: var(--ink);
+  box-shadow: 0 0 0 2px var(--bg-page);
+  pointer-events: none;
+}
+.tip {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  margin: 10px 0 0 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  box-shadow: var(--shadow-1);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.tip[data-side="left"] {
+  transform: translateX(-100%);
+  margin-left: -12px;
+}
+.tip strong {
+  font-size: 16px;
+  color: var(--ink);
+}
+.hit {
+  position: absolute;
+  inset: 0;
+  cursor: crosshair;
+  touch-action: pan-y;
+}
+.hit:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.strip {
+  position: relative;
+  grid-column: 2;
+  height: 36px;
+  margin-top: 8px;
+  padding-top: 4px;
+  border-top: 1px solid var(--rule);
+}
+.strip svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.stripMark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--ink);
+  pointer-events: none;
+}
+.barWin {
+  fill: var(--win);
+}
+.barLoss {
+  fill: var(--loss);
+}
+.formAxis {
+  grid-column: 2;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  color: var(--muted);
+}
+.formAxisNote {
+  text-align: center;
+}
+
+/* ---- meters ------------------------------------------------------------- */
+.meterItem {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.meterHead {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.meterHead strong {
+  font-size: 15px;
+  color: var(--ink);
+}
+.meter {
+  position: relative;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--track);
+}
+.meterFill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 4px;
+  background: var(--win);
+}
+.meterNote {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* ---- score-per-hand ranges --------------------------------------------- */
+.ranges {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.rangeRow,
+.rangeAxis {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr) 96px;
+  align-items: center;
+  gap: 12px;
+}
+.rangeRow {
+  min-height: 44px;
+  border-bottom: 1px solid var(--rule);
+}
+.rangeName {
+  display: flex;
+  flex-direction: column;
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+.rangeName span {
+  font-size: 11px;
+  color: var(--muted);
+}
+.rangeTrack {
+  position: relative;
+  height: 24px;
+}
+.rangeZero {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--rule-strong);
+}
+.rangeSpan {
+  position: absolute;
+  top: 50%;
+  height: 4px;
+  margin-top: -2px;
+  border-radius: 2px;
+  background: var(--rule-strong);
+  opacity: 0.7;
+}
+.rangeDot {
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  border-radius: 50%;
+  background: var(--win);
+  box-shadow: 0 0 0 2px var(--bg-page);
+}
+.rangeDotLoss {
+  background: var(--loss);
+}
+.rangeValue {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.rangeValue span {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+}
+.rangeTicks {
+  position: relative;
+  height: 16px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted);
+}
+.rangeTicks span {
+  position: absolute;
+  transform: translateX(-50%);
+}
+
+/* ---- by role ------------------------------------------------------------ */
+.roles {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.roles th,
+.roles td {
+  padding: 8px 0;
+  text-align: right;
+  border-bottom: 1px solid var(--rule);
+}
+.roles td + td,
+.roles th + th,
+.roles th + td {
+  padding-left: 12px;
+}
+.roles thead th {
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom-color: var(--rule-strong);
+}
+.roles tbody th {
+  text-align: left;
+  font-weight: 400;
+  font-size: 15px;
+  color: var(--ink-soft);
+}
+.roles tbody td {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--ink);
+}
+.rolesShare {
+  display: inline-block;
+  min-width: 3.5em;
+  font-size: 11px;
+  color: var(--muted);
+}
+.rolesBarHead {
+  width: 45%;
+}
+.rolesBarCell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.rolesBar {
+  position: relative;
+  flex: 1;
+  height: 12px;
+}
+.rolesZero {
+  position: absolute;
+  left: 50%;
+  top: -4px;
+  bottom: -4px;
+  width: 1px;
+  background: var(--rule-strong);
+}
+.rolesWin,
+.rolesLoss {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+.rolesWin {
+  background: var(--win);
+  border-radius: 0 4px 4px 0;
+}
+.rolesLoss {
+  background: var(--loss);
+  border-radius: 4px 0 0 4px;
+}
+.rolesValue {
+  min-width: 3.6em;
+}
+
+@media (max-width: 560px) {
+  .form {
+    grid-template-columns: 34px minmax(0, 1fr) 36px;
+  }
+  .formAxisNote {
+    display: none;
+  }
+  .rangeRow,
+  .rangeAxis {
+    grid-template-columns: 84px minmax(0, 1fr) 64px;
+    gap: 8px;
+  }
+  .rolesBarHead {
+    width: 38%;
+  }
+}

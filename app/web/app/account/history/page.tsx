@@ -11,7 +11,7 @@ import {
 } from "../../../lib/account";
 import type { HandHistoryRow } from "../../../lib/types";
 import AccountShell from "../AccountShell";
-import { signed } from "../components/StatsPanel";
+import { signed } from "../components/statsFormat";
 import accountStyles from "../account.module.css";
 import styles from "./history.module.css";
 
