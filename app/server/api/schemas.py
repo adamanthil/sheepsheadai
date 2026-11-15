@@ -210,12 +210,22 @@ class LeaderboardResponse(BaseModel):
     # overall, one partner mode (called_ace / jd), or hands vs the AI alone.
     board: Literal["overall", "called_ace", "jd", "vs_ai"]
     sort: Literal["total", "sph", "win_pct"]
-    # Hands of this board's kind needed to qualify for it.
+    # Every hand, or only hands closed in the current or the previous
+    # month (US Central).
+    period: Literal["all_time", "month", "last_month"]
+    # The month's bounds, [start, end); both None for all_time. The
+    # current month's board resets at period_end.
+    period_start: Optional[datetime]
+    period_end: Optional[datetime]
+    # Hands of this board's kind needed to qualify for it (in the period).
     min_hands: int
     # The top of the board only; nothing below it is ever served.
     rows: List[LeaderboardRow]
     # The caller's own row when they qualify but rank below `rows`.
     you: Optional[LeaderboardRow]
+    # Hands the signed-in caller still needs to qualify, when they aren't
+    # on this board; None for anonymous callers and a finished month.
+    qualifies_in: Optional[int]
 
 
 class CompanySplit(BaseModel):

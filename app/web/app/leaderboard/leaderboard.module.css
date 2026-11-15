@@ -1,12 +1,56 @@
+/* The board tabs share one rule with the period switch, which sits at
+   the row's right end: tabs pick which hands count, the switch when. */
+.boardBar {
+  display: flex;
+  flex-direction: row-reverse;
+  align-items: flex-end;
+  gap: 24px;
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: 16px;
+}
 /* Board tabs, styled like the account page's. Four of them overflow a
    narrow phone, so the row scrolls sideways rather than wrapping. */
 .tabs {
   display: flex;
   gap: 24px;
+  flex: 1;
+  min-width: 0;
   overflow-x: auto;
   scrollbar-width: none;
-  border-bottom: 1px solid var(--rule);
-  margin-bottom: 16px;
+}
+/* All time / this month: a small tracked-caps switch in the site nav's
+   register, so it reads as a setting on the tabs rather than a fifth one. */
+.period {
+  display: flex;
+  flex-shrink: 0;
+  margin-bottom: 7px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.periodBtn {
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  padding: 5px 10px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.periodBtn + .periodBtn {
+  border-left: 1px solid var(--rule-strong);
+}
+.periodBtn:hover {
+  color: var(--accent);
+}
+.periodActive,
+.periodActive:hover {
+  background: var(--ink);
+  color: var(--bg-page);
 }
 .tab {
   font-family: var(--font-ui);
@@ -31,6 +75,9 @@
   font-size: 13px;
   color: var(--muted);
   margin: 0 0 16px;
+}
+.reset {
+  margin-left: 0.5em;
 }
 .error {
   font-size: 13px;
@@ -161,8 +208,22 @@
   display: none;
 }
 @media (max-width: 640px) {
+  /* The switch moves above the tabs, so they keep the full width. */
+  .boardBar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
   .tabs {
     gap: 16px;
+    align-self: stretch;
+  }
+  .period {
+    margin-bottom: 0;
+  }
+  .reset {
+    display: block;
+    margin-left: 0;
   }
   .longLabel {
     display: none;

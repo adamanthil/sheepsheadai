@@ -6,9 +6,9 @@ import { ds } from "../../lib/ds";
 import { apiFetch } from "../../lib/api";
 import { useAccount } from "../../lib/account";
 import type {
-  AccountStats,
   Leaderboard,
   LeaderboardBoard,
+  LeaderboardPeriod,
   LeaderboardRow,
   LeaderboardSort,
 } from "../../lib/types";
@@ -66,6 +66,50 @@ const DEFAULT_BOARD: LeaderboardBoard = "overall";
 
 const boardInfo = (key: LeaderboardBoard) => BOARDS.find((b) => b.key === key)!;
 
+/** Monthly boards reset at midnight on the 1st, Central time (the server
+ * holds the bounds; this zone only names them). In switch order: the
+ * current month first, then back in time. */
+const PERIODS: LeaderboardPeriod[] = ["month", "last_month", "all_time"];
+const DEFAULT_PERIOD: LeaderboardPeriod = "month";
+const BOARD_TZ = "America/Chicago";
+const MONTH_NAME = new Intl.DateTimeFormat("en-US", {
+  month: "long",
+  timeZone: "UTC",
+});
+const YEAR_MONTH = new Intl.DateTimeFormat("en-US", {
+  year: "numeric",
+  month: "numeric",
+  timeZone: BOARD_TZ,
+});
+const RESET_DAY = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  timeZone: BOARD_TZ,
+});
+
+type MonthNames = { month: string; lastMonth: string };
+
+/** The current and previous months' names, as of ``now`` read in Central
+ * time. */
+function monthNames(now: Date): MonthNames {
+  const parts = YEAR_MONTH.formatToParts(now);
+  const part = (type: string) =>
+    Number(parts.find((p) => p.type === type)!.value);
+  const [year, month] = [part("year"), part("month")];
+  // Mid-month in UTC is safely inside the same month anywhere.
+  const name = (back: number) =>
+    MONTH_NAME.format(new Date(Date.UTC(year, month - 1 - back, 15)));
+  return { month: name(0), lastMonth: name(1) };
+}
+
+/** Month names for a board: as of its served bounds once loaded, so they
+ * agree with the server across a rollover; the viewer's clock until then. */
+function boardMonths(board: Leaderboard | null): MonthNames {
+  const current =
+    board?.period === "last_month" ? board.period_end : board?.period_start;
+  return monthNames(current ? new Date(current) : new Date());
+}
+
 const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
 const signed = (x: number) => (x > 0 ? `+${x}` : String(x));
 
@@ -84,7 +128,11 @@ function cell(row: LeaderboardRow, key: ColumnKey): string {
   }
 }
 
-type View = { board: LeaderboardBoard; sort: LeaderboardSort };
+type View = {
+  board: LeaderboardBoard;
+  sort: LeaderboardSort;
+  period: LeaderboardPeriod;
+};
 
 function viewFromUrl(): View {
   const params = new URLSearchParams(window.location.search);
@@ -96,12 +144,17 @@ function viewFromUrl(): View {
   const sort = SORTS.includes(s as LeaderboardSort)
     ? (s as LeaderboardSort)
     : boardInfo(board).defaultSort;
-  return { board, sort };
+  const p = params.get("period");
+  const period = PERIODS.includes(p as LeaderboardPeriod)
+    ? (p as LeaderboardPeriod)
+    : DEFAULT_PERIOD;
+  return { board, sort, period };
 }
 
 /** The view's URL, leaving out whatever is already the default. */
-function viewUrl({ board, sort }: View): string {
+function viewUrl({ board, sort, period }: View): string {
   const params = new URLSearchParams();
+  if (period !== DEFAULT_PERIOD) params.set("period", period);
   if (board !== DEFAULT_BOARD) params.set("board", board);
   if (sort !== boardInfo(board).defaultSort) params.set("sort", sort);
   const query = params.toString();
@@ -129,7 +182,7 @@ export default function LeaderboardPage() {
     (async () => {
       try {
         const res = await apiFetch(
-          `/api/leaderboard?board=${view.board}&sort=${view.sort}`,
+          `/api/leaderboard?board=${view.board}&sort=${view.sort}&period=${view.period}`,
         );
         if (!res.ok) throw new Error(String(res.status));
         const data = (await res.json()) as Leaderboard;
@@ -146,35 +199,64 @@ export default function LeaderboardPage() {
     };
   }, [view]);
 
+  const period = view?.period ?? DEFAULT_PERIOD;
+  const names = boardMonths(board);
+  const periodLabel: Record<LeaderboardPeriod, string> = {
+    all_time: "All time",
+    last_month: names.lastMonth,
+    month: names.month,
+  };
+
   const show = (next: View) => {
-    if (next.board !== view?.board) setBoard(null);
+    if (next.board !== view?.board || next.period !== view?.period)
+      setBoard(null);
     setView(next);
     window.history.replaceState(null, "", viewUrl(next));
   };
-  const choose = (key: LeaderboardSort) => show({ board: info.key, sort: key });
+  const choose = (key: LeaderboardSort) =>
+    show({ board: info.key, sort: key, period });
   const chooseBoard = (key: LeaderboardBoard) =>
-    show({ board: key, sort: boardInfo(key).defaultSort });
+    show({ board: key, sort: boardInfo(key).defaultSort, period });
+  const choosePeriod = (next: LeaderboardPeriod) =>
+    view && next !== period && show({ ...view, period: next });
 
   return (
     <PageShell title="Leaderboard" wide>
-      <div className={styles.tabs} role="tablist">
-        {BOARDS.map((b) => (
-          <button
-            key={b.key}
-            type="button"
-            role="tab"
-            aria-selected={view?.board === b.key}
-            className={`${styles.tab} ${view?.board === b.key ? styles.tabActive : ""}`}
-            onClick={() => chooseBoard(b.key)}
-          >
-            {b.label}
-          </button>
-        ))}
+      <div className={styles.boardBar}>
+        <div className={styles.period} role="group" aria-label="Period">
+          {PERIODS.map((p) => (
+            <button
+              key={p}
+              type="button"
+              aria-pressed={period === p}
+              className={`${styles.periodBtn} ${period === p ? styles.periodActive : ""}`}
+              onClick={() => choosePeriod(p)}
+            >
+              {periodLabel[p]}
+            </button>
+          ))}
+        </div>
+        <div className={styles.tabs} role="tablist">
+          {BOARDS.map((b) => (
+            <button
+              key={b.key}
+              type="button"
+              role="tab"
+              aria-selected={view?.board === b.key}
+              className={`${styles.tab} ${view?.board === b.key ? styles.tabActive : ""}`}
+              onClick={() => chooseBoard(b.key)}
+            >
+              {b.label}
+            </button>
+          ))}
+        </div>
       </div>
       <p className={styles.caption}>
-        {board
-          ? `Confirmed accounts with ${board.min_hands}+ ${info.hands} · top 20.`
-          : "\u00a0"}
+        {board ? (
+          <Caption board={board} hands={info.hands} names={names} />
+        ) : (
+          "\u00a0"
+        )}
       </p>
       {failed && (
         <p className={styles.error}>Couldn&rsquo;t load the leaderboard.</p>
@@ -240,14 +322,56 @@ export default function LeaderboardPage() {
         </table>
         {board && board.rows.length === 0 && (
           <p className={styles.empty}>
-            Nobody has qualified yet. {board.min_hands} {info.hands} with a
-            confirmed account gets you on the board.
+            {
+              {
+                all_time: `Nobody has qualified yet. ${board.min_hands} ${info.hands} with a confirmed account gets you on the board.`,
+                month: `Nobody has qualified for ${names.month} yet. ${board.min_hands} ${info.hands} this month with a confirmed account gets you on the board.`,
+                last_month: `Nobody qualified in ${names.lastMonth}.`,
+              }[board.period]
+            }
           </p>
         )}
       </div>
-      {board && <YourStanding board={board} />}
+      {board && (
+        <YourStanding board={board} hands={info.hands} month={names.month} />
+      )}
     </PageShell>
   );
+}
+
+/** What the board counts, and for a month when it closes or closed. */
+function Caption({
+  board,
+  hands,
+  names,
+}: {
+  board: Leaderboard;
+  hands: string;
+  names: MonthNames;
+}) {
+  const who = `Confirmed accounts with ${board.min_hands}+ ${hands}`;
+  switch (board.period) {
+    case "all_time":
+      return <>{who} · top 20.</>;
+    case "month":
+      return (
+        <>
+          {who} in {names.month} · top 20.
+          {board.period_end && (
+            <span className={styles.reset}>
+              Resets {RESET_DAY.format(new Date(board.period_end))} at midnight
+              Central.
+            </span>
+          )}
+        </>
+      );
+    case "last_month":
+      return (
+        <>
+          Final standings for {names.lastMonth}. {who} that month · top 20.
+        </>
+      );
+  }
 }
 
 function Row({
@@ -279,28 +403,21 @@ function Row({
 }
 
 /** A line for the viewer when they aren't on the board: how to get there. */
-function YourStanding({ board }: { board: Leaderboard }) {
+function YourStanding({
+  board,
+  hands,
+  month,
+}: {
+  board: Leaderboard;
+  hands: string;
+  month: string;
+}) {
   const { me } = useAccount();
-  const [stats, setStats] = useState<AccountStats | null>(null);
   const account = me?.account;
   const listed = board.you != null || board.rows.some((r) => r.is_you);
-  const verified = !!account?.email_verified;
 
-  useEffect(() => {
-    if (!verified || listed) return;
-    let cancelled = false;
-    apiFetch("/api/account/stats")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (!cancelled && data) setStats(data as AccountStats);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [verified, listed]);
-
-  if (me === undefined || listed) return null;
+  // A finished month can't be joined any more.
+  if (me === undefined || listed || board.period === "last_month") return null;
   let text: React.ReactNode;
   if (!account) {
     text = (
@@ -311,7 +428,7 @@ function YourStanding({ board }: { board: Leaderboard }) {
         to put your name here.
       </>
     );
-  } else if (!verified) {
+  } else if (!account.email_verified) {
     text = (
       <>
         Confirm your email to appear here.{" "}
@@ -320,11 +437,13 @@ function YourStanding({ board }: { board: Leaderboard }) {
         </Link>
       </>
     );
-  } else if (board.board === "overall" && stats?.qualifies_in) {
+  } else if (board.qualifies_in) {
+    const n = board.qualifies_in;
     text = (
       <>
-        @{account.username}: {stats.qualifies_in} more finished hand
-        {stats.qualifies_in === 1 ? "" : "s"} to qualify.
+        @{account.username}: {n} more{" "}
+        {n === 1 ? hands.replace(/\bhands\b/, "hand") : hands}
+        {board.period === "month" && ` in ${month}`} to qualify.
       </>
     );
   } else {

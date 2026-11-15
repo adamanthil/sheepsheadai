@@ -14,6 +14,7 @@ import httpx2
 import pytest
 
 from server.services.persistence.sessions import create_session
+from server.services.persistence.stats import LEADERBOARD_TZ
 
 TEST_DB = os.environ.get("TEST_DATABASE_URL", "")
 
@@ -77,6 +78,7 @@ class Seeder:
         ai_seat: list[str | None] | None = None,
         closed: bool = True,
         called: bool = True,
+        months_back: int = 0,
     ) -> None:
         n = len(scores)
         hand_ids = [self.cardset] * n
@@ -88,7 +90,15 @@ class Seeder:
             INSERT INTO game (game_id, game_table_id, is_double_on_the_bump,
                               is_called_partner, is_leaster, time_created,
                               time_closed, blind_id)
-            SELECT g, $2, true, $6, l, now(), CASE WHEN $3 THEN now() END, $4
+            SELECT g, $2, true, $6, l, now(), CASE WHEN $3 THEN
+                       CASE WHEN $7 = 0 THEN now() ELSE
+                           -- Mid-month, $7 Central-time months ago, stored
+                           -- naive in the session zone as now() would be.
+                           (date_trunc('month', now() AT TIME ZONE $8)
+                               - make_interval(months => $7) + interval '14 days')
+                               AT TIME ZONE $8 AT TIME ZONE current_setting('TimeZone')
+                       END
+                   END, $4
             FROM unnest($1::uuid[], $5::bool[]) AS t(g, l)
             """,
             games,
@@ -97,6 +107,8 @@ class Seeder:
             self.cardset,
             leaster or [False] * n,
             called,
+            months_back,
+            LEADERBOARD_TZ,
         )
         await self.pool.execute(
             """
@@ -512,6 +524,57 @@ async def test_partner_mode_and_vs_ai_boards_count_only_their_hands(seeded):
     assert (row["hands"], row["total"]) == (45, 45)
 
     bad = await client.get("/api/leaderboard", params={"board": "worst"})
+    assert bad.status_code == 422
+
+
+async def test_monthly_boards_count_only_their_month(seeded):
+    seeder, client = seeded
+    tag = _tag()
+    # Ten hands this month: half the lifetime count, enough for the month.
+    fresh = await seeder.player(username=f"mnow_{tag}")
+    await seeder.hands(fresh, [50] * 10)
+    # Last month's runaway leader, with only three hands so far this month.
+    champ = await seeder.player(username=f"mold_{tag}")
+    await seeder.hands(champ, [60] * 30, months_back=1)
+    await seeder.hands(champ, [1] * 3)
+    # Two months back counts toward neither month.
+    early = await seeder.player(username=f"mearly_{tag}")
+    await seeder.hands(early, [99] * 30, months_back=2)
+    token = await create_session(seeder.pool, champ)
+    auth = {"Authorization": f"Bearer {token}"}
+
+    async def ours(params: dict, headers: dict | None = None):
+        r = await client.get("/api/leaderboard", params=params, headers=headers)
+        assert r.status_code == 200, r.text
+        board = r.json()
+        return board, {
+            row["username"] for row in board["rows"] if row["username"].endswith(tag)
+        }
+
+    board, names = await ours({"period": "month"}, auth)
+    assert (board["min_hands"], names) == (10, {f"mnow_{tag}"})
+    assert board["period_start"] < board["period_end"]
+    assert board["qualifies_in"] == 7
+    # Half of the AI board's 40.
+    board, _ = await ours({"period": "month", "board": "vs_ai", "sort": "sph"}, auth)
+    assert (board["min_hands"], board["qualifies_in"]) == (20, 17)
+
+    # The finished month: its own board, nothing left to chase.
+    board, names = await ours({"period": "last_month"}, auth)
+    assert names == {f"mold_{tag}"}
+    assert board["period_end"] is not None
+    assert board["qualifies_in"] is None
+
+    board, names = await ours({})
+    assert board["period"] == "all_time" and board["min_hands"] == 20
+    assert names == {f"mold_{tag}", f"mearly_{tag}"}
+    assert board["period_start"] is None
+
+    # Nobody signed in: nothing to qualify for.
+    board, _ = await ours({"period": "month"})
+    assert board["qualifies_in"] is None
+
+    bad = await client.get("/api/leaderboard", params={"period": "week"})
     assert bad.status_code == 422
 
 

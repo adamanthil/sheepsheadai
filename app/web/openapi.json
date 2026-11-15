@@ -1854,6 +1854,50 @@
             "title": "Min Hands",
             "type": "integer"
           },
+          "period": {
+            "enum": [
+              "all_time",
+              "month",
+              "last_month"
+            ],
+            "title": "Period",
+            "type": "string"
+          },
+          "period_end": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End"
+          },
+          "period_start": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start"
+          },
+          "qualifies_in": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Qualifies In"
+          },
           "rows": {
             "items": {
               "$ref": "#/components/schemas/LeaderboardRow"
@@ -1884,9 +1928,13 @@
         "required": [
           "board",
           "sort",
+          "period",
+          "period_start",
+          "period_end",
           "min_hands",
           "rows",
-          "you"
+          "you",
+          "qualifies_in"
         ],
         "title": "LeaderboardResponse",
         "type": "object"
@@ -3028,6 +3076,21 @@
                 "win_pct"
               ],
               "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "period",
+            "required": false,
+            "schema": {
+              "default": "all_time",
+              "enum": [
+                "all_time",
+                "month",
+                "last_month"
+              ],
+              "title": "Period",
               "type": "string"
             }
           }

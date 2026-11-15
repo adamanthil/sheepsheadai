@@ -16,6 +16,7 @@ export type Leaderboard = components["schemas"]["LeaderboardResponse"];
 export type LeaderboardRow = components["schemas"]["LeaderboardRow"];
 export type LeaderboardSort = Leaderboard["sort"];
 export type LeaderboardBoard = Leaderboard["board"];
+export type LeaderboardPeriod = Leaderboard["period"];
 
 export type TableSummary = TablePublic;
 

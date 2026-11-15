@@ -24,6 +24,7 @@ from server.services.persistence.stats import (
     LEADERBOARD_SIZE,
     SPLIT_MARGIN_MIN_HANDS,
     BoardKey,
+    PeriodKey,
     SortKey,
 )
 
@@ -45,18 +46,35 @@ def _public_row(row: dict, you: bool) -> dict:
 
 @router.get("/api/leaderboard", response_model=LeaderboardResponse)
 async def leaderboard(
-    request: Request, board: BoardKey = "overall", sort: SortKey = "total"
+    request: Request,
+    board: BoardKey = "overall",
+    sort: SortKey = "total",
+    period: PeriodKey = "all_time",
 ):
     # Always best-first and a single page: the bottom of the board is never
     # served, so nobody can sort the weakest players to the top.
-    ranking = await stats_db.ranking(get_db_pool(), sort, board)
+    pool = get_db_pool()
+    month = await stats_db.month_bounds(pool, period)
+    ranking = await stats_db.ranking(pool, sort, board, month)
     identity = await optional_player(request)
     player_id = identity.id if identity is not None else None
     mine = stats_db.row_of(ranking, player_id)
+    min_hands = stats_db.board_min_hands(board, monthly=month is not None)
+
+    # How far the caller is from this board; a finished month can't be
+    # qualified for any more.
+    qualifies_in: Optional[int] = None
+    if player_id is not None and mine is None and period != "last_month":
+        hands = await stats_db.board_hands(pool, player_id, board, month)
+        qualifies_in = max(0, min_hands - hands)
+
     return {
         "board": board,
         "sort": sort,
-        "min_hands": stats_db.board_min_hands(board),
+        "period": period,
+        "period_start": month.start if month else None,
+        "period_end": month.end if month else None,
+        "min_hands": min_hands,
         "rows": [
             _public_row(r, r["player_id"] == player_id)
             for r in ranking[:LEADERBOARD_SIZE]
@@ -66,6 +84,7 @@ async def leaderboard(
             if mine is not None and mine["rank"] > LEADERBOARD_SIZE
             else None
         ),
+        "qualifies_in": qualifies_in,
     }
 
 

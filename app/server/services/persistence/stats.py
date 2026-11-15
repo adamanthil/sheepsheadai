@@ -19,7 +19,8 @@ from __future__ import annotations
 
 import math
 import time
-from typing import Literal, Optional
+from datetime import datetime
+from typing import Literal, NamedTuple, Optional
 from uuid import UUID
 
 import asyncpg
@@ -32,6 +33,13 @@ SORT_KEYS: tuple[SortKey, ...] = ("total", "sph", "win_pct")
 # Which hands a board counts: all of them, one partner mode, or only
 # hands played against the AI alone.
 BoardKey = Literal["overall", "called_ace", "jd", "vs_ai"]
+
+# Which closing times a board counts: every hand, or only hands closed in
+# the current or the previous calendar month. Months run midnight to
+# midnight on the 1st in LEADERBOARD_TZ, whatever the server's own zone.
+PeriodKey = Literal["all_time", "month", "last_month"]
+MONTHS_BACK: dict[PeriodKey, int] = {"month": 0, "last_month": 1}
+LEADERBOARD_TZ = "America/Chicago"
 
 # More AI decisions than this in a hand, not excused, abandon it.
 ABANDON_AI_ACTIONS = 2
@@ -109,8 +117,11 @@ _BOARD_SQL: dict[BoardKey, str] = {
 }
 
 
-def board_min_hands(board: BoardKey) -> int:
-    return VS_AI_LEADERBOARD_MIN_HANDS if board == "vs_ai" else LEADERBOARD_MIN_HANDS
+def board_min_hands(board: BoardKey, monthly: bool = False) -> int:
+    """Hands of ``board``'s kind to qualify for it: a monthly board asks
+    half its lifetime count."""
+    base = VS_AI_LEADERBOARD_MIN_HANDS if board == "vs_ai" else LEADERBOARD_MIN_HANDS
+    return base // 2 if monthly else base
 
 
 # One row per company for the caller: vs_ai or with other people.
@@ -159,10 +170,53 @@ _PICKING = """
       AND NOT gp.is_substituted_pick
 """
 
-# (board, sort key) -> (monotonic time cached, full ranking). The ranking
-# holds every eligible player; only the top rows and the caller's own row
-# are served.
-_cache: dict[tuple[BoardKey, SortKey], tuple[float, list[dict]]] = {}
+
+class Month(NamedTuple):
+    """A leaderboard month: [start, end) as aware instants."""
+
+    start: datetime
+    end: datetime
+
+
+# Postgres's own zone database, so the bounds don't depend on tzdata in
+# the server's Python environment.
+_MONTH_SQL = """
+    WITH m AS (
+        SELECT date_trunc('month', now() AT TIME ZONE $1)
+                   - make_interval(months => $2) AS local_start
+    )
+    SELECT local_start AT TIME ZONE $1 AS start,
+           (local_start + interval '1 month') AT TIME ZONE $1 AS end
+    FROM m
+"""
+
+
+def _in_month_sql(start: str, end: str) -> str:
+    """Hands closed in [start, end), two timestamptz parameters.
+
+    time_closed is a naive timestamp stamped by now() in the session zone,
+    so the bounds are compared in that zone too; read the other way round,
+    the comparison would shift with the server's UTC offset.
+    """
+    local = "::timestamptz AT TIME ZONE current_setting('TimeZone')"
+    return f" AND g.time_closed >= ({start}{local}) AND g.time_closed < ({end}{local})"
+
+
+async def month_bounds(pool: asyncpg.Pool, period: PeriodKey) -> Optional[Month]:
+    """The month a ``period`` covers; None for all time."""
+    if period not in MONTHS_BACK:
+        return None
+    row = await pool.fetchrow(_MONTH_SQL, LEADERBOARD_TZ, MONTHS_BACK[period])
+    assert row is not None
+    return Month(row["start"], row["end"])
+
+
+# (board, sort key, period start) -> (monotonic time cached, full ranking).
+# The ranking holds every eligible player; only the top rows and the
+# caller's own row are served. Keying on the start resets a month's board
+# the moment it rolls over, not up to a TTL later.
+_CacheKey = tuple[BoardKey, SortKey, Optional[datetime]]
+_cache: dict[_CacheKey, tuple[float, list[dict]]] = {}
 
 
 def clear_cache() -> None:
@@ -218,21 +272,29 @@ async def player_picking(pool: asyncpg.Pool, player_id: UUID) -> dict:
 
 
 async def ranking(
-    pool: asyncpg.Pool, sort: SortKey, board: BoardKey = "overall"
+    pool: asyncpg.Pool,
+    sort: SortKey,
+    board: BoardKey = "overall",
+    month: Optional[Month] = None,
 ) -> list[dict]:
     """Every verified account with enough of ``board``'s hands, best first
-    by ``sort`` (ties: more hands, then username). Cached for a minute per
-    board and sort."""
-    hit = _cache.get((board, sort))
+    by ``sort`` (ties: more hands, then username); with ``month``, only
+    hands closed in it count. Cached for a minute per board, sort and
+    month."""
+    key: _CacheKey = (board, sort, month.start if month else None)
+    hit = _cache.get(key)
     now = time.monotonic()
     if hit is not None and now - hit[0] < _CACHE_TTL:
         return hit[1]
     # Both interpolated below; never caller-controlled.
     assert sort in SORT_KEYS and board in _BOARD_SQL
+    args: list = [board_min_hands(board, monthly=month is not None)]
+    if month:
+        args += [month.start, month.end]
     rows = await pool.fetch(
         f"""
         WITH stats AS (
-            {_HAND_STATS}{_BOARD_SQL[board]}
+            {_HAND_STATS}{_BOARD_SQL[board]}{_in_month_sql("$2", "$3") if month else ""}
             GROUP BY gp.player_id HAVING {HANDS_SQL} >= $1
         )
         SELECT row_number() OVER (
@@ -244,11 +306,30 @@ async def ranking(
           ON a.player_id = s.player_id AND a.email_verified_at IS NOT NULL
         ORDER BY rank
         """,
-        board_min_hands(board),
+        *args,
     )
     result = [dict(r) for r in rows]
-    _cache[board, sort] = (now, result)
+    _cache[key] = (now, result)
     return result
+
+
+async def board_hands(
+    pool: asyncpg.Pool,
+    player_id: UUID,
+    board: BoardKey,
+    month: Optional[Month] = None,
+) -> int:
+    """How many of ``board``'s hands the player has finished (in ``month``,
+    if given): their count toward qualifying for it."""
+    args: list = [player_id]
+    if month:
+        args += [month.start, month.end]
+    row = await pool.fetchrow(
+        f"""{_HAND_STATS}{_BOARD_SQL[board]}{_in_month_sql("$2", "$3") if month else ""}
+            AND gp.player_id = $1 GROUP BY gp.player_id""",
+        *args,
+    )
+    return row["hands"] if row is not None else 0
 
 
 def row_of(rows: list[dict], player_id: Optional[UUID]) -> Optional[dict]:

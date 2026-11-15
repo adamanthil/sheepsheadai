@@ -1229,6 +1229,17 @@ export interface components {
             board: "overall" | "called_ace" | "jd" | "vs_ai";
             /** Min Hands */
             min_hands: number;
+            /**
+             * Period
+             * @enum {string}
+             */
+            period: "all_time" | "month" | "last_month";
+            /** Period End */
+            period_end: string | null;
+            /** Period Start */
+            period_start: string | null;
+            /** Qualifies In */
+            qualifies_in: number | null;
             /** Rows */
             rows: components["schemas"]["LeaderboardRow"][];
             /**
@@ -1922,6 +1933,7 @@ export interface operations {
             query?: {
                 board?: "overall" | "called_ace" | "jd" | "vs_ai";
                 sort?: "total" | "sph" | "win_pct";
+                period?: "all_time" | "month" | "last_month";
             };
             header?: never;
             path?: never;
