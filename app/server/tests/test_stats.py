@@ -667,6 +667,35 @@ async def test_pick_when_offered_counts_deals_the_pick_reached(seeded):
     assert s["offered_hands"] == 4
     assert s["pick_offered_pct"] == pytest.approx(1 / 4)
     assert s["pick_pct"] == pytest.approx(1 / 5)
+    assert s["pick_offers_by_position"] == [
+        {"position": p, "offered_hands": 4 if p == 3 else 0, "picks": int(p == 3)}
+        for p in range(1, 6)
+    ]
+
+
+async def test_pick_offers_split_by_bidding_position(seeded):
+    seeder, client = seeded
+    pid = await seeder.player(username=f"bypos_{_tag()}")
+    # First to bid: always offered; picked one of two.
+    await seeder.hands(
+        pid, [2, -1], position=1, picker=[True, False], other_picker=[None, 3]
+    )
+    # Last to bid: offered only when nobody ahead picked.
+    await seeder.hands(
+        pid, [-1, 1], position=5, picker=[False, True], other_picker=[2, None]
+    )
+    token = await create_session(seeder.pool, pid)
+
+    r = await client.get(
+        "/api/account/stats", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    by = {x["position"]: x for x in r.json()["pick_offers_by_position"]}
+    assert (by[1]["offered_hands"], by[1]["picks"]) == (2, 1)
+    assert (by[5]["offered_hands"], by[5]["picks"]) == (1, 1)
+    assert all(by[p]["offered_hands"] == 0 for p in (2, 3, 4))
+    assert r.json()["offered_hands"] == 3
+    assert r.json()["pick_offered_pct"] == pytest.approx(2 / 3)
 
 
 async def test_roles_split_scores_by_part_in_the_hand(seeded):

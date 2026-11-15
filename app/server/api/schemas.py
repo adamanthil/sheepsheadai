@@ -242,6 +242,15 @@ class RoleSplit(CompanySplit):
     role: Literal["picker", "partner", "defender", "leaster"]
 
 
+class PositionOffers(BaseModel):
+    # Bidding order: 1 bids first, 5 last.
+    position: int
+    # Deals the pick reached the player from this position, and how many
+    # of them they picked.
+    offered_hands: int
+    picks: int
+
+
 class AccountStatsResponse(BaseModel):
     username: str
     hands: int
@@ -281,6 +290,8 @@ class AccountStatsResponse(BaseModel):
     # picked; pick_pct is picks over every deal instead.
     offered_hands: int
     pick_offered_pct: Optional[float]
+    # The same, by bidding position, 1 to 5.
+    pick_offers_by_position: List[PositionOffers]
     # Score/hand and win rate by the player's part in the hand, in the
     # order picker, partner, defender, leaster.
     roles: List[RoleSplit]

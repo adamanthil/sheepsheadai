@@ -11,6 +11,10 @@
     "rates picking"
     "pair pair"
     "completion completion";
+  /* The third row flexes, so the rates growing (their breakdown opening)
+     lengthens the rows they share with picking from the bottom and
+     leaves picking tucked under the chart. */
+  grid-template-rows: auto auto 1fr;
   align-items: start;
   gap: 32px 40px;
 }
@@ -95,6 +99,7 @@
       "pair"
       "picking"
       "completion";
+    grid-template-rows: none;
   }
   .pair {
     grid-template-columns: minmax(0, 1fr);

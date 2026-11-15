@@ -330,26 +330,39 @@ async def player_roles(pool: asyncpg.Pool, player_id: UUID) -> list[dict]:
 # was offered it, and in a leaster or a passed-out doublers deal everyone
 # was. Pass-outs count here as they do in pick rate, and so do picks the
 # AI made for the caller.
+# Grouped by the caller's bidding position (1 bids first).
 _PICK_OFFERS = """
-    SELECT count(*)::int                                   AS offered_hands,
-           (count(*) FILTER (WHERE gp.is_picker))::int     AS offered_picks
+    SELECT gp.position::int                                AS position,
+           count(*)::int                                   AS offered_hands,
+           (count(*) FILTER (WHERE gp.is_picker))::int     AS picks
     FROM game_player gp
     JOIN game g ON g.game_id = gp.game_id
     LEFT JOIN game_player pk ON pk.game_id = gp.game_id AND pk.is_picker
     WHERE g.time_closed IS NOT NULL
       AND gp.player_id = $1
       AND gp.position <= coalesce(pk.position, 5)
+    GROUP BY gp.position
 """
 
 
 async def player_pick_offers(pool: asyncpg.Pool, player_id: UUID) -> dict:
-    """How often the caller picked when the pick reached them."""
-    row = await pool.fetchrow(_PICK_OFFERS, player_id)
-    assert row is not None
-    offered = row["offered_hands"]
+    """How often the caller picked when the pick reached them, overall
+    and by bidding position (all five, empty where never offered)."""
+    rows = {r["position"]: r for r in await pool.fetch(_PICK_OFFERS, player_id)}
+    by_position = [
+        {
+            "position": p,
+            "offered_hands": rows[p]["offered_hands"] if p in rows else 0,
+            "picks": rows[p]["picks"] if p in rows else 0,
+        }
+        for p in range(1, 6)
+    ]
+    offered = sum(x["offered_hands"] for x in by_position)
+    picks = sum(x["picks"] for x in by_position)
     return {
         "offered_hands": offered,
-        "pick_offered_pct": row["offered_picks"] / offered if offered else None,
+        "pick_offered_pct": picks / offered if offered else None,
+        "pick_offers_by_position": by_position,
     }
 
 

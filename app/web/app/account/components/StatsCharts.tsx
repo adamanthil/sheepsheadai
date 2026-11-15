@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useId, useMemo, useState } from "react";
 import type { AccountForm, AccountStats } from "../../../lib/types";
 import { count, pct, perHand, signed } from "./statsFormat";
 import styles from "./StatsCharts.module.css";
@@ -346,10 +346,13 @@ export function Meter({
   label,
   value,
   note,
+  children,
 }: {
   label: string;
   value: number | null;
   note: string;
+  /** Shown under the note: a breakdown of this rate. */
+  children?: React.ReactNode;
 }) {
   return (
     <div className={styles.meterItem}>
@@ -366,6 +369,71 @@ export function Meter({
         )}
       </div>
       <span className={styles.meterNote}>{note}</span>
+      {children}
+    </div>
+  );
+}
+
+const ORDINAL = ["1st", "2nd", "3rd", "4th", "5th"];
+
+/** Pick when offered by bidding position (named as on the table: 1st
+ * position bids first), behind a toggle: one small meter per position,
+ * with the picks and offers it comes from. */
+export function PickByPosition({
+  positions,
+}: {
+  positions: AccountStats["pick_offers_by_position"];
+}) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  return (
+    <div className={styles.expand}>
+      <button
+        type="button"
+        className={styles.expandToggle}
+        aria-expanded={open}
+        aria-controls={id}
+        onClick={() => setOpen((o) => !o)}
+      >
+        By position
+        <svg
+          className={styles.expandCaret}
+          viewBox="0 0 10 6"
+          aria-hidden="true"
+        >
+          <path d="M1 1l4 4 4-4" />
+        </svg>
+      </button>
+      {open && (
+        <ul id={id} className={styles.positions}>
+          {positions.map((p) => {
+            const rate = p.offered_hands ? p.picks / p.offered_hands : null;
+            return (
+              <li key={p.position}>
+                <div className={styles.positionHead}>
+                  <span>{ORDINAL[p.position - 1]} position</span>
+                  <span>
+                    <strong>{pct(rate)}</strong>
+                    <span className={styles.positionCount}>
+                      {p.offered_hands
+                        ? `${count(p.picks)} of ${count(p.offered_hands)}`
+                        : "never offered"}
+                    </span>
+                  </span>
+                </div>
+                <div className={`${styles.meter} ${styles.meterSmall}`}>
+                  {rate != null && (
+                    <div
+                      className={styles.meterFill}
+                      style={{ width: `${rate * 100}%` }}
+                    />
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }

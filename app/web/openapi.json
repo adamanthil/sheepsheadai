@@ -203,6 +203,13 @@
             ],
             "title": "Pick Offered Pct"
           },
+          "pick_offers_by_position": {
+            "items": {
+              "$ref": "#/components/schemas/PositionOffers"
+            },
+            "title": "Pick Offers By Position",
+            "type": "array"
+          },
           "pick_pct": {
             "anyOf": [
               {
@@ -334,6 +341,7 @@
           "queens_per_pick",
           "offered_hands",
           "pick_offered_pct",
+          "pick_offers_by_position",
           "roles"
         ],
         "title": "AccountStatsResponse",
@@ -2143,6 +2151,29 @@
           "name"
         ],
         "title": "PlayerPublic",
+        "type": "object"
+      },
+      "PositionOffers": {
+        "properties": {
+          "offered_hands": {
+            "title": "Offered Hands",
+            "type": "integer"
+          },
+          "picks": {
+            "title": "Picks",
+            "type": "integer"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "position",
+          "offered_hands",
+          "picks"
+        ],
+        "title": "PositionOffers",
         "type": "object"
       },
       "RegisterRequest": {

@@ -7,6 +7,7 @@ import account from "../account.module.css";
 import {
   FormChart,
   Meter,
+  PickByPosition,
   RangePicker,
   RangeRows,
   RoleBars,
@@ -126,7 +127,11 @@ export default function StatsPanel({
             label="Pick when offered"
             value={stats.pick_offered_pct}
             note={`of ${plural(stats.offered_hands, "deal")} the pick reached you`}
-          />
+          >
+            {stats.offered_hands > 0 && (
+              <PickByPosition positions={stats.pick_offers_by_position} />
+            )}
+          </Meter>
           <Meter
             label="Completed"
             value={stats.completion_rate}

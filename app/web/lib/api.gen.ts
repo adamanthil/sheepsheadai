@@ -670,6 +670,8 @@ export interface components {
             offered_hands: number;
             /** Pick Offered Pct */
             pick_offered_pct: number | null;
+            /** Pick Offers By Position */
+            pick_offers_by_position: components["schemas"]["PositionOffers"][];
             /** Pick Pct */
             pick_pct: number | null;
             /** Picks */
@@ -1334,6 +1336,15 @@ export interface components {
             name: string | null;
             /** Player Id */
             player_id: string;
+        };
+        /** PositionOffers */
+        PositionOffers: {
+            /** Offered Hands */
+            offered_hands: number;
+            /** Picks */
+            picks: number;
+            /** Position */
+            position: number;
         };
         /** RegisterRequest */
         RegisterRequest: {
