@@ -23,6 +23,7 @@ from server.services.persistence.stats import (
     ABANDONED_SQL,
     AI_ASSISTED_SQL,
     COUNTED_SCORE_SQL,
+    ROLE_SQL,
 )
 
 PAGE_SIZE = 25
@@ -39,10 +40,7 @@ WITH page AS (
            g.score_multiplier AS multiplier,
            gp.score, {COUNTED_SCORE_SQL} AS counted_score,
            {AI_ASSISTED_SQL} AS ai_assisted, {ABANDONED_SQL} AS abandoned,
-           CASE WHEN g.is_leaster IS TRUE THEN 'leaster'
-                WHEN gp.is_picker IS TRUE THEN 'picker'
-                WHEN gp.is_partner IS TRUE THEN 'partner'
-                ELSE 'defender' END AS role,
+           {ROLE_SQL} AS role,
            g.is_alone IS TRUE AS alone,
            g.is_leaster IS TRUE AS is_leaster
     FROM game_player gp

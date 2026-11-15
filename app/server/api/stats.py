@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from server.api.auth import PlayerIdentity, current_player, optional_player
 from server.api.schemas import (
+    AccountFormResponse,
     AccountStatsResponse,
     HandHistoryResponse,
     LeaderboardResponse,
@@ -118,7 +119,18 @@ async def account_stats(identity: PlayerIdentity = Depends(current_player)):
         **await stats_db.player_splits(pool, identity.id),
         "split_margin_min_hands": SPLIT_MARGIN_MIN_HANDS,
         **await stats_db.player_picking(pool, identity.id),
+        **await stats_db.player_pick_offers(pool, identity.id),
+        "roles": await stats_db.player_roles(pool, identity.id),
     }
+
+
+@router.get("/api/account/form", response_model=AccountFormResponse)
+async def account_form(identity: PlayerIdentity = Depends(current_player)):
+    """Every finished hand of the caller's, oldest first, for the running
+    score chart."""
+    pool = get_db_pool()
+    await _verified_account(pool, identity)
+    return await stats_db.player_form(pool, identity.id)
 
 
 @router.get("/api/account/hands", response_model=HandHistoryResponse)

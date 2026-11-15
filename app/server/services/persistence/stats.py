@@ -51,6 +51,16 @@ COUNTED_SCORE_SQL = (
     f"(CASE WHEN {ABANDONED_SQL} AND gp.score > 0 THEN 0 ELSE gp.score END)"
 )
 
+# The seat's part in a hand, over gp and g.
+Role = Literal["picker", "partner", "defender", "leaster"]
+ROLES: tuple[Role, ...] = ("picker", "partner", "defender", "leaster")
+ROLE_SQL = """
+    CASE WHEN g.is_leaster IS TRUE THEN 'leaster'
+         WHEN gp.is_picker IS TRUE THEN 'picker'
+         WHEN gp.is_partner IS TRUE THEN 'partner'
+         ELSE 'defender' END
+"""
+
 LEADERBOARD_MIN_HANDS = 20
 VS_AI_LEADERBOARD_MIN_HANDS = 40
 LEADERBOARD_SIZE = 20
@@ -290,6 +300,88 @@ async def player_picking(pool: asyncpg.Pool, player_id: UUID) -> dict:
     row = await pool.fetchrow(_PICKING, player_id)
     assert row is not None  # an aggregate always returns a row
     return dict(row)
+
+
+# Score/hand and win rate by the caller's part in each hand.
+_ROLE_SPLITS = f"""
+    SELECT {ROLE_SQL} AS role,
+           count(*)::int                                 AS hands,
+           avg({COUNTED_SCORE_SQL})::float8              AS sph,
+           stddev_samp({COUNTED_SCORE_SQL})::float8      AS sd,
+           avg(({COUNTED_SCORE_SQL} > 0)::int)::float8   AS win_pct
+    FROM game_player gp
+    JOIN game g ON g.game_id = gp.game_id
+    WHERE g.time_closed IS NOT NULL
+      AND {SCORED_SQL}
+      AND gp.player_id = $1
+    GROUP BY 1
+"""
+
+
+async def player_roles(pool: asyncpg.Pool, player_id: UUID) -> list[dict]:
+    """One split per role, in ROLES order, empty for a role not yet
+    played, with a 95% margin on score/hand like the company splits."""
+    rows = {r["role"]: r for r in await pool.fetch(_ROLE_SPLITS, player_id)}
+    return [{"role": role, **_split(rows.get(role))} for role in ROLES]
+
+
+# The deals where the pick reached the caller: bidding runs from position
+# 1 and stops at the picker, so everyone up to and including the picker
+# was offered it, and in a leaster or a passed-out doublers deal everyone
+# was. Pass-outs count here as they do in pick rate, and so do picks the
+# AI made for the caller.
+_PICK_OFFERS = """
+    SELECT count(*)::int                                   AS offered_hands,
+           (count(*) FILTER (WHERE gp.is_picker))::int     AS offered_picks
+    FROM game_player gp
+    JOIN game g ON g.game_id = gp.game_id
+    LEFT JOIN game_player pk ON pk.game_id = gp.game_id AND pk.is_picker
+    WHERE g.time_closed IS NOT NULL
+      AND gp.player_id = $1
+      AND gp.position <= coalesce(pk.position, 5)
+"""
+
+
+async def player_pick_offers(pool: asyncpg.Pool, player_id: UUID) -> dict:
+    """How often the caller picked when the pick reached them."""
+    row = await pool.fetchrow(_PICK_OFFERS, player_id)
+    assert row is not None
+    offered = row["offered_hands"]
+    return {
+        "offered_hands": offered,
+        "pick_offered_pct": row["offered_picks"] / offered if offered else None,
+    }
+
+
+# Every finished hand of the caller's, oldest first, for the running-score
+# chart: counted score, role, stake, and the close as Unix seconds (the
+# naive time_closed read in the session zone that stamped it).
+_FORM = f"""
+    SELECT {COUNTED_SCORE_SQL}::int AS score,
+           {ROLE_SQL} AS role,
+           g.score_multiplier::int AS multiplier,
+           extract(epoch FROM g.time_closed
+                   AT TIME ZONE current_setting('TimeZone'))::bigint AS closed
+    FROM game_player gp
+    JOIN game g ON g.game_id = gp.game_id
+    WHERE g.time_closed IS NOT NULL
+      AND {SCORED_SQL}
+      AND gp.player_id = $1
+    ORDER BY g.time_closed, g.game_id
+"""
+
+
+async def player_form(pool: asyncpg.Pool, player_id: UUID) -> dict:
+    """The caller's finished hands as parallel lists, oldest first. At
+    10,000 hands that is a few hundred KB of repetitive JSON, a small
+    fraction of that gzipped, so it is sent whole."""
+    rows = await pool.fetch(_FORM, player_id)
+    return {
+        "scores": [r["score"] for r in rows],
+        "roles": [r["role"] for r in rows],
+        "multipliers": [r["multiplier"] for r in rows],
+        "closed": [r["closed"] for r in rows],
+    }
 
 
 async def ranking(

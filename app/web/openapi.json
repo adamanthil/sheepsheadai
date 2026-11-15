@@ -1,6 +1,52 @@
 {
   "components": {
     "schemas": {
+      "AccountFormResponse": {
+        "properties": {
+          "closed": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Closed",
+            "type": "array"
+          },
+          "multipliers": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Multipliers",
+            "type": "array"
+          },
+          "roles": {
+            "items": {
+              "enum": [
+                "picker",
+                "partner",
+                "defender",
+                "leaster"
+              ],
+              "type": "string"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "scores": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Scores",
+            "type": "array"
+          }
+        },
+        "required": [
+          "scores",
+          "roles",
+          "multipliers",
+          "closed"
+        ],
+        "title": "AccountFormResponse",
+        "type": "object"
+      },
       "AccountMeResponse": {
         "properties": {
           "account": {
@@ -142,6 +188,21 @@
             "title": "Min Hands",
             "type": "integer"
           },
+          "offered_hands": {
+            "title": "Offered Hands",
+            "type": "integer"
+          },
+          "pick_offered_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pick Offered Pct"
+          },
           "pick_pct": {
             "anyOf": [
               {
@@ -189,6 +250,13 @@
               }
             ],
             "title": "Rank"
+          },
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/RoleSplit"
+            },
+            "title": "Roles",
+            "type": "array"
           },
           "sph": {
             "anyOf": [
@@ -263,7 +331,10 @@
           "split_margin_min_hands",
           "picks",
           "trump_per_pick",
-          "queens_per_pick"
+          "queens_per_pick",
+          "offered_hands",
+          "pick_offered_pct",
+          "roles"
         ],
         "title": "AccountStatsResponse",
         "type": "object"
@@ -2120,6 +2191,66 @@
         "title": "ResetPasswordRequest",
         "type": "object"
       },
+      "RoleSplit": {
+        "properties": {
+          "hands": {
+            "title": "Hands",
+            "type": "integer"
+          },
+          "role": {
+            "enum": [
+              "picker",
+              "partner",
+              "defender",
+              "leaster"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "sph": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sph"
+          },
+          "sph_margin": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sph Margin"
+          },
+          "win_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Win Pct"
+          }
+        },
+        "required": [
+          "hands",
+          "sph",
+          "sph_margin",
+          "win_pct",
+          "role"
+        ],
+        "title": "RoleSplit",
+        "type": "object"
+      },
       "RulesInput": {
         "additionalProperties": false,
         "description": "Full rules specification; unknown keys rejected.",
@@ -2578,6 +2709,25 @@
           }
         },
         "summary": "Forgot Password"
+      }
+    },
+    "/api/account/form": {
+      "get": {
+        "description": "Every finished hand of the caller's, oldest first, for the running\nscore chart.",
+        "operationId": "account_form_api_account_form_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountFormResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Account Form"
       }
     },
     "/api/account/hands": {

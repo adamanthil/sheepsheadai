@@ -69,6 +69,7 @@ class Seeder:
         scores: list[int | None],
         *,
         picker: list[bool] | None = None,
+        partner: list[bool] | None = None,
         leaster: list[bool] | None = None,
         ai_actions: list[int] | None = None,
         excused: list[int] | None = None,
@@ -79,6 +80,8 @@ class Seeder:
         closed: bool = True,
         called: bool = True,
         months_back: int = 0,
+        position: int = 1,
+        other_picker: list[int | None] | None = None,
     ) -> None:
         n = len(scores)
         hand_ids = [self.cardset] * n
@@ -113,13 +116,14 @@ class Seeder:
         await self.pool.execute(
             """
             INSERT INTO game_player (game_id, player_id, name, position,
-                                     starting_hand_id, is_picker, score,
-                                     ai_actions, ai_actions_excused,
+                                     starting_hand_id, is_picker, is_partner,
+                                     score, ai_actions, ai_actions_excused,
                                      is_substituted_pick)
-            SELECT g, $2, 'p', 1, h, pk, sc, ai, ex, sub
-            FROM unnest($1::uuid[], $3::bigint[], $4::bool[], $5::smallint[],
-                        $6::smallint[], $7::smallint[], $8::bool[])
-                 AS t(g, h, pk, sc, ai, ex, sub)
+            SELECT g, $2, 'p', $10, h, pk, pt, sc, ai, ex, sub
+            FROM unnest($1::uuid[], $3::bigint[], $4::bool[], $9::bool[],
+                        $5::smallint[], $6::smallint[], $7::smallint[],
+                        $8::bool[])
+                 AS t(g, h, pk, pt, sc, ai, ex, sub)
             """,
             games,
             pid,
@@ -129,7 +133,20 @@ class Seeder:
             ai_actions or [0] * n,
             excused or [0] * n,
             substituted or [False] * n,
+            partner or [False] * n,
+            position,
         )
+        # Another seat that picked: the AI, at the given position.
+        for game, at in zip(games, other_picker or [None] * n):
+            if at is not None:
+                await self.pool.execute(
+                    "INSERT INTO game_player (game_id, ai_player_id, name, "
+                    "position, starting_hand_id, is_picker) VALUES ($1, "
+                    "(SELECT min(ai_player_id) FROM ai_player), 'ai', $2, $3, true)",
+                    game,
+                    at,
+                    self.cardset,
+                )
         # Other people dealt into the hand; the remaining seats are left
         # empty, which the stats read the same as seats dealt to the AI.
         for game, count in zip(games, other_humans or [0] * n):
@@ -625,3 +642,87 @@ async def test_a_person_in_an_ai_seat_keeps_a_hand_off_the_ai_board(seeded):
     }
     assert set(ours) == {f"tkplay_{tag}"}
     assert (ours[f"tkplay_{tag}"]["hands"], ours[f"tkplay_{tag}"]["total"]) == (40, 40)
+
+
+async def test_pick_when_offered_counts_deals_the_pick_reached(seeded):
+    seeder, client = seeded
+    pid = await seeder.player(username=f"offer_{_tag()}")
+    # From seat 3: picked; seat 2 picked first (never offered); seat 4
+    # picked after passing; a leaster; a passed-out doublers deal.
+    await seeder.hands(
+        pid,
+        [2, -1, 1, -1, None],
+        position=3,
+        picker=[True, False, False, False, False],
+        leaster=[False, False, False, True, False],
+        other_picker=[None, 2, 4, None, None],
+    )
+    token = await create_session(seeder.pool, pid)
+
+    r = await client.get(
+        "/api/account/stats", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    s = r.json()
+    assert s["offered_hands"] == 4
+    assert s["pick_offered_pct"] == pytest.approx(1 / 4)
+    assert s["pick_pct"] == pytest.approx(1 / 5)
+
+
+async def test_roles_split_scores_by_part_in_the_hand(seeded):
+    seeder, client = seeded
+    pid = await seeder.player(username=f"roles_{_tag()}")
+    await seeder.hands(pid, [4, -4], picker=[True, True])
+    await seeder.hands(pid, [2], partner=[True])
+    await seeder.hands(pid, [1, 1, -1])
+    await seeder.hands(pid, [None])  # a pass-out has no role or score
+    token = await create_session(seeder.pool, pid)
+
+    r = await client.get(
+        "/api/account/stats", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    roles = {x["role"]: x for x in r.json()["roles"]}
+    assert list(roles) == ["picker", "partner", "defender", "leaster"]
+    assert (roles["picker"]["hands"], roles["picker"]["sph"]) == (2, 0.0)
+    assert roles["picker"]["win_pct"] == pytest.approx(0.5)
+    assert (roles["partner"]["hands"], roles["partner"]["sph"]) == (1, 2.0)
+    assert roles["defender"]["hands"] == 3
+    assert roles["defender"]["sph"] == pytest.approx(1 / 3)
+    assert roles["leaster"] == {
+        "role": "leaster",
+        "hands": 0,
+        "sph": None,
+        "sph_margin": None,
+        "win_pct": None,
+    }
+
+
+async def test_form_lists_finished_hands_oldest_first(seeded):
+    seeder, client = seeded
+    pid = await seeder.player(username=f"form_{_tag()}")
+    await seeder.hands(pid, [3], months_back=1, picker=[True])
+    # An abandoned win counts as 0; a pass-out and an open hand are left out.
+    await seeder.hands(pid, [2, -1], ai_actions=[3, 0])
+    await seeder.hands(pid, [None])
+    await seeder.hands(pid, [5], closed=False)
+    token = await create_session(seeder.pool, pid)
+
+    r = await client.get(
+        "/api/account/form", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert r.status_code == 200, r.text
+    form = r.json()
+    assert form["scores"][0] == 3 and sorted(form["scores"][1:]) == [-1, 0]
+    assert form["roles"] == ["picker", "defender", "defender"]
+    assert form["multipliers"] == [1, 1, 1]
+    assert form["closed"] == sorted(form["closed"])
+    assert form["closed"][-1] - form["closed"][0] > 86_400
+
+    guest = await seeder.player()
+    token = await create_session(seeder.pool, guest)
+    r = await client.get(
+        "/api/account/form", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert r.status_code == 403

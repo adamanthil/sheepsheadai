@@ -238,6 +238,10 @@ class CompanySplit(BaseModel):
     win_pct: Optional[float]
 
 
+class RoleSplit(CompanySplit):
+    role: Literal["picker", "partner", "defender", "leaster"]
+
+
 class AccountStatsResponse(BaseModel):
     username: str
     hands: int
@@ -272,6 +276,24 @@ class AccountStatsResponse(BaseModel):
     picks: int
     trump_per_pick: Optional[float]
     queens_per_pick: Optional[float]
+    # Deals where the pick reached the player (everyone up to the picker,
+    # and every seat of a leaster or pass-out), and the share of them they
+    # picked; pick_pct is picks over every deal instead.
+    offered_hands: int
+    pick_offered_pct: Optional[float]
+    # Score/hand and win rate by the player's part in the hand, in the
+    # order picker, partner, defender, leaster.
+    roles: List[RoleSplit]
+
+
+class AccountFormResponse(BaseModel):
+    # Every finished hand, oldest first, as parallel lists: the counted
+    # score (an abandoned win as 0), the player's role, the doublers
+    # stake, and when it closed (Unix seconds).
+    scores: List[int]
+    roles: List[Literal["picker", "partner", "defender", "leaster"]]
+    multipliers: List[int]
+    closed: List[int]
 
 
 class HandOpponents(BaseModel):
