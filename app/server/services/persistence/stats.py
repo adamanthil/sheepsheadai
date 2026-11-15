@@ -93,27 +93,48 @@ SPLIT_MARGIN_MIN_HANDS = 20
 # deal (a human who leaves keeps the row), so a walkout doesn't turn a
 # hand into an AI hand; and a person who takes over an AI-dealt seat
 # mid-hand leaves substitution flags on its row, which disqualify it.
-VS_AI_SQL = """
+#
+# It comes in two equivalent forms, as gp's own seat is always a person's:
+# "no other seat is a person's" (VS_AI_SQL) is "exactly one seat is"
+# (VS_AI_GAMES_SQL). The per-row form suits one player's few thousand
+# rows; over every player the planner misjudges its anti-join and
+# rescans game per row (minutes at 100k hands), so the leaderboard
+# finds the games once instead.
+_PERSON_SEAT_SQL = """
+    (o.player_id IS NOT NULL
+     OR o.is_substituted_pick
+     OR EXISTS (
+         SELECT 1 FROM trick_card tc
+         WHERE tc.game_player_id = o.game_player_id
+           AND tc.is_substituted
+     ))
+"""
+VS_AI_SQL = f"""
     NOT EXISTS (
         SELECT 1 FROM game_player o
         WHERE o.game_id = gp.game_id
           AND o.game_player_id <> gp.game_player_id
-          AND (o.player_id IS NOT NULL
-               OR o.is_substituted_pick
-               OR EXISTS (
-                   SELECT 1 FROM trick_card tc
-                   WHERE tc.game_player_id = o.game_player_id
-                     AND tc.is_substituted
-               ))
+          AND {_PERSON_SEAT_SQL}
     )
 """
+VS_AI_GAMES_SQL = f"""
+    SELECT o.game_id FROM game_player o
+    WHERE {_PERSON_SEAT_SQL}
+    GROUP BY o.game_id
+    HAVING count(*) = 1
+"""
 
-# Extra conditions on the hands each board counts, over gp and g.
+# Extra conditions on the hands each board counts, over gp and g: the
+# per-row forms for one player's hands, and for ranking every player.
 _BOARD_SQL: dict[BoardKey, str] = {
     "overall": "",
     "called_ace": " AND g.is_called_partner",
     "jd": " AND NOT g.is_called_partner",
     "vs_ai": f" AND {VS_AI_SQL}",
+}
+_RANKING_BOARD_SQL: dict[BoardKey, str] = {
+    **_BOARD_SQL,
+    "vs_ai": f" AND gp.game_id IN ({VS_AI_GAMES_SQL})",
 }
 
 
@@ -287,14 +308,14 @@ async def ranking(
     if hit is not None and now - hit[0] < _CACHE_TTL:
         return hit[1]
     # Both interpolated below; never caller-controlled.
-    assert sort in SORT_KEYS and board in _BOARD_SQL
+    assert sort in SORT_KEYS and board in _RANKING_BOARD_SQL
     args: list = [board_min_hands(board, monthly=month is not None)]
     if month:
         args += [month.start, month.end]
     rows = await pool.fetch(
         f"""
         WITH stats AS (
-            {_HAND_STATS}{_BOARD_SQL[board]}{_in_month_sql("$2", "$3") if month else ""}
+            {_HAND_STATS}{_RANKING_BOARD_SQL[board]}{_in_month_sql("$2", "$3") if month else ""}
             GROUP BY gp.player_id HAVING {HANDS_SQL} >= $1
         )
         SELECT row_number() OVER (

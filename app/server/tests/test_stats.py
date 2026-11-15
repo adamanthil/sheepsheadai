@@ -602,3 +602,26 @@ async def test_pass_outs_count_only_toward_pick_rate(seeded):
     )
     assert r.status_code == 200, r.text
     assert (r.json()["hands"], r.json()["pick_pct"]) == (0, None)
+
+
+async def test_a_person_in_an_ai_seat_keeps_a_hand_off_the_ai_board(seeded):
+    seeder, client = seeded
+    tag = _tag()
+    # 40 hands vs the AI, but in one a person bid in an AI-dealt seat: 39
+    # count, one short of the board.
+    bid = await seeder.player(username=f"tkbid_{tag}")
+    await seeder.hands(bid, [1] * 40, ai_seat=["ai"] * 39 + ["human_bid"])
+    # 40 clean hands, plus two where a person played in an AI seat.
+    play = await seeder.player(username=f"tkplay_{tag}")
+    await seeder.hands(play, [1] * 40, ai_seat=["ai"] * 40)
+    await seeder.hands(play, [5, 5], ai_seat=["human_play"] * 2)
+
+    r = await client.get("/api/leaderboard", params={"board": "vs_ai"})
+
+    ours = {
+        row["username"]: row
+        for row in r.json()["rows"]
+        if row["username"].endswith(tag)
+    }
+    assert set(ours) == {f"tkplay_{tag}"}
+    assert (ours[f"tkplay_{tag}"]["hands"], ours[f"tkplay_{tag}"]["total"]) == (40, 40)
