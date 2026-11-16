@@ -1,5 +1,5 @@
 /* The ledger: one grid, so a narrow screen can reorder the same sections
-   with CSS alone. Wide: figures and rates down the side of the form chart
+   with CSS alone. Wide: figures and rates down the side of the running-score chart
    with picking under it, then role and company as a pair, then
    completion. */
 .panel {
@@ -7,8 +7,8 @@
   grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
   grid-template-areas:
     "mode mode"
-    "figures form"
-    "rates form"
+    "figures running"
+    "rates running"
     "rates picking"
     "pair pair"
     "completion completion";
@@ -35,8 +35,8 @@
 .figures {
   grid-area: figures;
 }
-.form {
-  grid-area: form;
+.running {
+  grid-area: running;
 }
 .rates {
   grid-area: rates;
@@ -109,7 +109,7 @@
     grid-template-areas:
       "mode"
       "figures"
-      "form"
+      "running"
       "rates"
       "pair"
       "picking"

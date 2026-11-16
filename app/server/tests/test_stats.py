@@ -727,9 +727,9 @@ async def test_roles_split_scores_by_part_in_the_hand(seeded):
     }
 
 
-async def test_form_lists_finished_hands_oldest_first(seeded):
+async def test_running_score_lists_finished_hands_oldest_first(seeded):
     seeder, client = seeded
-    pid = await seeder.player(username=f"form_{_tag()}")
+    pid = await seeder.player(username=f"running_{_tag()}")
     await seeder.hands(pid, [3], months_back=1, picker=[True])
     # An abandoned win counts as 0; a pass-out and an open hand are left out.
     await seeder.hands(pid, [2, -1], ai_actions=[3, 0])
@@ -738,21 +738,21 @@ async def test_form_lists_finished_hands_oldest_first(seeded):
     token = await create_session(seeder.pool, pid)
 
     r = await client.get(
-        "/api/account/form", headers={"Authorization": f"Bearer {token}"}
+        "/api/account/running-score", headers={"Authorization": f"Bearer {token}"}
     )
 
     assert r.status_code == 200, r.text
-    form = r.json()
-    assert form["scores"][0] == 3 and sorted(form["scores"][1:]) == [-1, 0]
-    assert form["roles"] == ["picker", "defender", "defender"]
-    assert form["multipliers"] == [1, 1, 1]
-    assert form["closed"] == sorted(form["closed"])
-    assert form["closed"][-1] - form["closed"][0] > 86_400
+    running = r.json()
+    assert running["scores"][0] == 3 and sorted(running["scores"][1:]) == [-1, 0]
+    assert running["roles"] == ["picker", "defender", "defender"]
+    assert running["multipliers"] == [1, 1, 1]
+    assert running["closed"] == sorted(running["closed"])
+    assert running["closed"][-1] - running["closed"][0] > 86_400
 
     guest = await seeder.player()
     token = await create_session(seeder.pool, guest)
     r = await client.get(
-        "/api/account/form", headers={"Authorization": f"Bearer {token}"}
+        "/api/account/running-score", headers={"Authorization": f"Bearer {token}"}
     )
     assert r.status_code == 403
 
@@ -787,8 +787,8 @@ async def test_personal_stats_filter_by_partner_mode(seeded):
     assert jd["roles"][0] == {**jd["roles"][0], "role": "picker", "hands": 5}
     assert (jd["rank"], jd["qualifies_in"], jd["min_hands"]) == (None, 15, 20)
 
-    assert (await get("/api/account/form", "jd"))["scores"] == [-3] * 5
-    assert len((await get("/api/account/form", "called_ace"))["scores"]) == 25
+    assert (await get("/api/account/running-score", "jd"))["scores"] == [-3] * 5
+    assert len((await get("/api/account/running-score", "called_ace"))["scores"]) == 25
 
     r = await client.get(
         "/api/account/stats", params={"mode": "vs_ai"}, headers=headers

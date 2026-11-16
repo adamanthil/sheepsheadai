@@ -1,5 +1,5 @@
 /* Chart colors: see StatsCharts.tsx for the validation note. */
-.form,
+.running,
 .meter,
 .ranges,
 .roles {
@@ -40,38 +40,38 @@
   color: var(--bg-page);
 }
 
-/* ---- form chart --------------------------------------------------------- */
-.form {
+/* ---- running score ----------------------------------------------------- */
+.running {
   --plot-h: 300px;
   display: grid;
   grid-template-columns: 40px minmax(0, 1fr) 44px;
   grid-template-rows: var(--plot-h) auto auto;
   margin: 0;
 }
-.formTicks,
-.formEnd {
+.runningTicks,
+.runningEnd {
   position: relative;
   font-family: var(--font-mono);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   color: var(--muted);
 }
-.formTicks span {
+.runningTicks span {
   position: absolute;
   right: 8px;
   transform: translateY(-50%);
 }
-.formEnd span {
+.runningEnd span {
   position: absolute;
   left: 8px;
   transform: translateY(-50%);
   color: var(--ink);
   font-weight: 600;
 }
-.formPlot {
+.runningPlot {
   position: relative;
 }
-.formSvg {
+.runningSvg {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -181,7 +181,7 @@
 .barLoss {
   fill: var(--loss);
 }
-.formAxis {
+.runningAxis {
   grid-column: 2;
   display: flex;
   justify-content: space-between;
@@ -191,7 +191,7 @@
   font-size: 11px;
   color: var(--muted);
 }
-.formAxisNote {
+.runningAxisNote {
   text-align: center;
 }
 
@@ -470,10 +470,10 @@
 }
 
 @media (max-width: 560px) {
-  .form {
+  .running {
     grid-template-columns: 34px minmax(0, 1fr) 36px;
   }
-  .formAxisNote {
+  .runningAxisNote {
     display: none;
   }
   .rangeRow,

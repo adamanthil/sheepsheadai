@@ -5,7 +5,11 @@ import Link from "next/link";
 import { ds } from "../../lib/ds";
 import { apiFetch } from "../../lib/api";
 import { useAccount } from "../../lib/account";
-import type { AccountForm, AccountStats, StatsMode } from "../../lib/types";
+import type {
+  AccountRunningScore,
+  AccountStats,
+  StatsMode,
+} from "../../lib/types";
 import AccountShell from "./AccountShell";
 import AuthForms from "./components/AuthForms";
 import ResendVerification from "./components/ResendVerification";
@@ -82,7 +86,9 @@ type ForMode<T> = { mode: StatsMode; data: T };
 function Verified({ username }: { username: string }) {
   const [mode, setMode] = useState<StatsMode>(modeFromUrl);
   const [stats, setStats] = useState<ForMode<AccountStats> | null>(null);
-  const [form, setForm] = useState<ForMode<AccountForm> | null>(null);
+  const [running, setRunning] = useState<ForMode<AccountRunningScore> | null>(
+    null,
+  );
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     let cancelled = false;
@@ -101,7 +107,7 @@ function Verified({ username }: { username: string }) {
     };
     // Separately, so the figures show while a long history loads.
     void load<AccountStats>("/api/account/stats", setStats);
-    void load<AccountForm>("/api/account/form", setForm);
+    void load<AccountRunningScore>("/api/account/running-score", setRunning);
     return () => {
       cancelled = true;
     };
@@ -125,10 +131,10 @@ function Verified({ username }: { username: string }) {
           onMode={chooseMode}
           stats={stats.data}
           statsMode={stats.mode}
-          form={form?.data ?? null}
+          running={running?.data ?? null}
           // A switch keeps the last mode's numbers, dimmed, until the new
           // mode's arrive; a first load shows the chart's own "Loading…".
-          busy={stats.mode !== mode || (!!form && form.mode !== mode)}
+          busy={stats.mode !== mode || (!!running && running.mode !== mode)}
         />
       )}
       <div className={styles.actions}>

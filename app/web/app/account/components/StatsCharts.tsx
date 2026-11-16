@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useId, useMemo, useState } from "react";
-import type { AccountForm, AccountStats } from "../../../lib/types";
+import type { AccountRunningScore, AccountStats } from "../../../lib/types";
 import { count, pct, perHand, signed } from "./statsFormat";
 import styles from "./StatsCharts.module.css";
 
@@ -10,7 +10,7 @@ import styles from "./StatsCharts.module.css";
    deutan), which is legal because every chart here also separates them
    by position: above or below zero. */
 
-type Role = AccountForm["roles"][number];
+type Role = AccountRunningScore["roles"][number];
 
 const ROLE_LABEL: Record<Role, string> = {
   picker: "Picker",
@@ -45,7 +45,7 @@ function niceTicks(lo: number, hi: number, count = 4): number[] {
 }
 
 /* ---------------------------------------------------------------------- */
-/* Form: the running score over a per-hand result strip                    */
+/* Running score: the cumulative score over a per-hand result strip       */
 /* ---------------------------------------------------------------------- */
 
 /** Past this many hands the line keeps each bucket's low and high rather
@@ -54,7 +54,7 @@ const LINE_BUCKETS = 600;
 /** Past this many hands the strip shows each bucket's net, not each hand. */
 const STRIP_BARS = 250;
 
-export type FormWindow = {
+export type RunningScoreWindow = {
   /** The first hand's number in the player's whole history (1-based). */
   first: number;
   scores: number[];
@@ -63,14 +63,17 @@ export type FormWindow = {
   closed: number[];
 };
 
-export function formWindow(form: AccountForm, last: number): FormWindow {
-  const start = last ? Math.max(0, form.scores.length - last) : 0;
+export function runningScoreWindow(
+  running: AccountRunningScore,
+  last: number,
+): RunningScoreWindow {
+  const start = last ? Math.max(0, running.scores.length - last) : 0;
   return {
     first: start + 1,
-    scores: form.scores.slice(start),
-    roles: form.roles.slice(start),
-    multipliers: form.multipliers.slice(start),
-    closed: form.closed.slice(start),
+    scores: running.scores.slice(start),
+    roles: running.roles.slice(start),
+    multipliers: running.multipliers.slice(start),
+    closed: running.closed.slice(start),
   };
 }
 
@@ -124,11 +127,11 @@ function stripBars(scores: number[]): [number, number, number][] {
  * each bucket's net, for long windows) as a column underneath. One
  * crosshair spans both; the arrow keys step it hand by hand.
  */
-export function FormChart({
+export function RunningScoreChart({
   data,
   height = 300,
 }: {
-  data: FormWindow;
+  data: RunningScoreWindow;
   height?: number;
 }) {
   const [hover, setHover] = useState<number | null>(null);
@@ -167,14 +170,14 @@ export function FormChart({
       <svg
         viewBox="0 0 100 100"
         preserveAspectRatio="none"
-        className={styles.formSvg}
+        className={styles.runningSvg}
         aria-hidden="true"
       >
         <defs>
-          <clipPath id="form-above">
+          <clipPath id="running-above">
             <rect x="0" y="0" width="100" height={y(0)} />
           </clipPath>
-          <clipPath id="form-below">
+          <clipPath id="running-below">
             <rect x="0" y={y(0)} width="100" height={100 - y(0)} />
           </clipPath>
         </defs>
@@ -191,12 +194,12 @@ export function FormChart({
         ))}
         <path
           d={`${line}L100 ${y(0)}L0 ${y(0)}Z`}
-          clipPath="url(#form-above)"
+          clipPath="url(#running-above)"
           className={styles.washWin}
         />
         <path
           d={`${line}L100 ${y(0)}L0 ${y(0)}Z`}
-          clipPath="url(#form-below)"
+          clipPath="url(#running-below)"
           className={styles.washLoss}
         />
         <path
@@ -230,17 +233,17 @@ export function FormChart({
 
   return (
     <figure
-      className={styles.form}
+      className={styles.running}
       style={{ "--plot-h": `${height}px` } as React.CSSProperties}
     >
-      <div className={styles.formTicks} aria-hidden="true">
+      <div className={styles.runningTicks} aria-hidden="true">
         {ticks.map((t) => (
           <span key={t} style={{ top: `${y(t)}%` }}>
             {signed(t)}
           </span>
         ))}
       </div>
-      <div className={styles.formPlot}>
+      <div className={styles.runningPlot}>
         {chart.plot}
         {hover != null && (
           <div className={styles.crosshair} style={{ left: `${x(at)}%` }} />
@@ -278,7 +281,7 @@ export function FormChart({
           onKeyDown={key}
         />
       </div>
-      <div className={styles.formEnd} aria-hidden="true">
+      <div className={styles.runningEnd} aria-hidden="true">
         <span style={{ top: `${y(net)}%` }}>{signed(net)}</span>
       </div>
       <div className={styles.strip} aria-hidden="true">
@@ -290,11 +293,11 @@ export function FormChart({
           />
         )}
       </div>
-      <figcaption className={styles.formAxis}>
+      <figcaption className={styles.runningAxis}>
         <span>
           Hand {count(data.first)} · {day(0)}
         </span>
-        <span className={styles.formAxisNote}>
+        <span className={styles.runningAxisNote}>
           {chart.bucketed
             ? "Columns: net per group of hands"
             : "Columns: each hand"}
@@ -307,7 +310,7 @@ export function FormChart({
   );
 }
 
-/** Last-N presets for the form chart; 0 is every hand. */
+/** Last-N presets for the running-score chart; 0 is every hand. */
 export const RANGES = [50, 100, 250, 1000, 0] as const;
 export type Range = (typeof RANGES)[number];
 

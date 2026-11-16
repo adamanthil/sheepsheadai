@@ -409,7 +409,7 @@ async def player_pick_offers(
 # Every finished hand of the caller's, oldest first, for the running-score
 # chart: counted score, role, stake, and the close as Unix seconds (the
 # naive time_closed read in the session zone that stamped it).
-_FORM = f"""
+_RUNNING_SCORE = f"""
     SELECT {COUNTED_SCORE_SQL}::int AS score,
            {ROLE_SQL} AS role,
            g.score_multiplier::int AS multiplier,
@@ -425,13 +425,13 @@ _FORM = f"""
 """
 
 
-async def player_form(
+async def player_running_score(
     pool: asyncpg.Pool, player_id: UUID, mode: GameMode = "all"
 ) -> dict:
     """The caller's finished hands as parallel lists, oldest first. At
     10,000 hands that is a few hundred KB of repetitive JSON, a small
     fraction of that gzipped, so it is sent whole."""
-    rows = await pool.fetch(_FORM, player_id, _MODE_CALLED[mode])
+    rows = await pool.fetch(_RUNNING_SCORE, player_id, _MODE_CALLED[mode])
     return {
         "scores": [r["score"] for r in rows],
         "roles": [r["role"] for r in rows],

@@ -297,7 +297,7 @@ class AccountStatsResponse(BaseModel):
     roles: List[RoleSplit]
 
 
-class AccountFormResponse(BaseModel):
+class AccountRunningScoreResponse(BaseModel):
     # Every finished hand, oldest first, as parallel lists: the counted
     # score (an abandoned win as 0), the player's role, the doublers
     # stake, and when it closed (Unix seconds).

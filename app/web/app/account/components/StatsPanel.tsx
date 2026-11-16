@@ -2,17 +2,21 @@
 
 import React, { useState } from "react";
 import { ds } from "../../../lib/ds";
-import type { AccountForm, AccountStats, StatsMode } from "../../../lib/types";
+import type {
+  AccountRunningScore,
+  AccountStats,
+  StatsMode,
+} from "../../../lib/types";
 import account from "../account.module.css";
 import {
-  FormChart,
+  RunningScoreChart,
   Meter,
   PickByPosition,
   RangePicker,
   RangeRows,
   RoleBars,
   Segmented,
-  formWindow,
+  runningScoreWindow,
   type Range,
 } from "./StatsCharts";
 import { count, perHand, signed } from "./statsFormat";
@@ -56,25 +60,31 @@ export const STATS_MODES: { key: StatsMode; label: string; hand: string }[] = [
 ];
 
 /** The running-score chart with its range presets. */
-function Form({ form, hand }: { form: AccountForm | null; hand: string }) {
-  const total = form?.scores.length ?? 0;
+function RunningScore({
+  running,
+  hand,
+}: {
+  running: AccountRunningScore | null;
+  hand: string;
+}) {
+  const total = running?.scores.length ?? 0;
   const [range, setRange] = useState<Range | null>(null);
-  // Recent form by default; every hand until there are more than 100. A
+  // Recent hands by default; every hand until there are more than 100. A
   // chosen range outlives a mode switch only if the new mode offers it.
   const fits = range != null && (range === 0 || range < total);
   const shown: Range = fits ? range : total > 100 ? 100 : 0;
-  const data = form && total ? formWindow(form, shown) : null;
+  const data = running && total ? runningScoreWindow(running, shown) : null;
   const net = data ? data.scores.reduce((a, b) => a + b, 0) : 0;
   return (
     <>
       <Head
-        title="Form"
+        title="Running score"
         aside={
           data &&
           `${signed(net)} over ${shown === 0 ? "all" : "the last"} ${plural(data.scores.length, "hand")}`
         }
       />
-      {form === null ? (
+      {running === null ? (
         <p className={account.note}>Loading…</p>
       ) : !data ? (
         <p className={account.note}>
@@ -85,7 +95,7 @@ function Form({ form, hand }: { form: AccountForm | null; hand: string }) {
           <div className={styles.filters}>
             <RangePicker value={shown} onChange={setRange} total={total} />
           </div>
-          <FormChart data={data} />
+          <RunningScoreChart data={data} />
         </>
       )}
     </>
@@ -93,7 +103,7 @@ function Form({ form, hand }: { form: AccountForm | null; hand: string }) {
 }
 
 /** The verified account's numbers. Desktop: totals, rates and picking
- * down the side of the form chart, then role and company side by side.
+ * down the side of the running-score chart, then role and company side by side.
  * Narrow screens: one column, chart second (see StatsPanel.module.css).
  * `mode` is the one chosen, `statsMode` the one `stats` were loaded for:
  * they differ while a switch loads, and the words follow the numbers. */
@@ -102,14 +112,14 @@ export default function StatsPanel({
   onMode,
   stats,
   statsMode,
-  form,
+  running,
   busy,
 }: {
   mode: StatsMode;
   onMode: (mode: StatsMode) => void;
   stats: AccountStats;
   statsMode: StatsMode;
-  form: AccountForm | null;
+  running: AccountRunningScore | null;
   busy: boolean;
 }) {
   const info = STATS_MODES.find((m) => m.key === statsMode)!;
@@ -143,8 +153,8 @@ export default function StatsPanel({
         </p>
       </section>
 
-      <section aria-label="Form" className={styles.form}>
-        <Form form={form} hand={info.hand} />
+      <section aria-label="Running score" className={styles.running}>
+        <RunningScore running={running} hand={info.hand} />
       </section>
 
       <section aria-label="Rates" className={styles.rates}>

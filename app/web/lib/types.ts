@@ -10,7 +10,8 @@ export type AccountPublic = components["schemas"]["AccountPublic"];
 export type AccountMe = components["schemas"]["AccountMeResponse"];
 export type AccountSession = components["schemas"]["AccountSessionResponse"];
 export type AccountStats = components["schemas"]["AccountStatsResponse"];
-export type AccountForm = components["schemas"]["AccountFormResponse"];
+export type AccountRunningScore =
+  components["schemas"]["AccountRunningScoreResponse"];
 /** Which hands the account stats count: all, or one partner mode's. */
 export type StatsMode = NonNullable<
   NonNullable<

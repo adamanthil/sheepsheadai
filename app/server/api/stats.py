@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from server.api.auth import PlayerIdentity, current_player, optional_player
 from server.api.schemas import (
-    AccountFormResponse,
+    AccountRunningScoreResponse,
     AccountStatsResponse,
     HandHistoryResponse,
     LeaderboardResponse,
@@ -133,8 +133,8 @@ async def account_stats(
     }
 
 
-@router.get("/api/account/form", response_model=AccountFormResponse)
-async def account_form(
+@router.get("/api/account/running-score", response_model=AccountRunningScoreResponse)
+async def account_running_score(
     mode: GameMode = "all",
     identity: PlayerIdentity = Depends(current_player),
 ):
@@ -142,7 +142,7 @@ async def account_form(
     first, for the running score chart."""
     pool = get_db_pool()
     await _verified_account(pool, identity)
-    return await stats_db.player_form(pool, identity.id, mode)
+    return await stats_db.player_running_score(pool, identity.id, mode)
 
 
 @router.get("/api/account/hands", response_model=HandHistoryResponse)

@@ -1,52 +1,6 @@
 {
   "components": {
     "schemas": {
-      "AccountFormResponse": {
-        "properties": {
-          "closed": {
-            "items": {
-              "type": "integer"
-            },
-            "title": "Closed",
-            "type": "array"
-          },
-          "multipliers": {
-            "items": {
-              "type": "integer"
-            },
-            "title": "Multipliers",
-            "type": "array"
-          },
-          "roles": {
-            "items": {
-              "enum": [
-                "picker",
-                "partner",
-                "defender",
-                "leaster"
-              ],
-              "type": "string"
-            },
-            "title": "Roles",
-            "type": "array"
-          },
-          "scores": {
-            "items": {
-              "type": "integer"
-            },
-            "title": "Scores",
-            "type": "array"
-          }
-        },
-        "required": [
-          "scores",
-          "roles",
-          "multipliers",
-          "closed"
-        ],
-        "title": "AccountFormResponse",
-        "type": "object"
-      },
       "AccountMeResponse": {
         "properties": {
           "account": {
@@ -104,6 +58,52 @@
           "email_verified"
         ],
         "title": "AccountPublic",
+        "type": "object"
+      },
+      "AccountRunningScoreResponse": {
+        "properties": {
+          "closed": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Closed",
+            "type": "array"
+          },
+          "multipliers": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Multipliers",
+            "type": "array"
+          },
+          "roles": {
+            "items": {
+              "enum": [
+                "picker",
+                "partner",
+                "defender",
+                "leaster"
+              ],
+              "type": "string"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "scores": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Scores",
+            "type": "array"
+          }
+        },
+        "required": [
+          "scores",
+          "roles",
+          "multipliers",
+          "closed"
+        ],
+        "title": "AccountRunningScoreResponse",
         "type": "object"
       },
       "AccountSessionResponse": {
@@ -2742,52 +2742,6 @@
         "summary": "Forgot Password"
       }
     },
-    "/api/account/form": {
-      "get": {
-        "description": "Every finished hand of the caller's (or one partner mode's), oldest\nfirst, for the running score chart.",
-        "operationId": "account_form_api_account_form_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "mode",
-            "required": false,
-            "schema": {
-              "default": "all",
-              "enum": [
-                "all",
-                "called_ace",
-                "jd"
-              ],
-              "title": "Mode",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AccountFormResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Account Form"
-      }
-    },
     "/api/account/hands": {
       "get": {
         "description": "The caller's finished hands, newest first, a page at a time; pass\nthe previous page's next_cursor as ``before`` for the next.",
@@ -3039,6 +2993,52 @@
           }
         },
         "summary": "Reset Password"
+      }
+    },
+    "/api/account/running-score": {
+      "get": {
+        "description": "Every finished hand of the caller's (or one partner mode's), oldest\nfirst, for the running score chart.",
+        "operationId": "account_running_score_api_account_running_score_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "enum": [
+                "all",
+                "called_ace",
+                "jd"
+              ],
+              "title": "Mode",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountRunningScoreResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Account Running Score"
       }
     },
     "/api/account/stats": {
