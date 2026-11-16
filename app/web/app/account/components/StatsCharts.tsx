@@ -311,6 +311,35 @@ export function FormChart({
 export const RANGES = [50, 100, 250, 1000, 0] as const;
 export type Range = (typeof RANGES)[number];
 
+/** A row of buttons, one pressed: a small filter. */
+export function Segmented<T extends string | number>({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: { value: T; label: string }[];
+  value: T;
+  onChange: (v: T) => void;
+}) {
+  return (
+    <div className={styles.seg} role="group" aria-label={label}>
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          aria-pressed={value === o.value}
+          className={value === o.value ? styles.segOn : undefined}
+          onClick={() => onChange(o.value)}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function RangePicker({
   value,
   onChange,
@@ -321,19 +350,15 @@ export function RangePicker({
   total: number;
 }) {
   return (
-    <div className={styles.seg} role="group" aria-label="Hands shown">
-      {RANGES.filter((r) => r === 0 || r < total).map((r) => (
-        <button
-          key={r}
-          type="button"
-          aria-pressed={value === r}
-          className={value === r ? styles.segOn : undefined}
-          onClick={() => onChange(r)}
-        >
-          {r === 0 ? "All" : `Last ${r.toLocaleString("en-US")}`}
-        </button>
-      ))}
-    </div>
+    <Segmented
+      label="Hands shown"
+      options={RANGES.filter((r) => r === 0 || r < total).map((r) => ({
+        value: r,
+        label: r === 0 ? "All" : `Last ${r.toLocaleString("en-US")}`,
+      }))}
+      value={value}
+      onChange={onChange}
+    />
   );
 }
 

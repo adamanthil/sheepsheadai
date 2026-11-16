@@ -6,6 +6,7 @@
   display: grid;
   grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
   grid-template-areas:
+    "mode mode"
     "figures form"
     "rates form"
     "rates picking"
@@ -14,9 +15,22 @@
   /* The third row flexes, so the rates growing (their breakdown opening)
      lengthens the rows they share with picking from the bottom and
      leaves picking tucked under the chart. */
-  grid-template-rows: auto auto 1fr;
+  grid-template-rows: auto auto auto 1fr;
   align-items: start;
   gap: 32px 40px;
+}
+/* A mode switch in flight: the last mode's numbers, faded. */
+.panel > * {
+  transition: opacity 0.15s;
+}
+.panel[aria-busy="true"] > :not(.mode) {
+  opacity: 0.5;
+}
+.mode {
+  grid-area: mode;
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: -12px;
 }
 .figures {
   grid-area: figures;
@@ -93,6 +107,7 @@
   .panel {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
+      "mode"
       "figures"
       "form"
       "rates"

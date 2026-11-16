@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { ds } from "../../../lib/ds";
-import type { AccountForm, AccountStats } from "../../../lib/types";
+import type { AccountForm, AccountStats, StatsMode } from "../../../lib/types";
 import account from "../account.module.css";
 import {
   FormChart,
@@ -11,6 +11,7 @@ import {
   RangePicker,
   RangeRows,
   RoleBars,
+  Segmented,
   formWindow,
   type Range,
 } from "./StatsCharts";
@@ -46,12 +47,22 @@ function Figure({
 const plural = (n: number, word: string) =>
   `${count(n)} ${word}${n === 1 ? "" : "s"}`;
 
+/** The modes the stats can be narrowed to, named as the leaderboard
+ * names their boards; `hand` names one of the mode's hands. */
+export const STATS_MODES: { key: StatsMode; label: string; hand: string }[] = [
+  { key: "all", label: "All games", hand: "hand" },
+  { key: "called_ace", label: "Called Ace", hand: "called-ace hand" },
+  { key: "jd", label: "Jack of Diamonds", hand: "jack-of-diamonds hand" },
+];
+
 /** The running-score chart with its range presets. */
-function Form({ form }: { form: AccountForm | null }) {
+function Form({ form, hand }: { form: AccountForm | null; hand: string }) {
   const total = form?.scores.length ?? 0;
   const [range, setRange] = useState<Range | null>(null);
-  // Recent form by default; every hand until there are more than 100.
-  const shown: Range = range ?? (total > 100 ? 100 : 0);
+  // Recent form by default; every hand until there are more than 100. A
+  // chosen range outlives a mode switch only if the new mode offers it.
+  const fits = range != null && (range === 0 || range < total);
+  const shown: Range = fits ? range : total > 100 ? 100 : 0;
   const data = form && total ? formWindow(form, shown) : null;
   const net = data ? data.scores.reduce((a, b) => a + b, 0) : 0;
   return (
@@ -67,7 +78,7 @@ function Form({ form }: { form: AccountForm | null }) {
         <p className={account.note}>Loading…</p>
       ) : !data ? (
         <p className={account.note}>
-          Your running score starts with your first finished hand.
+          Your running score starts with your first finished {hand}.
         </p>
       ) : (
         <>
@@ -83,16 +94,38 @@ function Form({ form }: { form: AccountForm | null }) {
 
 /** The verified account's numbers. Desktop: totals, rates and picking
  * down the side of the form chart, then role and company side by side.
- * Narrow screens: one column, chart second (see StatsPanel.module.css). */
+ * Narrow screens: one column, chart second (see StatsPanel.module.css).
+ * `mode` is the one chosen, `statsMode` the one `stats` were loaded for:
+ * they differ while a switch loads, and the words follow the numbers. */
 export default function StatsPanel({
+  mode,
+  onMode,
   stats,
+  statsMode,
   form,
+  busy,
 }: {
+  mode: StatsMode;
+  onMode: (mode: StatsMode) => void;
   stats: AccountStats;
+  statsMode: StatsMode;
   form: AccountForm | null;
+  busy: boolean;
 }) {
+  const info = STATS_MODES.find((m) => m.key === statsMode)!;
+  const board =
+    statsMode === "all" ? "leaderboard" : `${info.label} leaderboard`;
   return (
-    <div className={styles.panel}>
+    <div className={styles.panel} aria-busy={busy}>
+      <div className={styles.mode}>
+        <Segmented
+          label="Games counted"
+          options={STATS_MODES.map((m) => ({ value: m.key, label: m.label }))}
+          value={mode}
+          onChange={onMode}
+        />
+      </div>
+
       <section aria-label="Your stats" className={styles.figures}>
         <Head
           title="Your stats"
@@ -105,13 +138,13 @@ export default function StatsPanel({
         </dl>
         <p className={account.note}>
           {stats.rank != null
-            ? `Rank #${stats.rank} on the all-time leaderboard by total score.`
-            : `${plural(stats.qualifies_in ?? 0, "more finished hand")} to make the leaderboard, which lists confirmed accounts with at least ${stats.min_hands}.`}
+            ? `Rank #${stats.rank} on the all-time ${board} by total score.`
+            : `${plural(stats.qualifies_in ?? 0, `more finished ${info.hand}`)} to make the ${board}, which lists confirmed accounts with at least ${stats.min_hands}.`}
         </p>
       </section>
 
       <section aria-label="Form" className={styles.form}>
-        <Form form={form} />
+        <Form form={form} hand={info.hand} />
       </section>
 
       <section aria-label="Rates" className={styles.rates}>

@@ -5,12 +5,12 @@ import Link from "next/link";
 import { ds } from "../../lib/ds";
 import { apiFetch } from "../../lib/api";
 import { useAccount } from "../../lib/account";
-import type { AccountForm, AccountStats } from "../../lib/types";
+import type { AccountForm, AccountStats, StatsMode } from "../../lib/types";
 import AccountShell from "./AccountShell";
 import AuthForms from "./components/AuthForms";
 import ResendVerification from "./components/ResendVerification";
 import SignOut from "./components/SignOut";
-import StatsPanel from "./components/StatsPanel";
+import StatsPanel, { STATS_MODES } from "./components/StatsPanel";
 import styles from "./account.module.css";
 
 export default function AccountPage() {
@@ -66,18 +66,35 @@ function Unverified({
   );
 }
 
+const DEFAULT_MODE: StatsMode = "all";
+
+/** The mode in the URL. Only read in the browser: the stats render once
+ * the account has loaded there, never on the server. */
+function modeFromUrl(): StatsMode {
+  const m = new URLSearchParams(window.location.search).get("mode");
+  return STATS_MODES.find((x) => x.key === m)?.key ?? DEFAULT_MODE;
+}
+
+/** Data as loaded for one mode, so a switch can keep showing the last
+ * mode's numbers until the new ones arrive. */
+type ForMode<T> = { mode: StatsMode; data: T };
+
 function Verified({ username }: { username: string }) {
-  const [stats, setStats] = useState<AccountStats | null>(null);
-  const [form, setForm] = useState<AccountForm | null>(null);
+  const [mode, setMode] = useState<StatsMode>(modeFromUrl);
+  const [stats, setStats] = useState<ForMode<AccountStats> | null>(null);
+  const [form, setForm] = useState<ForMode<AccountForm> | null>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     let cancelled = false;
-    const load = async <T,>(path: string, set: (data: T) => void) => {
+    const load = async <T,>(path: string, set: (got: ForMode<T>) => void) => {
       try {
-        const res = await apiFetch(path);
+        const res = await apiFetch(`${path}?mode=${mode}`);
         if (!res.ok) throw new Error(String(res.status));
         const data = (await res.json()) as T;
-        if (!cancelled) set(data);
+        if (!cancelled) {
+          set({ mode, data });
+          setFailed(false);
+        }
       } catch {
         if (!cancelled) setFailed(true);
       }
@@ -88,12 +105,32 @@ function Verified({ username }: { username: string }) {
     return () => {
       cancelled = true;
     };
-  }, [username]);
+  }, [username, mode]);
+
+  const chooseMode = (next: StatsMode) => {
+    setMode(next);
+    window.history.replaceState(
+      null,
+      "",
+      next === DEFAULT_MODE ? window.location.pathname : `?mode=${next}`,
+    );
+  };
 
   return (
     <div className={styles.form}>
       {failed && <p className={styles.error}>Couldn&rsquo;t load stats.</p>}
-      {stats && <StatsPanel stats={stats} form={form} />}
+      {stats && (
+        <StatsPanel
+          mode={mode}
+          onMode={chooseMode}
+          stats={stats.data}
+          statsMode={stats.mode}
+          form={form?.data ?? null}
+          // A switch keeps the last mode's numbers, dimmed, until the new
+          // mode's arrive; a first load shows the chart's own "Loading…".
+          busy={stats.mode !== mode || (!!form && form.mode !== mode)}
+        />
+      )}
       <div className={styles.actions}>
         <Link
           href="/account/history"

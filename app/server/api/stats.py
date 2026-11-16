@@ -21,10 +21,11 @@ from server.services.persistence.history import BadCursor
 from server.services.persistence.pool import get_db_pool
 from server.services.persistence.stats import (
     ABANDON_AI_ACTIONS,
-    LEADERBOARD_MIN_HANDS,
     LEADERBOARD_SIZE,
+    MODE_BOARD,
     SPLIT_MARGIN_MIN_HANDS,
     BoardKey,
+    GameMode,
     PeriodKey,
     SortKey,
 )
@@ -99,14 +100,22 @@ async def _verified_account(pool: asyncpg.Pool, identity: PlayerIdentity):
 
 
 @router.get("/api/account/stats", response_model=AccountStatsResponse)
-async def account_stats(identity: PlayerIdentity = Depends(current_player)):
+async def account_stats(
+    mode: GameMode = "all",
+    identity: PlayerIdentity = Depends(current_player),
+):
+    """The caller's stats over every finished hand, or one partner mode's;
+    the rank is on that mode's all-time board."""
     pool = get_db_pool()
     account = await _verified_account(pool, identity)
-    stats = await stats_db.player_stats(pool, identity.id)
-    mine = stats_db.row_of(await stats_db.ranking(pool, "total"), identity.id)
+    stats = await stats_db.player_stats(pool, identity.id, mode)
+    board = MODE_BOARD[mode]
+    ranking = await stats_db.ranking(pool, "total", board)
+    mine = stats_db.row_of(ranking, identity.id)
+    min_hands = stats_db.board_min_hands(board)
     qualifies_in: Optional[int] = None
     if mine is None:
-        qualifies_in = max(0, LEADERBOARD_MIN_HANDS - stats["hands"])
+        qualifies_in = max(0, min_hands - stats["hands"])
     hands = stats["hands"]
     return {
         "username": account.username,
@@ -115,22 +124,25 @@ async def account_stats(identity: PlayerIdentity = Depends(current_player)):
         "abandon_threshold": ABANDON_AI_ACTIONS,
         "rank": mine["rank"] if mine is not None else None,
         "qualifies_in": qualifies_in,
-        "min_hands": LEADERBOARD_MIN_HANDS,
-        **await stats_db.player_splits(pool, identity.id),
+        "min_hands": min_hands,
+        **await stats_db.player_splits(pool, identity.id, mode),
         "split_margin_min_hands": SPLIT_MARGIN_MIN_HANDS,
-        **await stats_db.player_picking(pool, identity.id),
-        **await stats_db.player_pick_offers(pool, identity.id),
-        "roles": await stats_db.player_roles(pool, identity.id),
+        **await stats_db.player_picking(pool, identity.id, mode),
+        **await stats_db.player_pick_offers(pool, identity.id, mode),
+        "roles": await stats_db.player_roles(pool, identity.id, mode),
     }
 
 
 @router.get("/api/account/form", response_model=AccountFormResponse)
-async def account_form(identity: PlayerIdentity = Depends(current_player)):
-    """Every finished hand of the caller's, oldest first, for the running
-    score chart."""
+async def account_form(
+    mode: GameMode = "all",
+    identity: PlayerIdentity = Depends(current_player),
+):
+    """Every finished hand of the caller's (or one partner mode's), oldest
+    first, for the running score chart."""
     pool = get_db_pool()
     await _verified_account(pool, identity)
-    return await stats_db.player_form(pool, identity.id)
+    return await stats_db.player_form(pool, identity.id, mode)
 
 
 @router.get("/api/account/hands", response_model=HandHistoryResponse)

@@ -30,8 +30,8 @@ export interface paths {
         };
         /**
          * Account Form
-         * @description Every finished hand of the caller's, oldest first, for the running
-         *     score chart.
+         * @description Every finished hand of the caller's (or one partner mode's), oldest
+         *     first, for the running score chart.
          */
         get: operations["account_form_api_account_form_get"];
         put?: never;
@@ -189,7 +189,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Account Stats */
+        /**
+         * Account Stats
+         * @description The caller's stats over every finished hand, or one partner mode's;
+         *     the rank is on that mode's all-time board.
+         */
         get: operations["account_stats_api_account_stats_get"];
         put?: never;
         post?: never;
@@ -1582,7 +1586,9 @@ export interface operations {
     };
     account_form_api_account_form_get: {
         parameters: {
-            query?: never;
+            query?: {
+                mode?: "all" | "called_ace" | "jd";
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -1596,6 +1602,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AccountFormResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -1825,7 +1840,9 @@ export interface operations {
     };
     account_stats_api_account_stats_get: {
         parameters: {
-            query?: never;
+            query?: {
+                mode?: "all" | "called_ace" | "jd";
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -1839,6 +1856,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AccountStatsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

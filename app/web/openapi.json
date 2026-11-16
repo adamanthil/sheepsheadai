@@ -2744,8 +2744,25 @@
     },
     "/api/account/form": {
       "get": {
-        "description": "Every finished hand of the caller's, oldest first, for the running\nscore chart.",
+        "description": "Every finished hand of the caller's (or one partner mode's), oldest\nfirst, for the running score chart.",
         "operationId": "account_form_api_account_form_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "enum": [
+                "all",
+                "called_ace",
+                "jd"
+              ],
+              "title": "Mode",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -2756,6 +2773,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Account Form"
@@ -3016,7 +3043,25 @@
     },
     "/api/account/stats": {
       "get": {
+        "description": "The caller's stats over every finished hand, or one partner mode's;\nthe rank is on that mode's all-time board.",
         "operationId": "account_stats_api_account_stats_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "enum": [
+                "all",
+                "called_ace",
+                "jd"
+              ],
+              "title": "Mode",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -3027,6 +3072,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Account Stats"

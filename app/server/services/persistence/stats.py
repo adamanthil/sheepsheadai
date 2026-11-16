@@ -41,6 +41,22 @@ PeriodKey = Literal["all_time", "month", "last_month"]
 MONTHS_BACK: dict[PeriodKey, int] = {"month": 0, "last_month": 1}
 LEADERBOARD_TZ = "America/Chicago"
 
+# Which hands a player's own stats count: every hand, or one partner
+# mode's. Each mode has the board that ranks its hands.
+GameMode = Literal["all", "called_ace", "jd"]
+MODE_BOARD: dict[GameMode, BoardKey] = {
+    "all": "overall",
+    "called_ace": "called_ace",
+    "jd": "jd",
+}
+# Bound as $2 (NULL for every hand) by the per-player queries below.
+_MODE_CALLED: dict[GameMode, Optional[bool]] = {
+    "all": None,
+    "called_ace": True,
+    "jd": False,
+}
+_MODE_SQL = "($2::boolean IS NULL OR g.is_called_partner = $2)"
+
 # More AI decisions than this in a hand, not excused, abandon it.
 ABANDON_AI_ACTIONS = 2
 
@@ -165,6 +181,7 @@ _SPLITS = f"""
         WHERE g.time_closed IS NOT NULL
           AND gp.score IS NOT NULL
           AND gp.player_id = $1
+          AND {_MODE_SQL}
     )
     SELECT vs_ai,
            count(*)::int                        AS hands,
@@ -178,7 +195,7 @@ _SPLITS = f"""
 # Trump and queens in the six cards dealt to the caller on hands they
 # chose to pick: how strong a hand they pick on, so the blind is left
 # out, as are picks the AI made for them.
-_PICKING = """
+_PICKING = f"""
     SELECT count(*)::int                AS picks,
            avg(t.trump)::float8         AS trump_per_pick,
            avg(t.queens)::float8        AS queens_per_pick
@@ -197,6 +214,7 @@ _PICKING = """
     WHERE g.time_closed IS NOT NULL
       AND gp.score IS NOT NULL
       AND gp.player_id = $1
+      AND {_MODE_SQL}
       AND gp.is_picker
       AND NOT gp.is_substituted_pick
 """
@@ -254,9 +272,13 @@ def clear_cache() -> None:
     _cache.clear()
 
 
-async def player_stats(pool: asyncpg.Pool, player_id: UUID) -> dict:
+async def player_stats(
+    pool: asyncpg.Pool, player_id: UUID, mode: GameMode = "all"
+) -> dict:
     row = await pool.fetchrow(
-        _HAND_STATS + " AND gp.player_id = $1 GROUP BY gp.player_id", player_id
+        f"{_HAND_STATS} AND gp.player_id = $1 AND {_MODE_SQL} GROUP BY gp.player_id",
+        player_id,
+        _MODE_CALLED[mode],
     )
     # Only pass-outs so far is no hands yet, not a 0% pick rate.
     if row is None or row["hands"] == 0:
@@ -289,15 +311,21 @@ def _split(row: Optional[asyncpg.Record]) -> dict:
     }
 
 
-async def player_splits(pool: asyncpg.Pool, player_id: UUID) -> dict:
+async def player_splits(
+    pool: asyncpg.Pool, player_id: UUID, mode: GameMode = "all"
+) -> dict:
     """Score/hand and win rate against the AI alone and with other
     people at the table, with a 95% margin on score/hand."""
-    rows = {r["vs_ai"]: r for r in await pool.fetch(_SPLITS, player_id)}
+    rows = {
+        r["vs_ai"]: r for r in await pool.fetch(_SPLITS, player_id, _MODE_CALLED[mode])
+    }
     return {"vs_ai": _split(rows.get(True)), "with_people": _split(rows.get(False))}
 
 
-async def player_picking(pool: asyncpg.Pool, player_id: UUID) -> dict:
-    row = await pool.fetchrow(_PICKING, player_id)
+async def player_picking(
+    pool: asyncpg.Pool, player_id: UUID, mode: GameMode = "all"
+) -> dict:
+    row = await pool.fetchrow(_PICKING, player_id, _MODE_CALLED[mode])
     assert row is not None  # an aggregate always returns a row
     return dict(row)
 
@@ -314,14 +342,20 @@ _ROLE_SPLITS = f"""
     WHERE g.time_closed IS NOT NULL
       AND {SCORED_SQL}
       AND gp.player_id = $1
+      AND {_MODE_SQL}
     GROUP BY 1
 """
 
 
-async def player_roles(pool: asyncpg.Pool, player_id: UUID) -> list[dict]:
+async def player_roles(
+    pool: asyncpg.Pool, player_id: UUID, mode: GameMode = "all"
+) -> list[dict]:
     """One split per role, in ROLES order, empty for a role not yet
     played, with a 95% margin on score/hand like the company splits."""
-    rows = {r["role"]: r for r in await pool.fetch(_ROLE_SPLITS, player_id)}
+    rows = {
+        r["role"]: r
+        for r in await pool.fetch(_ROLE_SPLITS, player_id, _MODE_CALLED[mode])
+    }
     return [{"role": role, **_split(rows.get(role))} for role in ROLES]
 
 
@@ -331,7 +365,7 @@ async def player_roles(pool: asyncpg.Pool, player_id: UUID) -> list[dict]:
 # was. Pass-outs count here as they do in pick rate, and so do picks the
 # AI made for the caller.
 # Grouped by the caller's bidding position (1 bids first).
-_PICK_OFFERS = """
+_PICK_OFFERS = f"""
     SELECT gp.position::int                                AS position,
            count(*)::int                                   AS offered_hands,
            (count(*) FILTER (WHERE gp.is_picker))::int     AS picks
@@ -340,15 +374,21 @@ _PICK_OFFERS = """
     LEFT JOIN game_player pk ON pk.game_id = gp.game_id AND pk.is_picker
     WHERE g.time_closed IS NOT NULL
       AND gp.player_id = $1
+      AND {_MODE_SQL}
       AND gp.position <= coalesce(pk.position, 5)
     GROUP BY gp.position
 """
 
 
-async def player_pick_offers(pool: asyncpg.Pool, player_id: UUID) -> dict:
+async def player_pick_offers(
+    pool: asyncpg.Pool, player_id: UUID, mode: GameMode = "all"
+) -> dict:
     """How often the caller picked when the pick reached them, overall
     and by bidding position (all five, empty where never offered)."""
-    rows = {r["position"]: r for r in await pool.fetch(_PICK_OFFERS, player_id)}
+    rows = {
+        r["position"]: r
+        for r in await pool.fetch(_PICK_OFFERS, player_id, _MODE_CALLED[mode])
+    }
     by_position = [
         {
             "position": p,
@@ -380,15 +420,18 @@ _FORM = f"""
     WHERE g.time_closed IS NOT NULL
       AND {SCORED_SQL}
       AND gp.player_id = $1
+      AND {_MODE_SQL}
     ORDER BY g.time_closed, g.game_id
 """
 
 
-async def player_form(pool: asyncpg.Pool, player_id: UUID) -> dict:
+async def player_form(
+    pool: asyncpg.Pool, player_id: UUID, mode: GameMode = "all"
+) -> dict:
     """The caller's finished hands as parallel lists, oldest first. At
     10,000 hands that is a few hundred KB of repetitive JSON, a small
     fraction of that gzipped, so it is sent whole."""
-    rows = await pool.fetch(_FORM, player_id)
+    rows = await pool.fetch(_FORM, player_id, _MODE_CALLED[mode])
     return {
         "scores": [r["score"] for r in rows],
         "roles": [r["role"] for r in rows],

@@ -1,4 +1,4 @@
-import type { components } from "./api.gen";
+import type { components, operations } from "./api.gen";
 
 /** REST shapes are generated from the server's OpenAPI schema — regenerate
  * with `npm run gen:api` after changing server/api/schemas.py. */
@@ -11,6 +11,12 @@ export type AccountMe = components["schemas"]["AccountMeResponse"];
 export type AccountSession = components["schemas"]["AccountSessionResponse"];
 export type AccountStats = components["schemas"]["AccountStatsResponse"];
 export type AccountForm = components["schemas"]["AccountFormResponse"];
+/** Which hands the account stats count: all, or one partner mode's. */
+export type StatsMode = NonNullable<
+  NonNullable<
+    operations["account_stats_api_account_stats_get"]["parameters"]["query"]
+  >["mode"]
+>;
 export type HandHistory = components["schemas"]["HandHistoryResponse"];
 export type HandHistoryRow = components["schemas"]["HandHistoryRow"];
 export type Leaderboard = components["schemas"]["LeaderboardResponse"];

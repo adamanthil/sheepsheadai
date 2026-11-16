@@ -755,3 +755,42 @@ async def test_form_lists_finished_hands_oldest_first(seeded):
         "/api/account/form", headers={"Authorization": f"Bearer {token}"}
     )
     assert r.status_code == 403
+
+
+async def test_personal_stats_filter_by_partner_mode(seeded):
+    seeder, client = seeded
+    pid = await seeder.player(username=f"modes_{_tag()}")
+    # 25 called-ace hands, one of them picked; 5 jack-of-diamonds hands,
+    # all picked, plus a jack-of-diamonds pass-out.
+    await seeder.hands(pid, [2] + [1] * 24, picker=[True] + [False] * 24)
+    await seeder.hands(pid, [-3] * 5, called=False, picker=[True] * 5)
+    await seeder.hands(pid, [None], called=False)
+    headers = {"Authorization": f"Bearer {await create_session(seeder.pool, pid)}"}
+
+    async def get(path: str, mode: str | None) -> dict:
+        params = {"mode": mode} if mode else {}
+        r = await client.get(path, params=params, headers=headers)
+        assert r.status_code == 200, r.text
+        return r.json()
+
+    every = await get("/api/account/stats", None)
+    assert (every["hands"], every["total"], every["picks"]) == (30, 11, 6)
+
+    ace = await get("/api/account/stats", "called_ace")
+    assert (ace["hands"], ace["total"], ace["picks"]) == (25, 26, 1)
+    assert ace["pick_pct"] == 1 / 25
+    assert ace["rank"] is not None  # on the called-ace board
+
+    jd = await get("/api/account/stats", "jd")
+    assert (jd["hands"], jd["total"], jd["picks"]) == (5, -15, 5)
+    assert jd["pick_pct"] == 5 / 6  # the pass-out is a deal not picked
+    assert jd["roles"][0] == {**jd["roles"][0], "role": "picker", "hands": 5}
+    assert (jd["rank"], jd["qualifies_in"], jd["min_hands"]) == (None, 15, 20)
+
+    assert (await get("/api/account/form", "jd"))["scores"] == [-3] * 5
+    assert len((await get("/api/account/form", "called_ace"))["scores"]) == 25
+
+    r = await client.get(
+        "/api/account/stats", params={"mode": "vs_ai"}, headers=headers
+    )
+    assert r.status_code == 422
