@@ -556,6 +556,41 @@ called-suit opportunity. The convention behaviour that distinguishes theta6 from
 the 30M was mostly installed by search, not by the league phase: theta0
 is no better than the 30M in called-ace mode and worse in JD.
 
+## 11. Partner trump lead (trick 0)
+
+Rates only; no value estimate was run. This is the third benchmark
+convention (a partner should lead trump), measured for completeness
+and left out of the write-up charts: every rate is above 98%.
+
+Node: play has started, the hand is not a leaster, it is trick 0 with
+no card on the table, and the leader is the secret partner (not the
+picker) with at least one trump and at least one fail legal to lead.
+Adherent means the lead is trump. Same seeded deals as §3, 100,000
+games per mode per agent, greedy (`ptn_probe.py`). Artifacts:
+`runs/convention_optimality_202610/t0_partner_lead/`; the table is
+also in `notebooks/convention_partner_lead_202610.csv`.
+
+| mode | 30M | theta0 | theta6 |
+|---|---|---|---|
+| JD | 99.99% [99.96, 100.00] (16,653/16,655) | 99.82% [99.74, 99.88] (15,005/15,032) | 98.04% [97.81, 98.25] (15,084/15,385) |
+| called ace | 99.94% [99.88, 99.97] (13,615/13,623) | 98.47% [98.24, 98.67] (12,204/12,394) | 99.33% [99.17, 99.46] (12,723/12,809) |
+| overall | 99.97% [99.94, 99.98] (30,268/30,278) | 99.21% [99.10, 99.31] (27,209/27,426) | 98.63% [98.49, 98.76] (27,807/28,194) |
+
+Search did not move this convention toward 100%. theta6 is below
+theta0 in JD and above it in called ace.
+
+- **JD, theta6** (301 fail leads): concentrated where the partner's
+  trump is thin. JD as the only trump: 78 of 817 nodes (9.5%). JD plus
+  only AD and/or 10D: 63 of 583 (10.8%). All other holdings: 160 of
+  13,985 (1.1%). The card led is a low fail, usually a spade (7S, 8S
+  and 9S are 226 of the 301).
+- **Called ace**: theta6's 86 exceptions are all the called ace itself.
+  theta0 led the called ace 168 times and another fail 22 times.
+- **30M**: 10 fail leads in 30,278.
+
+Whether the theta6 JD exceptions are correct is untested (no search or
+replay on these nodes).
+
 ## Reproduction
 
 From the repo root, with `R=runs/convention_optimality_202610/t0_trump_lead`:
@@ -583,4 +618,12 @@ about 90 s per node per shard on one thread):
 uv run python $V/select_v.py $R $V
 uv run python $V/research_variants.py --ckpt models/sheepsheadai-1.0-202610.pt --nodes $V/nodesV_theta6.json --out $V/variants_0.jsonl --shard 0 --nshards 8
 uv run python $V/analyze_v.py $V
+```
+
+§11, with `P=runs/convention_optimality_202610/t0_partner_lead` (run as
+four 25,000-game shards per agent and mode, 8 to 11 minutes each
+with eight running at once):
+
+```
+uv run python $P/ptn_probe.py --ckpt models/sheepsheadai-1.0-202610.pt --mode 0 --start 0 --n 25000 --out $P/ptn_theta6_m0_s0.json
 ```

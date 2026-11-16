@@ -1,0 +1,10 @@
+agent,checkpoint,mode,opportunities,trump_leads,rate_pct,ci95_lo_pct,ci95_hi_pct,called_ace_leads,other_fail_leads
+30M,models/pfsp-swish-30m.pt,jd,16655,16653,99.988,99.956,99.997,0,2
+30M,models/pfsp-swish-30m.pt,called_ace,13623,13615,99.941,99.884,99.970,3,5
+30M,models/pfsp-swish-30m.pt,both,30278,30268,99.967,99.939,99.982,3,7
+theta0,runs/202609_recall_rc/league/checkpoints/checkpoint_8000000.pt,jd,15032,15005,99.820,99.739,99.877,0,27
+theta0,runs/202609_recall_rc/league/checkpoints/checkpoint_8000000.pt,called_ace,12394,12204,98.467,98.235,98.669,168,22
+theta0,runs/202609_recall_rc/league/checkpoints/checkpoint_8000000.pt,both,27426,27209,99.209,99.097,99.307,168,49
+theta6,models/sheepsheadai-1.0-202610.pt,jd,15385,15084,98.044,97.812,98.251,0,301
+theta6,models/sheepsheadai-1.0-202610.pt,called_ace,12809,12723,99.329,99.172,99.456,86,0
+theta6,models/sheepsheadai-1.0-202610.pt,both,28194,27807,98.627,98.485,98.757,86,301
