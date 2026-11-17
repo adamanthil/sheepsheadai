@@ -95,14 +95,6 @@ through the crypt remote and load it with `psql`), repoint DNS, deploy.
 Nothing else lives on the box: code is in git, images in GHCR, models in GitHub releases, secrets in the
 offline copy of `.env.prod`, and the database in the backups.
 
-## Prerelease mode
-
-The first deployment is a playtest shared by link, not a public launch.
-`app/deploy/Caddyfile` serves a `robots.txt` that disallows all crawling
-and adds `X-Robots-Tag: noindex, nofollow` to every response. At public
-launch, delete that block (marked PRERELEASE) and push; Caddy reloads
-gracefully.
-
 ## One-time provisioning
 
 On the box (Ubuntu 26.04 LTS). 26.04 ships the Rust rewrites of coreutils
