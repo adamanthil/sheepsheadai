@@ -1,38 +1,106 @@
+/* One column, one measure: every block spans the full shell width so the
+   lede, body copy, article link and support panel share both edges. */
 .section {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
+  margin-top: 28px;
   /* Land below the strip, not under it, when reached via #support. */
   scroll-margin-top: 24px;
 }
+.section + .section {
+  margin-top: 40px;
+}
+.section h2 {
+  margin: 0;
+}
 .sectionHead {
-  padding-top: 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--rule);
+}
+.section p {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.7;
+  color: var(--ink-soft);
+}
+.section p a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--rule-strong);
+  text-underline-offset: 3px;
+}
+.section p a:hover {
+  text-decoration-color: var(--ink);
+}
+
+/* The write-up: a light card, the one raised element on the page. */
+.article {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 20px 22px;
+  /* Just lighter than the page, not full white, so it doesn't outshine
+     the support panel below. */
+  background: color-mix(in srgb, var(--bg-card) 40%, var(--bg-page));
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--accent);
+  border-radius: 3px;
+  color: var(--ink);
+  text-decoration: none;
+  transition:
+    box-shadow 0.12s ease,
+    transform 0.08s ease;
+}
+.article:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-1);
+}
+.article:focus-visible {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: 2px;
+}
+.articleKicker {
+  color: var(--accent);
+}
+.articleTitle {
+  font-family: var(--font-display);
+  font-size: 26px;
+  line-height: 1.15;
+  letter-spacing: -0.005em;
+}
+.articleCta {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--accent);
+}
+.article {
+  /* A little more air before the copy resumes below the card. */
+  margin-bottom: 12px;
+}
+.article:hover .articleCta {
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .support {
-  background: var(--bg-sunk);
-  border: 1px solid var(--rule);
-  border-radius: 3px;
-  padding: 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
+  gap: 24px;
+  padding: 24px;
+  background: var(--bg-sunk);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
 }
+
 @media (max-width: 640px) {
   .support {
     flex-direction: column;
     align-items: flex-start;
+    gap: 16px;
     padding: 20px;
   }
-}
-.supportText {
-  font-family: var(--font-ui);
-  font-size: 16px;
-  line-height: 1.6;
-  color: var(--ink-soft);
-  margin: 0;
-  max-width: 460px;
 }
 
 .supportButton {
