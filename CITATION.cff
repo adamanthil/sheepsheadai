@@ -1,0 +1,37 @@
+cff-version: 1.2.0
+message: >-
+  If you use this software or its models, please cite it using the
+  metadata from this file.
+type: software
+title: Sheepshead AI
+abstract: >-
+  A deep reinforcement learning agent for the trick-taking card game
+  Sheepshead, with a web app for playing against it.
+authors:
+  - given-names: Andrew
+    family-names: Bender
+    email: andrew@bender.io
+    orcid: "https://orcid.org/0009-0002-3362-9131"
+repository-code: "https://github.com/adamanthil/sheepsheadai"
+license: Apache-2.0
+version: 1.1.202611
+date-released: "2026-11-10"
+keywords:
+  - sheepshead
+  - reinforcement learning
+  - proximal policy optimization
+  - Monte Carlo tree search
+  - imperfect information games
+  - card games
+preferred-citation:
+  type: blog
+  title: Building an Expert Sheepshead AI with Reinforcement Learning
+  authors:
+    - given-names: Andrew
+      family-names: Bender
+      email: andrew@bender.io
+      orcid: "https://orcid.org/0009-0002-3362-9131"
+  date-published: "2026-11-17"
+  year: 2026
+  month: 11
+  url: "https://bender.io/2026/11/17/building-an-expert-sheepshead-ai-with-reinforcement-learning"
