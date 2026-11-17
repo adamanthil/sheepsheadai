@@ -1646,7 +1646,7 @@ function buildEmbeddingTable() {
       ? `<p>The ORACLE'S OWN card embedding table — zero parameters are shared with the policy stack (the isolation guarantee: privileged gradients can never shape the actor). Same 34×16 layout and informed init as the policy's table.</p>
         <p>The highlighted rows are every card the oracle sees this scenario — including all four hidden hands and the true blind/bury.</p>`
       : `<p>The card embedding table. 34 rows (PAD, 32 real cards, UNDER token) × 16 dims. Dims 0–3 = suit one-hot · 4–7 = per-suit rank · 8 = points/11 · 9 = UNDER flag · 10–15 = free to learn.</p>
-      <p>The highlighted rows are the cards this scenario touches (hand, table, called card). The same table is reused by the actor's two-tower CALL scorer, so any update here propagates everywhere.</p>`,
+      <p>The highlighted rows are the cards this decision touches (hand, table, called card). The same table is reused by the actor's two-tower CALL scorer, so any update here propagates everywhere.</p>`,
   });
 
   return { usedRowYs, totalW, totalH };
@@ -3312,7 +3312,7 @@ function buildOracleObservation() {
     title: "Oracle memory hₜ₋₁",
     badge: "input",
     kv: { "‖memory_in‖": memMag.toFixed(2) },
-    body: `<p>The oracle's OWN 256-d recurrent state — threaded over the same per-seat event stream the agent's memory sees (decisions + end-of-trick observations), but through the oracle's separate GRU. It estimates U(h, s), not V(s): history in, state in.</p>`,
+    body: `<p>The oracle's OWN 256-d recurrent state — threaded over the same per-seat event stream the agent's memory sees (decisions + end-of-trick observations), but through the oracle's separate GRU.</p>`,
   });
 
   return {
@@ -3327,7 +3327,7 @@ function buildOracleObservation() {
 // ============================================================
 function buildOracleValue() {
   const g = group("oValue");
-  const lab = makeStageLabel("7 · VALUE · U(h,s)", "#ff9ec7");
+  const lab = makeStageLabel("7 · VALUE", "#ff9ec7");
   lab.position.set(XSA.trunk, -9.7, 10);
   g.add(lab);
   const y = RING_CY;
@@ -3367,14 +3367,14 @@ function buildOracleValue() {
   crystal.position.set(XSA.value, y, 0);
   g.add(crystal);
   const untrainedNote = DATA.oracle.untrained ? " · untrained" : "";
-  const vLab = makeLabel(`U(h,s) = ${v.toFixed(3)}${untrainedNote}`,
+  const vLab = makeLabel(`value = ${v.toFixed(3)}${untrainedNote}`,
     v >= 0 ? "#dffbe6" : "#ffd0d0", 0.65);
   vLab.position.set(XSA.value, y + 3.1, 0);
   g.add(vLab);
   registerPickable(crystal, {
-    title: "value_head · U(h,s)",
+    title: "Oracle value",
     badge: "critic",
-    kv: { "U(h,s)": v.toFixed(4), "trained": DATA.oracle.untrained ? "NO — random init" : "yes" },
+    kv: { "value": v.toFixed(4), "trained": DATA.oracle.untrained ? "NO — random init" : "yes" },
     body: `<p>The history-state value: what this seat should expect given <i>everything</i> — every hand, the true blind/bury, the secret partner — plus the history so far.${DATA.oracle.untrained
       ? " <b>This checkpoint is a random init</b>: the number is meaningless; the wiring and shapes are what this walkthrough verifies."
       : ""} At training time it replaces the limited critic's V(s) in GAE, removing hidden-card variance from advantages.</p>`,
@@ -3507,7 +3507,7 @@ function buildOracleAux() {
     badge: "critic",
     kv: { "shape": "Linear(256 → 2)", "loss": "smooth-L1 × 0.2", "units": "points / 120" },
     body: `<p>Points taken <i>so far</i> by each side: picker team (the bury included, as it stands at this timestamp) and defenders. Regressed in /120 units so the scale matches the value head's.</p>
-      <p>Card points are the currency the terminal reward is made of — forcing the trunk to keep a running count is the cheapest way to make U(h,s) sensitive to it.</p>`,
+      <p>Card points are the currency the terminal reward is made of — forcing the trunk to keep a running count is the cheapest way to make the value sensitive to it.</p>`,
   });
   g.add(makeGlowLine(trunkPos.clone(), ptsHead.position.clone(), AUX_VIOLET, live ? 0.4 : 0.15));
 
@@ -3883,7 +3883,7 @@ function buildPolicyStages() {
     label: "embed",
     badge: "enc",
     cam: { pos: [XS.embed + 14, 4, 16], target: [XS.embed, 0, 0] },
-    body: () => `<p>The shared 34×${DATA.dims.d_card} table. The lit-up rows are the cards this scenario touches. The first 10 dims were seeded before training with what any player knows about a card (suit / rank / points / UNDER flag); the rest are free for the network to use.</p>
+    body: () => `<p>The shared 34×${DATA.dims.d_card} table. The lit-up rows are the cards this decision touches. The first 10 dims were seeded before training with what any player knows about a card (suit / rank / points / UNDER flag); the rest are free for the network to use.</p>
       <p>This same table is read by:</p>
       <ul>
         <li>the encoder (here)</li>
@@ -3901,7 +3901,7 @@ function buildPolicyStages() {
         <li><b>1 context</b> = header scalars + called-card embedding → MLP</li>
         <li><b>1 memory</b> = prior ${DATA.dims.d_model}-d projected to ${DATA.dims.d_token}-d</li>
         <li><b>8 hand</b> = card embedding ⊕ actor role → MLP</li>
-        <li><b>5 trick</b> = card ⊕ is-picker / is-known-partner flags → MLP</li>
+        <li><b>5 trick</b> = card ⊕ seat ⊕ picker / known-partner role → MLP</li>
       </ul>
       <p>No blind or bury tokens: a human picker does not get to look at the blind and bury again, so neither does the network — the memory token is the only way they reach this decision.</p>
       <p>Dim slots are PAD — masked out of attention. From here on, <i>everything</i> the network does is a read of these tokens.</p>`,
@@ -3943,9 +3943,9 @@ function buildPolicyStages() {
       const liveName = { pick: "pick", call: "partner call", pointer: "bury · under · play" }[live];
       return `<p>The shared features flow through the actor adapter into three decision lanes. Each lane holds exactly the heads whose logits compete in one softmax:</p>
       <ul>
-        <li><b>pick</b> · pick_head: PICK vs PASS${live === "pick" ? " ← <b>live</b>" : ""}</li>
-        <li><b>partner call</b> · the two-tower CALL scorer (tw_Wg(feat) · tw_We(card emb) per callable card) plus partner_basic_head's ALONE / JD PARTNER${live === "call" ? " ← <b>live</b>" : ""}</li>
-        <li><b>bury · under · play</b> · the pointer over the hand slots plus play_under_head${live === "pointer" ? " ← <b>live</b>" : ""} (next step)</li>
+        <li><b>pick</b> · PICK vs PASS${live === "pick" ? " ← <b>live</b>" : ""}</li>
+        <li><b>partner call</b> · a two-tower scorer for CALL, which matches the features against each callable card's embedding, plus ALONE / JD PARTNER${live === "call" ? " ← <b>live</b>" : ""}</li>
+        <li><b>bury · under · play</b> · the play head, a pointer over the cards in hand, plus PLAY UNDER${live === "pointer" ? " ← <b>live</b>" : ""} (next step)</li>
       </ul>
       <p>For this decision the <b>${liveName}</b> lane is the one that matters; the others are dimmed. The two-tower scorer reuses the shared card embedding table (the purple block above its query node).</p>`;
     },
@@ -3960,9 +3960,9 @@ function buildPolicyStages() {
       const p = S.actor.pointer;
       const real = handCardIds.map((cid, i) => i).filter(i => handCardIds[i] !== 0);
       const spread = (arr) => Math.max(...real.map(i => arr[i])) - Math.min(...real.map(i => arr[i]));
-      return `<p>The bury / under / play decisions are a <b>pointer</b> over the hand slots with two terms:${live ? " ← <b>live head</b> for this decision" : " (idle here)"}</p>
+      return `<p>The play head is a <b>pointer</b>: it scores each card in the hand directly, for the bury, under and play decisions alike. Each score has two terms:${live ? " ← <b>live head</b> for this decision" : " (idle here)"}</p>
       <p style="text-align:center"><code>v · tanh(W<sub>g</sub>f + W<sub>t</sub>t)</code> + <code>(Uf) · (Vt) / √${DATA.dims.pointer_hidden}</code></p>
-      <p>The blue spheres are the <i>same</i> post-reasoning hand tokens from the final transformer ring (faint tethers). The <b>additive</b> term (octahedra, fed by <b>g</b>) lets the situation shift every card's score together; the <b>bilinear</b> term (the dot-product rings, fed by <b>u</b>) lets it say "this card attribute matters differently in this state". Across this hand the additive term spans ${spread(p.additive_scores).toFixed(1)} logits and the bilinear term ${spread(p.bilinear_scores).toFixed(1)}. The bar is their sum, scattered into the BURY / UNDER / PLAY logits. PLAY UNDER (play_under_head, the one play action that isn't a hand slot) closes the row: it competes in the same softmax.</p>`;
+      <p>The blue spheres are the <i>same</i> post-reasoning hand tokens from the final transformer ring (faint tethers). The <b>additive</b> term (octahedra, fed by <b>g</b>) lets the situation shift every card's score together; the <b>bilinear</b> term (the dot-product rings, fed by <b>u</b>) lets it say "this card attribute matters differently in this state". Across this hand the additive term spans ${spread(p.additive_scores).toFixed(1)} logits and the bilinear term ${spread(p.bilinear_scores).toFixed(1)}. The bar is their sum, scattered into the BURY / UNDER / PLAY logits. PLAY UNDER, the one play action that isn't a card in hand, has a small head of its own and closes the row: it competes in the same softmax.</p>`;
     },
   },
   {
@@ -3992,13 +3992,15 @@ function buildPolicyStages() {
     cam: { pos: [58, CRITIC_Y + 19, CRITIC_AZ - 21], target: [56, CRITIC_Y + 1, CRITIC_AZ] },
     body: () => {
       const aux = S.critic.aux;
-      return `<p>Training-only prediction heads off a shallow adapter — their gradients sculpt the shared features:</p>
+      return `<p>Training-only prediction heads off a shallow adapter — their gradients shape the shared features. Four are deterministic, with an answer that follows from what this seat has seen; the first two are forecasts:</p>
       <ul>
-        <li><b>win</b> ${(aux.win_prob * 100).toFixed(0)}% · <b>E[return]</b> ${aux.expected_return.toFixed(2)} · <b>secret partner</b> ${(aux.secret_partner_prob * 100).toFixed(0)}%</li>
-        <li><b>points_head</b> · predicted final points per seat (bars)</li>
+        <li><b>win</b> ${(aux.win_prob * 100).toFixed(0)}% · the chance this seat's side wins the hand</li>
+        <li><b>E[return]</b> ${aux.expected_return.toFixed(2)} · the final score this seat should expect</li>
+        <li><b>secret partner</b> ${(aux.secret_partner_prob * 100).toFixed(0)}% · is this seat the hidden partner?</li>
+        <li><b>points</b> · points each seat has taken so far (bars)</li>
         <li><b>trump tracker</b> · P(seen) for all 14 trump (chips) + P(unseen higher trump) = ${(aux.unseen_higher_prob * 100).toFixed(0)}% (lamp)</li>
       </ul>
-      <p>At play time these are ignored — but the card counting they force into the features is exactly what the pointer and CALL heads read.</p>`;
+      <p>At play time these are ignored — but the card counting they force into the features is exactly what the play and partner-call heads read.</p>`;
     },
   },
   ];
@@ -4026,10 +4028,10 @@ function buildOracleStages() {
     label: "ointro",
     badge: "critic",
     cam: { pos: [30, 34, 70], target: [0, 5, 0] },
-    body: () => `<p>The <b>oracle critic</b> on the same decision: it sees every hand, the true blind/bury, the under card, and the secret partner — and predicts the final reward, <b>U(h,s)</b>, that league training measures each result against. It exists only at training time; the deployed agent never runs it.</p>
+    body: () => `<p>The <b>oracle critic</b> on the same decision: it sees every hand, the true blind/bury, the under card, and the secret partner — and predicts the final reward. League training measures each result against that prediction. It exists only at training time; the deployed agent never runs it.</p>
       ${DATA.oracle.untrained ? `<p><span class="badge b-critic">untrained</span> This is a <b>random init</b> (seed ${DATA.oracle.init_seed}) — an architecture smoke test. Values and attention are meaningless; the structure is the point.</p>` : `<p>Loaded from <code>${DATA.oracle.checkpoint}</code>.</p>`}
       <p><b>${S.label}:</b> ${S.description}</p>
-      <p>${DATA.oracle.n_params.toLocaleString()} parameters, zero shared with the policy stack${ORACLE_AUX ? ", including two deterministic team aux heads that shape the oracle's own representation and nothing else" : ""}. Switch back with <b>Policy</b> above.</p>`,
+      <p>${DATA.oracle.n_params.toLocaleString()} parameters, zero shared with the policy stack${ORACLE_AUX ? ", including two deterministic auxiliary heads of its own" : ""}. Switch back with <b>Policy</b> above.</p>`,
   },
   {
     title: "1 · Full-information observation",
@@ -4037,14 +4039,14 @@ function buildOracleStages() {
     badge: "input",
     cam: { pos: [XSA.input + 26, 9, 32], target: [XSA.input + 2, 2, 0] },
     body: () => `<p>What the oracle sees: <b>all five hands face up</b> (gold halo = the secret partner's seat), the true blind and bury, the under card, and per-seat points taken — plus everything the acting player's own observation carries. Gold-rimmed faces are trump; each face's barcode is its row of the oracle's own embedding table.</p>
-      <p>This is a strict superset of the policy observation (<code>get_oracle_state_dict</code>), so U(h,s) conditions on history <i>and</i> state — the unbiased target under partial observability.</p>`,
+      <p>This is a strict superset of the policy's observation: nothing the policy sees is hidden from the oracle.</p>`,
   },
   {
     title: "2 · Oracle card embeddings",
     label: "oEmbed",
     badge: "enc",
     cam: { pos: [XSA.embed + 14, 4, 16], target: [XSA.embed, 0, 0] },
-    body: () => `<p>The oracle's <b>own</b> 34×${curDims().d_card} card table — zero parameters shared with the policy (the isolation guarantee: privileged gradients can never reach the actor).</p>
+    body: () => `<p>The oracle's <b>own</b> 34×${curDims().d_card} card table — zero parameters shared with the policy, so nothing it learns from the hidden cards can leak into the agent.</p>
       <p>Far more rows light up than in the policy view: every hidden hand, the true blind/bury, and the under card get embedded.</p>`,
   },
   {
@@ -4053,7 +4055,7 @@ function buildOracleStages() {
     badge: "enc",
     cam: { pos: [XSA.tokensPre + 13, 8, 32], target: [XSA.tokensPre - 3, 2, 0] },
     body: () => `<p>The policy's ${DATA.dims.n_tokens} tokens <i>plus</i> 4 <b>true blind/bury</b> tokens and <b>32 opponent-hand tokens</b> (4 seats × 8 slots, seat-tinted columns; the secret partner's column glows gold) — privileged cards no seat's observation carries.</p>
-      <p>Each opp token = card ⊕ seat ⊕ role embedding → MLP; the context token additionally packs points-taken, the partner's seat, and the under card.</p>`,
+      <p>Each opponent-hand token = card ⊕ seat ⊕ role embedding → MLP; the context token additionally packs points-taken, the partner's seat, and the under card.</p>`,
   },
   {
     title: "4 · The transformer tunnel · 51 tokens",
@@ -4065,12 +4067,12 @@ function buildOracleStages() {
   },
   ...Array.from({ length: N_LAYERS }, (_, l) => oXfLayerStage(l)),
   {
-    title: "5 · GRU memory · U(h,s) recurrence",
+    title: "5 · GRU memory · recurrence",
     label: "oGru",
     badge: "share",
     cam: { pos: [XSA.gru + 8, 30, 36], target: [(XSA.input + XSA.gru) / 2, 14, 0] },
-    body: () => `<p>The oracle is <b>recurrent</b>: the post-reasoning <b>memory token</b> (the same wiring as the policy) feeds its own GRU (‖in‖ ${vecMag(curMemory().memory_in).toFixed(1)} → ‖out‖ ${vecMag(curMemory().memory_out).toFixed(1)}), threaded over the same per-seat event stream the agent sees.</p>
-      <p>Why memory at all, when it sees everything? A critic conditioned on the hidden state alone is biased under partial observability — the sound target is the history-state value U(h,s), so history rides along.</p>`,
+    body: () => `<p>The oracle is <b>recurrent</b>: the post-reasoning <b>memory token</b> (the same wiring as the policy) feeds its own GRU (‖in‖ ${vecMag(curMemory().memory_in).toFixed(1)} → ‖out‖ ${vecMag(curMemory().memory_out).toFixed(1)}), updated at the same moments as the policy's memory.</p>
+      <p>Even though it sees every card, it currently uses memory to record trick history. However, it does not have the same state recall requirements as the policy network, and a future optimization could allow the network to drop the recurrence. That would simplify the task the oracle needs to learn.</p>`,
   },
   {
     title: `6 · Oracle readout · ${DATA.oracle.dims.n_readout_queries} queries`,
@@ -4081,13 +4083,13 @@ function buildOracleStages() {
       <p>Same interaction as the policy view: top-3 links per gem averaged over the enabled heads (the ⋯ menu's head toggles re-average), <b>click a gem</b> for its full per-head fan.</p>`,
   },
   {
-    title: "7 · Value · U(h,s)",
+    title: "7 · Value",
     label: "oValue",
     badge: "critic",
     cam: { pos: [XSA.trunk + 8, RING_CY + 6, 28], target: [XSA.trunk + 4, RING_CY, 0] },
-    body: () => `<p>Readout → deep value trunk → <b>U(h,s) = ${SO.value.value.toFixed(3)}</b>${DATA.oracle.untrained ? " (random init — meaningless by design)" : ""}.</p>
-      <p>No actor, no deployment: at league-training time this number replaces the limited critic's V(s) as the reward prediction, removing hidden-card variance from the policy's advantages while the actor still learns from its own partial view.</p>
-      ${ORACLE_AUX ? "<p>The same trunk output also feeds two deterministic auxiliary heads — the next stage.</p>" : ""}`,
+    body: () => `<p>Readout → deep value trunk → <b>value = ${SO.value.value.toFixed(3)}</b>${DATA.oracle.untrained ? " (random init — meaningless by design)" : ""}.</p>
+      <p>No actor, no deployment: during league training this number replaces the limited critic's V(s) as the reward prediction. That takes the luck of the hidden cards out of the policy's learning signal, while the policy itself still acts on its own partial view.</p>
+      ${ORACLE_AUX ? "<p>The same trunk output also feeds two deterministic auxiliary heads (the next step).</p>" : ""}`,
   },
   ...(ORACLE_AUX ? [{
     title: "8 · Oracle aux heads",
@@ -4102,18 +4104,18 @@ function buildOracleStages() {
       const aux = SO.aux;
       const memLine = aux.membership_prob
         .map((p, i) => `${SEAT_NAMES[i]} ${(p * 100).toFixed(0)}%`).join(" · ");
-      return `<p>Two <b>deterministic</b> auxiliary heads read the same ${DATA.oracle.dims.d_model}-d trunk output as <code>value_head</code>:</p>
+      return `<p>Two <b>deterministic</b> auxiliary heads read the same ${DATA.oracle.dims.d_model}-d trunk output as the value:</p>
       <ul>
-        <li><b>team_membership</b> (256→5, BCE ×0.1) — per relative seat: on the picker's team? <span class="pill">${memLine}</span></li>
-        <li><b>team_points</b> (256→2, smooth-L1 ×0.2) — picker-team (bury included) and defender points so far, in /120 units</li>
+        <li><b>team membership</b> · for each seat, is it on the picker's team? <span class="pill">${memLine}</span></li>
+        <li><b>team points</b> · points taken so far by the picker's team (bury included) and by the defenders</li>
       </ul>
-      <p>Their labels are <i>exact</i>, not bootstrapped: <code>team_aux_labels</code> reads them off the privileged observation, which only this network can do. Rings and white plates mark the label; fill and bar height mark the prediction.</p>
+      <p>Their answers are <i>exact</i>: both can be read straight off the full-information observation. Rings and white plates mark the true answer; fill and bar height mark the prediction.</p>
       ${aux.team_defined
-        ? `<p>Note the membership label follows <code>secret_partner_rel</code>, which zeroes once the called card is played — after the reveal the label marks the picker alone${
+        ? `<p>The membership answer tracks the <i>secret</i> partner: once the called card is played and the partner is public, it marks the picker alone${
             SO.sample.partner_rel > 0 && SO.sample.secret_partner_rel === 0
-              ? ", as it does on this row" : ""}.</p>`
-        : `<p><b>This row is masked.</b> No picker/defender partition exists yet (${SO.sample.picker_rel === 0 ? "nobody has picked" : "leaster"}), so <code>team_mask</code> drops it from the aux loss entirely — the numbers you see are untrained on rows like this one.</p>`}
-      <p>Unlike the policy's aux stack, these gradients stay <i>inside</i> the oracle: they sharpen its own team representation and can never reach the actor, so the CTDE isolation guarantee is untouched.</p>`;
+              ? ", as it does here" : ""}.</p>`
+        : `<p><b>No teams yet.</b> ${SO.sample.picker_rel === 0 ? "Nobody has picked" : "This hand is a leaster"}, so there is nothing to predict: decisions like this one are left out of these heads' training, and the numbers shown here mean nothing.</p>`}
+      <p>Unlike the policy's auxiliary heads, these teach only the oracle: they sharpen its own picture of the teams and never reach the policy.</p>`;
     },
   }] : []),
   ];
@@ -4406,9 +4408,9 @@ const LEGEND_ORACLE = () => [
   [[0xffd166], "Secret partner"],
   [[0xd4af37], "Trump · gold card rim"],
   [HEAD_COLORS, "Attention heads 1–4"],
-  [[0xf4a261], "GRU memory · U(h,s) recurrence"],
+  [[0xf4a261], "GRU memory · recurrence"],
   [[0x8b6cff], "Oracle readout"],
-  [[0xff9ec7], "Value trunk · U(h,s)"],
+  [[0xff9ec7], "Value trunk"],
   ...(ORACLE_AUX ? [[[0xe0b8ff], "Team aux heads · training-only"]] : []),
 ];
 const cssHex = (hex) => "#" + new THREE.Color(hex).getHexString();

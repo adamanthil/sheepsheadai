@@ -1021,19 +1021,18 @@ def describe_scenario(kind, snap, game):
         forced_note = (
             " (Forced to pick for this capture — the checkpoint preferred PASS here.)"
             if snap.get("forced")
-            else " (This seat goes on to pick.)"
+            else ""
         )
         return f"Seat {seat} holds {hand_str} and must PICK or PASS.{forced_note}"
     if kind == "call":
         return (
             f"Seat {seat} picked and now holds {hand_str} (8 cards after the "
-            f"blind). It must choose a partner card — the two-tower CALL "
-            f"scorer is the live head here."
+            f"blind). It must call a partner card."
         )
     if kind == "bury":
         return (
             f"Seat {seat} (the picker) holds {hand_str} and must bury its "
-            f"first card — the pointer head scores every hand slot."
+            f"first card; the play head scores every card in the hand."
         )
     if kind == "lead":
         return (
