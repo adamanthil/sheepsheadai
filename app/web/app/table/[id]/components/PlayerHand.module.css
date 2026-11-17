@@ -82,3 +82,40 @@
 .clickable {
   cursor: pointer;
 }
+
+/* Cards just picked up from the blind. They drop into the fan, and a warm
+   halo marks them for a few seconds and then fades, so the picker can see
+   which cards are new once the hand has sorted them in. The halo is a
+   drop-shadow filter on the card rather than a box-shadow, so it sits
+   outside the playable ring and follows the card's lift. FROM_BLIND_MS in
+   PlayerHand.tsx matches the halo's duration. */
+.fromBlind {
+  animation: blindArrive 450ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.blindGlow {
+  animation: blindGlow 5s ease-in both;
+}
+@keyframes blindArrive {
+  from {
+    transform: translateY(-16px);
+    opacity: 0;
+  }
+}
+@keyframes blindGlow {
+  /* Full strength for 2.4s, then fades out by 5s. */
+  0%,
+  48% {
+    filter: drop-shadow(0 0 2px rgb(212 167 58 / 0.95))
+      drop-shadow(0 0 9px rgb(212 167 58 / 0.7));
+  }
+  100% {
+    filter: drop-shadow(0 0 2px rgb(212 167 58 / 0))
+      drop-shadow(0 0 9px rgb(212 167 58 / 0));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Keep the halo (a fade, not motion); drop the cards in place. */
+  .fromBlind {
+    animation: none;
+  }
+}
