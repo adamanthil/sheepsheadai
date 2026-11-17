@@ -55,7 +55,9 @@ names (off by default), background stars, tour speed, and the color key.
 the scene takes the whole window and the caption becomes a floating panel
 on the right (along the bottom on narrow windows) with a vertical chapter
 list and the key. The camera's projection is offset so the diagram centers
-in the space beside the panel.
+in the space beside the panel, and each chapter's camera pulls back by
+what the panel takes (`frameFactor()`), so a chapter frames the same
+content whatever the window's size.
 
 Inline, the figure does not capture page scrolling. A mouse can orbit
 immediately, but the wheel zooms only after a click in the figure. On

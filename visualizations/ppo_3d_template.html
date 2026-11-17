@@ -3932,7 +3932,9 @@ function buildPolicyStages() {
     title: "7 · Actor heads",
     label: "actor",
     badge: "actor",
-    cam: { pos: [57, 20, 42], target: [57, 15, ACTOR_PLANE_Z] },
+    // Centered between the adapter and the ranked output list, so the
+    // probabilities every lane ends in are in view with the heads.
+    cam: { pos: [64, 20, 44], target: [64, 15, ACTOR_PLANE_Z] },
     body: () => {
       const live = liveHead();
       const liveName = { pick: "pick", call: "partner call", pointer: "bury · under · play" }[live];
@@ -3973,7 +3975,10 @@ function buildPolicyStages() {
     title: "10 · Limited critic · features → V(s)",
     label: "criticV",
     badge: "critic",
-    cam: { pos: [52, CRITIC_Y + 7, CRITIC_VZ - 22], target: [46, CRITIC_Y + 1, CRITIC_VZ] },
+    // Looking down from behind: the aux lane lies between this camera and
+    // the value lane, and a steep angle drops it below the value lane on
+    // screen where a shallow one stacked the two lanes' labels.
+    cam: { pos: [50, CRITIC_Y + 16, CRITIC_VZ - 17], target: [46, CRITIC_Y + 1, CRITIC_VZ] },
     body: () => `<p>The critic reads the <i>same</i> shared ${DATA.dims.d_model}-d features as the actor — no separate readout — through a deep dedicated value trunk: <b>V(s) = ${S.critic.value.toFixed(3)}</b>, its prediction of the final reward from this seat's own view of the game.</p>
       <p>Because actor and critic share the trunk, everything the auxiliary heads (next stage) teach the features is also directly available to the policy.</p>`,
   },
@@ -3981,7 +3986,7 @@ function buildPolicyStages() {
     title: "11 · Auxiliary heads",
     label: "criticAux",
     badge: "critic",
-    cam: { pos: [58, CRITIC_Y + 11, CRITIC_AZ - 26], target: [56, CRITIC_Y + 2, CRITIC_AZ] },
+    cam: { pos: [58, CRITIC_Y + 19, CRITIC_AZ - 21], target: [56, CRITIC_Y + 1, CRITIC_AZ] },
     body: () => {
       const aux = S.critic.aux;
       return `<p>Training-only prediction heads off a shallow adapter — their gradients sculpt the shared features:</p>
@@ -4198,11 +4203,34 @@ function updateCameraTween() {
 }
 const ZOOM_OUT = 1.6; // >1 frames more of each stage; 1 = original distances
 const PREVIEW_ZOOM = 0.9; // a preview has no caption to clear, so it frames tighter
+// The part of the stage the floating caption leaves clear when expanded
+// (beside the panel on wide windows, above it on narrow ones); the whole
+// stage otherwise. applyViewOffset centers the projection in this box.
+function clearView() {
+  const { w, h } = stageSize();
+  if (!expanded) return { w, h };
+  const r = panelEl.getBoundingClientRect();
+  return window.innerWidth > 760
+    ? { w: Math.max(w - r.width - 12, 1), h }
+    : { w, h: Math.max(h - r.height - 8, 1) };
+}
 // Stage cameras were framed for a ~16:10 view; narrower views pull back so
-// the same content still fits across.
+// the same content still fits across. The window's own shape is only
+// partly compensated, since a tall view has room to spare above and below.
+// The floating caption is made up in full: what it takes from the width
+// (beyond the slack of a window wider than 16:10) would otherwise hide the
+// right of the stage, and on a phone, where it sits below, the stage must
+// still fit in the height that is left.
 function frameFactor() {
-  const a = camera.aspect;
-  return a < 1.55 ? Math.pow(1.55 / a, 0.55) : 1;
+  const { w, h } = stageSize();
+  const v = clearView();
+  const a = w / h;
+  // Below square (a phone held upright, expanded) the width runs out
+  // faster than that partial allowance covers.
+  const k = a < 1.55 ? Math.pow(1.55 / Math.max(a, 1), 0.55) * (1 / Math.min(a, 1)) : 1;
+  // 8% to spare, so labels at the edge of a stage clear the caption.
+  const across = v.w < w ? Math.max(1, 1.08 * Math.min(a, 1.55) * v.h / v.w) : 1;
+  return Math.max(k * across, h / v.h);
 }
 function frameStage(s) {
   const tgt = new THREE.Vector3(...s.cam.target);
