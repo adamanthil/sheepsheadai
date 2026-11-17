@@ -1289,8 +1289,11 @@ function buildInputCards() {
   // --- the hand: an arced fan of app-styled card faces -------------
   const n = handCardCodes.length;
   const FAN_TOP = 6.4;   // y of the center card
-  const FAN_R = 15.5;    // arc radius (pivot far below, like a held hand)
-  const FAN_STEP = 0.155;
+  // Radius and step put neighbours 3.2 apart along the arc, nearly a card
+  // width (3.4), so each rank corner shows whole from the stage camera
+  // even though the curl toward it narrows the spread on screen.
+  const FAN_R = 20;      // arc radius (pivot far below, like a held hand)
+  const FAN_STEP = 0.16;
   const cardW = 3.4;
   const cardObjs = [];
   const handAnchors = [];
