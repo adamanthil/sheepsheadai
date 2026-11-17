@@ -54,6 +54,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import torch
 
 from sheepshead.agent.architectures.actors import (
@@ -220,6 +221,39 @@ def classify_decision(action_names, state):
     return None
 
 
+def deck_ordered(ids):
+    """Card ids in DECK order (trump from the queen of clubs down, then
+    clubs, spades, hearts), padding last; same shape and dtype."""
+    arr = np.asarray(ids)
+    flat = arr.reshape(-1)
+    cards = sorted(int(c) for c in flat if int(c) != 0)
+    out = np.zeros_like(flat)
+    out[: len(cards)] = cards
+    return out.reshape(arr.shape)
+
+
+def order_cards_for_display(snap):
+    """Put every bag of cards in a snapshot into DECK order, the order the
+    product app shows a hand in, so the figure's hands read at a glance.
+
+    The engine keeps a hand in dealt order. Hand, blind, bury and
+    opponent-hand tokens carry no position, so the networks' outputs are
+    the same up to this permutation of slots (trick slots are seats and
+    stay put). Only the captured copies are reordered; the hand is played
+    on the engine's own states.
+    """
+    snap["state"]["hand_ids"] = deck_ordered(snap["state"]["hand_ids"])
+    for key in ("blind_ids", "bury_ids"):
+        snap["picker_memory"][key] = deck_ordered(snap["picker_memory"][key])
+    ostate = snap.get("oracle_state")
+    if ostate is not None:
+        for key in ("hand_ids", "blind_ids", "bury_ids"):
+            ostate[key] = deck_ordered(ostate[key])
+        ostate["opp_hand_ids"] = np.stack(
+            [deck_ordered(row) for row in np.asarray(ostate["opp_hand_ids"])]
+        )
+
+
 def play_hand(agent, seed, force_pick=False, oracle=None):
     """Play one full deterministic hand, snapshotting candidate decisions.
 
@@ -278,6 +312,7 @@ def play_hand(agent, seed, force_pick=False, oracle=None):
                         snap["oracle_state"] = copy.deepcopy(ostate)
                         # Clone BEFORE the decision advance below.
                         snap["oracle_memory_in"] = oracle_mem[player.position].clone()
+                    order_cards_for_display(snap)
 
                 forced = (
                     force_pick

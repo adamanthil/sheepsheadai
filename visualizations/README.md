@@ -113,7 +113,10 @@ Use the project venv — the system python lacks torch.
   211) with the agent
   in all five seats (per-seat GRU memory, observations via
   `observation_for`), snapshots the five decision points with their
-  pre-decision memory and the picker's blind/bury knowledge, and re-runs
+  pre-decision memory and the picker's blind/bury knowledge, puts each
+  captured hand (and blind, bury and opponent hand) into `DECK` order as the
+  product app shows it (`order_cards_for_display()`; these tokens carry no
+  position, so the outputs are the same up to that reordering), and re-runs
   the forward pass manually (mirroring `encoder.py` /
   `architectures/encoders.py`, asserted `allclose` against the modules'
   own forward) to capture every intermediate: per-layer **per-head**
