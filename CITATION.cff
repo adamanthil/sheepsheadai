@@ -13,6 +13,10 @@ authors:
     email: andrew@bender.io
     orcid: "https://orcid.org/0009-0002-3362-9131"
 repository-code: "https://github.com/adamanthil/sheepsheadai"
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.24299654
+    description: The concept DOI, which resolves to the latest version.
 license: Apache-2.0
 version: 1.1.202611
 date-released: "2026-11-10"
