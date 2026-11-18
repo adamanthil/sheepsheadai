@@ -24,6 +24,8 @@ def _no_dotenv(monkeypatch):
     """Settings come only from each test's environment, never from the
     developer's .env (which CI doesn't have)."""
     monkeypatch.setitem(Settings.model_config, "env_file", None)
+    # Nor report test failures to the developer's Sentry project.
+    monkeypatch.delenv("SENTRY_DSN", raising=False)
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()

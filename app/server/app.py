@@ -24,6 +24,7 @@ from server.api import stats as stats_router
 from server.api import tables as tables_router
 from server.api.ratelimit import limiter
 from server.config import get_settings
+from server.error_reporting import init_error_reporting
 from server.realtime import websocket as websocket_router
 from server.runtime import lifecycle
 from server.runtime.tasks import spawn
@@ -116,6 +117,11 @@ def create_app() -> FastAPI:
         root.setLevel(logging.INFO)
     else:
         logging.basicConfig(level=logging.INFO)
+
+    # Before the startup checks below, so a deploy that fails to boot can be
+    # reported too, not only one that fails while running.
+    if init_error_reporting(settings):
+        logging.info("error reporting to Sentry enabled (env=%s)", settings.env)
 
     # Validate required config at startup so misconfiguration is caught immediately.
     if not settings.sheepshead_model_path:

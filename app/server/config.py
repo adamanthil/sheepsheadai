@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     public_base_url: str = "http://localhost:3000"
     env: str = "development"
     log_format: str = "text"
+    # Error reporting (server.error_reporting). Empty DSN = off. The release
+    # is the api image tag, set by the production compose file.
+    sentry_dsn: str = ""
+    sentry_release: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
