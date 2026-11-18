@@ -178,7 +178,10 @@ coreutils-from-gnu` switches back.
     errors and forwards the browser's through `/monitoring`
     (`app/web/lib/errorReporting.ts`). In each project's settings, turn on
     "Prevent Storing of IP Addresses" and an alert rule that emails on a
-    new issue.
+    new issue. `/monitoring` is open to anyone and spends the web
+    project's event quota: the route allows each client 30 envelopes a
+    minute of at most 256 KB, which stops one client, not many, so watch
+    the project's usage (Stats) after launch.
 
 On GitHub:
 

@@ -49,3 +49,88 @@ export function readdressEnvelope(
   out.set(rest, head.length);
   return out;
 }
+
+/**
+ * The whole of `stream` if it is at most `maxBytes`, else null. Stops
+ * reading at the limit, so a body with no (or a false) Content-Length
+ * cannot make the server buffer more than that.
+ */
+export async function readCapped(
+  stream: ReadableStream<Uint8Array> | null,
+  maxBytes: number,
+): Promise<Uint8Array | null> {
+  if (!stream) return new Uint8Array(0);
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.length;
+    if (size > maxBytes) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(size);
+  let at = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, at);
+    at += chunk.length;
+  }
+  return out;
+}
+
+/**
+ * The key a client's envelopes are counted under, from the address the
+ * reverse proxy saw. As in the api (server/api/ratelimit.py), IPv6 counts
+ * per /64, since one subscriber is routinely handed a whole /64, and
+ * IPv4-mapped IPv6 counts as its IPv4 address.
+ */
+export function clientKey(address: string): string {
+  const addr = address.trim().toLowerCase();
+  if (!addr.includes(":")) return addr;
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(addr);
+  if (mapped) return mapped[1];
+  const [head, tail] = addr.split("::");
+  const groups = head ? head.split(":") : [];
+  if (tail !== undefined) {
+    const rest = tail ? tail.split(":") : [];
+    groups.push(
+      ...Array(Math.max(0, 8 - groups.length - rest.length)).fill("0"),
+    );
+    groups.push(...rest);
+  }
+  if (groups.length !== 8) return addr; // not an address; count it as given
+  return `${groups
+    .slice(0, 4)
+    .map((g) => g.replace(/^0+(?=.)/, ""))
+    .join(":")}::/64`;
+}
+
+/**
+ * A fixed-window counter: `allow(key, now)` is true for the first `limit`
+ * calls per key in each `windowMs`. Every key is forgotten when the window
+ * turns, so memory is bounded by the clients seen in one window.
+ */
+export function windowLimiter(limit: number, windowMs: number) {
+  const counts = new Map<string, number>();
+  let windowStart = -Infinity;
+  return {
+    allow(key: string, now: number): boolean {
+      if (now - windowStart >= windowMs) {
+        counts.clear();
+        windowStart = now;
+      }
+      const used = counts.get(key) ?? 0;
+      if (used >= limit) return false;
+      counts.set(key, used + 1);
+      return true;
+    },
+    /** Seconds until the current window ends, for Retry-After. */
+    retryAfter(now: number): number {
+      return Math.max(1, Math.ceil((windowStart + windowMs - now) / 1000));
+    },
+  };
+}

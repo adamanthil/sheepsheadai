@@ -12,6 +12,17 @@
 		reverse_proxy api:9000
 	}
 
+	# The browser error tunnel (web/app/monitoring/route.ts) is open to
+	# anyone, so cap what a post may carry before it reaches Node. The route
+	# holds the same limit, and a per-client budget.
+	@monitoring path /monitoring
+	handle @monitoring {
+		request_body {
+			max_size 256KB
+		}
+		reverse_proxy web:3000
+	}
+
 	handle {
 		reverse_proxy web:3000
 	}
