@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import logging
 
 import pytest
 import sentry_sdk
+from fastapi import FastAPI, WebSocket
+from fastapi.testclient import TestClient
+from pydantic import BaseModel
 from sentry_sdk.envelope import Envelope
 from sentry_sdk.transport import Transport
 from sentry_sdk.types import Event
@@ -70,3 +74,56 @@ def test_a_logged_exception_is_reported(capture):
     assert event["release"] == "abc123"
     assert event["exception"]["values"][-1]["type"] == "ValueError"
     assert "user" not in event or "ip_address" not in event["user"]
+
+
+class _Credentials(BaseModel):
+    email: str
+    password: str
+
+
+def _failing_app() -> FastAPI:
+    app = FastAPI()
+
+    @app.post("/unhandled")
+    async def unhandled(req: _Credentials):
+        raise RuntimeError("db down")
+
+    @app.post("/survived")
+    async def survived(req: _Credentials):
+        try:
+            raise RuntimeError("persist failed")
+        except RuntimeError:
+            logging.getLogger("server.test").exception("persist failed")
+        return {}
+
+    @app.websocket("/ws")
+    async def ws(websocket: WebSocket):
+        await websocket.accept(subprotocol="sheepshead.client.abc")
+        raise RuntimeError("turn loop died")
+
+    return app
+
+
+def test_events_carry_no_credentials(capture):
+    """No request body, bearer token or websocket session token reaches
+    Sentry, whether in the request data or in a stack frame's locals."""
+    init_error_reporting(_settings(sentry_dsn="https://key@sentry.invalid/1"))
+    sentry_sdk.get_client().transport = capture
+    client = TestClient(_failing_app(), raise_server_exceptions=False)
+    body = {"email": "PLANTED@example.com", "password": "PLANTED-password"}
+
+    for path in ("/unhandled", "/survived"):
+        client.post(
+            path, json=body, headers={"Authorization": "Bearer PLANTED-http-token"}
+        )
+    with pytest.raises(RuntimeError, match="turn loop died"):
+        with client.websocket_connect(
+            "/ws",
+            subprotocols=["sheepshead.client.abc", "sheepshead.token.PLANTED-ws"],
+        ) as ws:
+            ws.receive_text()
+    sentry_sdk.flush()
+
+    assert len(capture.events) == 3
+    # default=str so a value the SDK left unserialised is still searched.
+    assert "PLANTED" not in json.dumps(capture.events, default=str)

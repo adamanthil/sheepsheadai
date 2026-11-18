@@ -16,15 +16,41 @@ leaves the process. With one, three paths report:
 Only errors are sent: no tracing or profiling, which keeps the free plan's
 quota for what matters. Data collection stays at the SDK's PII-off
 default, so cookies, user identity and client IPs are not attached, and
-request bodies (passwords, emails, chat) are never read.
+request bodies (passwords, emails, chat) are never read. Two further
+defaults would undo that, so both are overridden:
+
+* Stack frames would carry their local variables: a handler's parsed
+  request model (email and password in its repr) and the ASGI scope with
+  the Authorization header. ``include_local_variables`` is off.
+* The websocket handshake's ``Sec-WebSocket-Protocol`` header carries the
+  session token (server.api.auth) and is not one the SDK filters, so
+  ``_drop_session_token`` removes it.
 """
 
 from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 import sentry_sdk
 from sentry_sdk.integrations.asyncio import AsyncioIntegration
 
 from server.config import Settings
+
+if TYPE_CHECKING:
+    from sentry_sdk.types import Event, Hint
+
+# Compared case-insensitively: ASGI lower-cases header names, but nothing
+# here should depend on that.
+_TOKEN_HEADER = "sec-websocket-protocol"
+
+
+def _drop_session_token(event: Event, hint: Hint) -> Event:
+    """Remove the header that carries the websocket session token."""
+    headers = event.get("request", {}).get("headers")
+    if isinstance(headers, dict):
+        for name in [n for n in headers if n.lower() == _TOKEN_HEADER]:
+            del headers[name]
+    return event
 
 
 def init_error_reporting(settings: Settings) -> bool:
@@ -38,6 +64,8 @@ def init_error_reporting(settings: Settings) -> bool:
         # event names the exact deploy it came from.
         release=settings.sentry_release or None,
         max_request_body_size="never",
+        include_local_variables=False,
+        before_send=_drop_session_token,
         integrations=[AsyncioIntegration()],
     )
     return True
