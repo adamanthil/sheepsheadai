@@ -12,9 +12,12 @@ import * as Sentry from "@sentry/nextjs";
 import { ApiFailure } from "./apiError";
 
 // What fetch rejects with when no response arrives (Chrome, Safari,
-// Firefox). Any other TypeError is a bug.
+// Firefox). Any other TypeError is a bug. The Sentry SDK can append the
+// request's host, as in "Failed to fetch (example.com)"; that is turned off
+// in instrumentation-client.ts, but a network failure must not start
+// looking like a bug if the setting is lost.
 const NETWORK_FAILURE =
-  /^(Failed to fetch|Load failed|NetworkError when attempting to fetch resource\.?)$/;
+  /^(Failed to fetch|Load failed|NetworkError when attempting to fetch resource\.?)( \([^()\s]+\))?$/;
 
 export function isExpectedFailure(err: unknown): boolean {
   if (err instanceof ApiFailure) return true;

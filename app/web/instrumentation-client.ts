@@ -17,6 +17,10 @@ Sentry.init({
   // forwarded.
   enabled: process.env.NODE_ENV === "production",
   dataCollection: DATA_COLLECTION,
+  // The default rewrites a failed fetch's message in place to "Failed to
+  // fetch (host)", for every catch in the app to see. Keep errors as the
+  // browser threw them; the host is still added to what Sentry receives.
+  enhanceFetchErrorMessages: "report-only",
 });
 
 export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;

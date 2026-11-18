@@ -16,6 +16,13 @@ describe("isExpectedFailure", () => {
     expect(isExpectedFailure(new DOMException("aborted", "AbortError"))).toBe(
       true,
     );
+    // As the Sentry SDK's fetch instrumentation can rewrite them.
+    expect(
+      isExpectedFailure(new TypeError("Failed to fetch (sheepshead.example)")),
+    ).toBe(true);
+    expect(
+      isExpectedFailure(new TypeError("Load failed (localhost:9000)")),
+    ).toBe(true);
     expect(isExpectedFailure(new AccountError("network", 0))).toBe(true);
     expect(isExpectedFailure(new HttpStatusError(502))).toBe(true);
   });
@@ -29,6 +36,9 @@ describe("isExpectedFailure", () => {
     expect(isExpectedFailure(new SyntaxError("Unexpected token <"))).toBe(
       false,
     );
+    expect(
+      isExpectedFailure(new TypeError("Failed to fetch the lobby (oops)")),
+    ).toBe(false);
     expect(isExpectedFailure(new Error("boom"))).toBe(false);
     expect(isExpectedFailure("a string")).toBe(false);
   });
