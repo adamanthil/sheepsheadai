@@ -1,3 +1,7 @@
+// The config entry point: the package root resolves to CommonJS under Node,
+// whose named exports an ES module config cannot import.
+import { withSentryConfig } from "@sentry/nextjs/config";
+
 const isProd = process.env.NODE_ENV === "production";
 
 // The API may be same-origin (behind the reverse proxy) or a separate origin
@@ -67,4 +71,25 @@ const nextConfig = {
   },
 };
 
-export default nextConfig;
+// Source maps reach Sentry only from a build that has SENTRY_AUTH_TOKEN (the
+// CI image build, as a BuildKit secret; see Dockerfile): they are uploaded,
+// then deleted, so the image never serves them. Any other build skips the
+// upload. The release is the image's content tag, as the api's is.
+const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN;
+
+export default withSentryConfig(nextConfig, {
+  org: "sheepshead-ai",
+  project: "sheepshead-web",
+  authToken: sentryAuthToken,
+  // No commit association: the image builds from app/web alone, without git.
+  release: {
+    name: process.env.NEXT_DEPLOYMENT_ID || undefined,
+    setCommits: false,
+  },
+  sourcemaps: {
+    disable: !sentryAuthToken,
+    deleteSourcemapsAfterUpload: true,
+  },
+  silent: !sentryAuthToken,
+  telemetry: false,
+});
