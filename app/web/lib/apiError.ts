@@ -42,3 +42,17 @@ export function fetchFailureMessage(err: unknown, fallback: string): string {
   }
   return err instanceof Error ? err.message : fallback;
 }
+
+/** A failed API call whose cause lies outside the browser's code: no
+ * response, or one that wasn't ok. The api reports its own 5xx errors and a
+ * 4xx is an answer, so lib/reportCaught.ts doesn't report these. */
+export class ApiFailure extends Error {}
+
+/** An API response that wasn't ok, thrown where a caller handles every
+ * failure in one catch. */
+export class HttpStatusError extends ApiFailure {
+  constructor(readonly status: number) {
+    super(`HTTP ${status}`);
+    this.name = "HttpStatusError";
+  }
+}

@@ -6,11 +6,13 @@
  * the next table join mints a fresh guest. */
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch, getSessionToken } from "./api";
+import { ApiFailure } from "./apiError";
+import { reportCaught } from "./reportCaught";
 import { STORAGE_KEYS } from "./storage";
 import type { AccountMe, AccountSession, HandHistory } from "./types";
 
 /** A failed account call, carrying the server's `detail` code. */
-export class AccountError extends Error {
+export class AccountError extends ApiFailure {
   constructor(
     readonly code: string,
     readonly status: number,
@@ -176,7 +178,8 @@ export function useAccount(): UseAccount {
     }
     try {
       setMe(await call<AccountMe>("/api/account/me"));
-    } catch {
+    } catch (err) {
+      reportCaught(err, "account me");
       setMe(null);
     }
   }, []);

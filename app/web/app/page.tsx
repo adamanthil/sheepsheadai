@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import type { TableSummary } from "../lib/types";
 import { tableRoute } from "../lib/tableRoute";
 import { apiFetch, storeSessionToken } from "../lib/api";
+import { HttpStatusError } from "../lib/apiError";
+import { reportCaught } from "../lib/reportCaught";
 import { STORAGE_KEYS } from "../lib/storage";
 import { createAndJoinTable } from "../lib/createTable";
 import { PlayingCard, ds } from "../lib/ds";
@@ -58,10 +60,12 @@ export default function HomePage() {
     if (showLoading) setLoading(true);
     try {
       const res = await apiFetch("/api/tables");
+      if (!res.ok) throw new HttpStatusError(res.status);
       const data = await res.json();
       setTables(data);
-    } catch {
+    } catch (err) {
       // Backend unreachable — show an empty lobby rather than throwing.
+      reportCaught(err, "lobby tables");
       setTables([]);
     } finally {
       if (showLoading) setLoading(false);

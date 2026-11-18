@@ -13,6 +13,7 @@ import {
   usernameAvailable,
 } from "../../../lib/account";
 import type { AccountMe } from "../../../lib/types";
+import { reportCaught } from "../../../lib/reportCaught";
 import styles from "../account.module.css";
 import Field from "./Field";
 
@@ -148,7 +149,8 @@ function useUsernameAvailability(username: string): Availability {
       try {
         const ok = await usernameAvailable(name);
         if (!cancelled) setState(ok ? "available" : "taken");
-      } catch {
+      } catch (err) {
+        reportCaught(err, "username check");
         if (!cancelled) setState("idle");
       }
     }, 400);

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { TableSummary } from "../types";
 import { apiFetch } from "../api";
+import { reportCaught } from "../reportCaught";
 import { STORAGE_KEYS } from "../storage";
 
 const SHIRE_TOWNS = [
@@ -98,8 +99,9 @@ export function useIdentity(tables: TableSummary[]): UseIdentityReturn {
           window.localStorage.setItem(STORAGE_KEYS.displayName, data.name);
           setDisplayNameInput((prev) => prev || data.name);
         }
-      } catch {
+      } catch (err) {
         // Network failure — keep the stored id; the user can still play.
+        reportCaught(err, "identity lookup");
       }
     })();
     return () => {
@@ -133,8 +135,9 @@ export function useIdentity(tables: TableSummary[]): UseIdentityReturn {
         body: JSON.stringify({ name: typedName }),
       });
       window.localStorage.setItem(STORAGE_KEYS.displayName, typedName);
-    } catch {
+    } catch (err) {
       // best-effort; live display name still works via display_name field
+      reportCaught(err, "display name save");
     }
   };
 

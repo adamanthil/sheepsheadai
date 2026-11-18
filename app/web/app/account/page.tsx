@@ -4,6 +4,8 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { ds } from "../../lib/ds";
 import { apiFetch } from "../../lib/api";
+import { HttpStatusError } from "../../lib/apiError";
+import { reportCaught } from "../../lib/reportCaught";
 import { useAccount } from "../../lib/account";
 import type {
   AccountRunningScore,
@@ -95,13 +97,14 @@ function Verified({ username }: { username: string }) {
     const load = async <T,>(path: string, set: (got: ForMode<T>) => void) => {
       try {
         const res = await apiFetch(`${path}?mode=${mode}`);
-        if (!res.ok) throw new Error(String(res.status));
+        if (!res.ok) throw new HttpStatusError(res.status);
         const data = (await res.json()) as T;
         if (!cancelled) {
           set({ mode, data });
           setFailed(false);
         }
-      } catch {
+      } catch (err) {
+        reportCaught(err, "account stats");
         if (!cancelled) setFailed(true);
       }
     };

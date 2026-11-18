@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import type { ChatMessage, TableStateMsg, TableView } from "../types";
 import { apiFetch, wsSubprotocols, wsUrl } from "../api";
+import { HttpStatusError } from "../apiError";
+import { reportCaught } from "../reportCaught";
 import { STORAGE_KEYS } from "../storage";
 import { parseWsMessage } from "../wsMessages";
 import { diffCallouts } from "../callouts";
@@ -123,10 +125,12 @@ export function useTableSocket(
     (async () => {
       try {
         const res = await apiFetch("/api/actions");
+        if (!res.ok) throw new HttpStatusError(res.status);
         const data = await res.json();
         setActionLookup(data.action_lookup);
       } catch (err) {
         console.warn("action lookup fetch failed", err);
+        reportCaught(err, "action lookup");
         callbacksRef.current?.onError?.("Backend unreachable");
       }
     })();
@@ -398,6 +402,7 @@ export function useTableSocket(
       } catch (err) {
         withdraw();
         console.warn("action POST failed", err);
+        reportCaught(err, "action post");
         callbacksRef.current?.onError?.("Action failed: network error");
         return false;
       }
@@ -425,6 +430,7 @@ export function useTableSocket(
         return true;
       } catch (err) {
         console.warn(`${path} POST failed`, err);
+        reportCaught(err, `${path} post`);
         callbacksRef.current?.onError?.(`${what}: network error`);
         return false;
       }
@@ -511,6 +517,7 @@ export function useTableSocket(
       );
     } catch (err) {
       console.error("Failed to send chat message:", err);
+      reportCaught(err, "chat send");
     }
   }, []);
 

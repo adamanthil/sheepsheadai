@@ -4,6 +4,8 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { ds } from "../../lib/ds";
 import { apiFetch } from "../../lib/api";
+import { HttpStatusError } from "../../lib/apiError";
+import { reportCaught } from "../../lib/reportCaught";
 import { useAccount } from "../../lib/account";
 import type {
   Leaderboard,
@@ -184,13 +186,14 @@ export default function LeaderboardPage() {
         const res = await apiFetch(
           `/api/leaderboard?board=${view.board}&sort=${view.sort}&period=${view.period}`,
         );
-        if (!res.ok) throw new Error(String(res.status));
+        if (!res.ok) throw new HttpStatusError(res.status);
         const data = (await res.json()) as Leaderboard;
         if (!cancelled) {
           setBoard(data);
           setFailed(false);
         }
-      } catch {
+      } catch (err) {
+        reportCaught(err, "leaderboard");
         if (!cancelled) setFailed(true);
       }
     })();
