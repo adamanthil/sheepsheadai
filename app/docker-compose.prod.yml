@@ -83,6 +83,10 @@ services:
       PUBLIC_BASE_URL: https://${DOMAIN:?set DOMAIN}
       RESEND_API_KEY: ${RESEND_API_KEY:?set RESEND_API_KEY}
       EMAIL_FROM: ${EMAIL_FROM:?set EMAIL_FROM}
+      # Error reporting (server/error_reporting.py); unset = off. The release
+      # is the image's content tag, so an event names its deploy.
+      SENTRY_DSN: ${SENTRY_DSN_SERVER:-}
+      SENTRY_RELEASE: ${API_TAG}
     volumes:
       - ${MODEL_FILE:?set MODEL_FILE to the checkpoint path on the host}:/models/model.pt:ro
     depends_on:
@@ -93,6 +97,12 @@ services:
     image: ghcr.io/adamanthil/sheepshead-web:${WEB_TAG:?set WEB_TAG (deploy.sh writes it)}
     restart: unless-stopped
     logging: *logging
+    environment:
+      # Error reporting for the Next server and, through its /monitoring
+      # tunnel, the browser (web/lib/errorReporting.ts); unset = off. Read at
+      # runtime, so the same image serves any DSN.
+      SENTRY_DSN: ${SENTRY_DSN_WEB:-}
+      SENTRY_ENVIRONMENT: production
 
   caddy:
     image: caddy:2.11.7

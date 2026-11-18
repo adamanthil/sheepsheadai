@@ -168,6 +168,17 @@ coreutils-from-gnu` switches back.
     counts beside the live database's (live may be a little higher: rows
     added since the dump).
 13. An uptime monitor (UptimeRobot, free) on `https://$DOMAIN/health`.
+14. Error reporting (Sentry, free Developer plan; org `sheepshead-ai`).
+    Set `SENTRY_DSN_SERVER` and `SENTRY_DSN_WEB` in `.env.prod` to the
+    DSNs of the `sheepshead-server` and `sheepshead-web` projects
+    (`sentry dsn list sheepshead-ai/<project>`, or Settings → Projects →
+    Client Keys). Empty turns reporting off. The api reports unhandled
+    exceptions and every `logging.error`/`logging.exception`
+    (`app/server/error_reporting.py`); the web container reports its own
+    errors and forwards the browser's through `/monitoring`
+    (`app/web/lib/errorReporting.ts`). In each project's settings, turn on
+    "Prevent Storing of IP Addresses" and an alert rule that emails on a
+    new issue.
 
 On GitHub:
 
@@ -179,12 +190,17 @@ On GitHub:
    `DEPLOY_KNOWN_HOSTS` (the `ssh-keyscan` output). Optionally require a
    reviewer at first.
 3. Set the repository variable `DEPLOY_ENABLED` to `true`.
+4. Add the repository secret `SENTRY_AUTH_TOKEN`: a Sentry organization
+   auth token (Settings → Developer Settings → Organization Tokens), which
+   the web image build uses to upload source maps so browser stack traces
+   are readable. Without it the build still succeeds, minified.
 
 ## Operational notes
 
 - Logs: on the box,
   `docker compose --env-file app/deploy/.env.prod --env-file app/deploy/.env.deploy -f app/docker-compose.prod.yml logs -f api`
-  (JSON). Each container keeps at most 3 × 10 MB.
+  (JSON). Each container keeps at most 3 × 10 MB. Errors also go to
+  Sentry (setup step 14), tagged with the image tag as the release.
 - `GET /health` returns `status`, `db`, `model` and `sampling`.
   `db: false` with a 200 means Postgres is down but the process is alive.
 - Rate limits and connection caps are in-process (see
