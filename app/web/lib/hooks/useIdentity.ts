@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { TableSummary } from "../types";
 import { apiFetch } from "../api";
+import { useAccount } from "../account";
 import { reportCaught } from "../reportCaught";
 import { STORAGE_KEYS } from "../storage";
 
@@ -52,9 +53,11 @@ export interface UseIdentityReturn {
 
 export function useIdentity(tables: TableSummary[]): UseIdentityReturn {
   const [name, setName] = useState<string>("");
-  const [displayPlaceholder, setDisplayPlaceholder] = useState<string | null>(
-    null,
-  );
+  const [hobbitName, setHobbitName] = useState<string | null>(null);
+  // An account holder who hasn't typed a name sits down under their
+  // username rather than a random hobbit; typing a name still overrides it.
+  const { me } = useAccount();
+  const displayPlaceholder = me?.account?.username ?? hobbitName;
   const [displayNameInput, setDisplayNameInput] = useState("");
   const displayName = displayNameInput.trim() || displayPlaceholder || "";
   const [hasCustomName, setHasCustomName] = useState(false);
@@ -65,10 +68,8 @@ export function useIdentity(tables: TableSummary[]): UseIdentityReturn {
   }, []);
 
   useEffect(() => {
-    if (!displayPlaceholder) {
-      setDisplayPlaceholder(getRandomItem(HOBBIT_NAMES));
-    }
-  }, [displayPlaceholder]);
+    setHobbitName(getRandomItem(HOBBIT_NAMES));
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
