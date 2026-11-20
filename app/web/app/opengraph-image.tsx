@@ -9,7 +9,16 @@ import { ImageResponse } from "next/og";
 
 export const alt =
   "Sheepshead AI: play live with friends, strangers, and a deep neural network.";
-export const size = { width: 1200, height: 630 };
+
+// Designed at 1200×630, the size link previews are specified in, and
+// rendered at twice that so the card stays sharp on high-density screens.
+// Every length goes through px() rather than a scale() transform on the
+// whole layout: Satori snaps boxes to whole layout pixels, and a transform
+// would double that snap, enough to set a corner's suit visibly off-centre
+// under its rank.
+const SCALE = 2;
+const px = (n: number) => n * SCALE;
+export const size = { width: px(1200), height: px(630) };
 export const contentType = "image/png";
 
 const PAPER = "#f3f1ea";
@@ -26,41 +35,57 @@ const font = (file: string) =>
 
 type Suit = "C" | "S" | "H" | "D";
 
-// Neither face has the suit glyphs (the site's cards borrow them from system
-// fallback fonts), so the pips are drawn. 100×100 box, pip centred.
-const SUIT_PATHS: Record<Suit, string> = {
-  D: "M50 2 L86 50 L50 98 L14 50 Z",
-  H: "M50 94 C20 72 4 52 4 31 C4 15 16 5 29 5 C39 5 46 11 50 21 C54 11 61 5 71 5 C84 5 96 15 96 31 C96 52 80 72 50 94 Z",
-  S: "M50 3 C78 28 96 44 96 61 C96 75 85 83 73 83 C64 83 57 79 53 72 C54 83 58 91 66 97 L34 97 C42 91 46 83 47 72 C43 79 36 83 27 83 C15 83 4 75 4 61 C4 44 22 28 50 3 Z",
-  C: "M45 56 C45 78 41 90 33 97 L67 97 C59 90 55 78 55 56 Z",
+// The suit glyphs come from Sheepshead Suits, the four-glyph font the site
+// itself uses for them (see app/layout.tsx), so the CSS from
+// PlayingCard.module.css below lays the card out as the site does. Satori
+// draws text as vector outlines, so the pips stay as sharp as the ranks
+// through the cards' rotation.
+const SUIT_GLYPH: Record<Suit, string> = {
+  C: "♣",
+  S: "♠",
+  H: "♥",
+  D: "♦",
 };
 
-// The club's three leaves, drawn over its stem.
-const CLUB_LEAVES = [
-  [50, 26],
-  [27, 57],
-  [73, 57],
-] as const;
+// The suit glyphs' ink sits below their line-box centre, and their pointed
+// bottoms make them read lower still, so the centre pip is lifted, the heart
+// and diamond (drawn higher in the em-box) less than the others. As in
+// PlayingCard.module.css, in em.
+const CENTER_LIFT: Record<Suit, number> = {
+  C: 0.12,
+  S: 0.12,
+  H: 0.03,
+  D: 0.05,
+};
 
-function Pip({ suit, px }: { suit: Suit; px: number }) {
-  const red = suit === "H" || suit === "D";
-  return (
-    <svg width={px} height={px} viewBox="0 0 100 100">
-      <path d={SUIT_PATHS[suit]} fill={red ? CARD_RED : INK} />
-      {suit === "C" &&
-        CLUB_LEAVES.map(([cx, cy]) => (
-          <circle key={cx} cx={cx} cy={cy} r={22} fill={INK} />
-        ))}
-    </svg>
-  );
-}
+// How far each rank's ink sits right of its advance box's centre in
+// Instrument Serif, in em (the J's hook swings left, the 1 of 10 carries a
+// wide left bearing). The site centres a corner's suit on the rank's box;
+// fractions of a pixel on its cards, but at this size a visible lean, so
+// here the suit is centred on the rank's ink instead.
+const RANK_INK_OFFSET: Record<string, number> = {
+  "7": 0.0069,
+  "8": 0,
+  "9": -0.005,
+  "10": -0.0155,
+  J: -0.0375,
+  Q: 0.02,
+  K: 0.0195,
+  A: 0,
+};
 
-const CARD_W = 150;
+// Sizes are PlayingCard.module.css's fractions of the card width.
+const CARD_W = px(150);
 const CARD_H = CARD_W * 1.45;
+const RANK_SIZE = CARD_W * 0.18;
+const CORNER_SUIT_SIZE = CARD_W * 0.14;
+const CENTER_SUIT_SIZE = CARD_W * 0.5;
+const CORNER_INSET = CARD_W * 0.06;
 
 function Card({ code, angle }: { code: string; angle: number }) {
   const rank = code.slice(0, -1);
   const suit = code.slice(-1) as Suit;
+  const glyph = SUIT_GLYPH[suit];
   const color = suit === "H" || suit === "D" ? CARD_RED : INK;
   const corner = (flip: boolean) => (
     <div
@@ -69,14 +94,27 @@ function Card({ code, angle }: { code: string; angle: number }) {
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
-        gap: 3,
+        gap: px(1),
         ...(flip
-          ? { right: 11, bottom: 9, transform: "rotate(180deg)" }
-          : { left: 11, top: 9 }),
+          ? {
+              right: CORNER_INSET,
+              bottom: CORNER_INSET,
+              transform: "rotate(180deg)",
+            }
+          : { left: CORNER_INSET, top: CORNER_INSET }),
       }}
     >
-      <div style={{ fontSize: 32, lineHeight: 0.9 }}>{rank}</div>
-      <Pip suit={suit} px={20} />
+      <div style={{ fontSize: RANK_SIZE, lineHeight: 0.9 }}>{rank}</div>
+      <div
+        style={{
+          fontFamily: "Sheepshead Suits",
+          fontSize: CORNER_SUIT_SIZE,
+          lineHeight: 1,
+          transform: `translateX(${RANK_INK_OFFSET[rank] * RANK_SIZE}px)`,
+        }}
+      >
+        {glyph}
+      </div>
     </div>
   );
   return (
@@ -93,9 +131,9 @@ function Card({ code, angle }: { code: string; angle: number }) {
         alignItems: "center",
         justifyContent: "center",
         background: "#ffffff",
-        border: `3px solid ${CARD_EDGE}`,
-        borderRadius: 7,
-        boxShadow: "0 6px 18px rgba(15, 15, 12, 0.12)",
+        border: `${px(3)}px solid ${CARD_EDGE}`,
+        borderRadius: px(7),
+        boxShadow: `0 ${px(6)}px ${px(18)}px rgba(15, 15, 12, 0.12)`,
         color,
         fontFamily: "Instrument Serif",
         transform: `rotate(${angle}deg)`,
@@ -103,7 +141,17 @@ function Card({ code, angle }: { code: string; angle: number }) {
       }}
     >
       {corner(false)}
-      <Pip suit={suit} px={62} />
+      <div
+        style={{
+          fontFamily: "Sheepshead Suits",
+          fontSize: CENTER_SUIT_SIZE,
+          lineHeight: 1,
+          opacity: 0.92,
+          transform: `translateY(${-CENTER_LIFT[suit] * CENTER_SUIT_SIZE}px)`,
+        }}
+      >
+        {glyph}
+      </div>
       {corner(true)}
     </div>
   );
@@ -114,11 +162,12 @@ const HAND = ["QC", "JS", "JD", "AH", "10H", "KC"];
 const SPREAD = 9;
 
 export default async function Image() {
-  const [serif, serifItalic, geist, geistMedium] = await Promise.all([
+  const [serif, serifItalic, geist, geistMedium, suits] = await Promise.all([
     font("InstrumentSerif-Regular.ttf"),
     font("InstrumentSerif-Italic.ttf"),
     font("Geist-Regular.ttf"),
     font("Geist-Medium.ttf"),
+    font("SheepsheadSuits-Regular.ttf"),
   ]);
 
   return new ImageResponse(
@@ -128,7 +177,7 @@ export default async function Image() {
         height: "100%",
         display: "flex",
         alignItems: "center",
-        padding: "56px 72px",
+        padding: `${px(56)}px ${px(72)}px`,
         background: PAPER,
         color: INK,
       }}
@@ -138,10 +187,10 @@ export default async function Image() {
           style={{
             fontFamily: "Geist",
             fontWeight: 500,
-            fontSize: 15,
-            letterSpacing: 2.7,
+            fontSize: px(15),
+            letterSpacing: px(2.7),
             color: MUTED,
-            marginBottom: 26,
+            marginBottom: px(26),
           }}
         >
           THE CARD ROOM · WISCONSIN
@@ -149,9 +198,9 @@ export default async function Image() {
         <div
           style={{
             fontFamily: "Instrument Serif",
-            fontSize: 150,
+            fontSize: px(150),
             lineHeight: 0.92,
-            letterSpacing: -3,
+            letterSpacing: px(-3),
           }}
         >
           Sheepshead
@@ -160,15 +209,15 @@ export default async function Image() {
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 22,
-            marginTop: 8,
+            gap: px(22),
+            marginTop: px(8),
           }}
         >
           <div
             style={{
               fontFamily: "Instrument Serif",
               fontStyle: "italic",
-              fontSize: 88,
+              fontSize: px(88),
               lineHeight: 0.9,
               color: ACCENT,
             }}
@@ -178,20 +227,20 @@ export default async function Image() {
           <div
             style={{
               flex: 1,
-              height: 1.5,
+              height: px(1.5),
               background: RULE_STRONG,
-              marginTop: 14,
+              marginTop: px(14),
             }}
           />
         </div>
         <div
           style={{
             fontFamily: "Geist",
-            fontSize: 26,
+            fontSize: px(26),
             lineHeight: 1.4,
             color: INK_SOFT,
-            marginTop: 34,
-            maxWidth: 560,
+            marginTop: px(34),
+            maxWidth: px(560),
             textWrap: "balance",
           }}
         >
@@ -200,8 +249,8 @@ export default async function Image() {
       </div>
       <div
         style={{
-          width: 470,
-          height: 520,
+          width: px(470),
+          height: px(520),
           position: "relative",
           display: "flex",
         }}
@@ -227,6 +276,12 @@ export default async function Image() {
         },
         { name: "Geist", data: geist, style: "normal", weight: 400 },
         { name: "Geist", data: geistMedium, style: "normal", weight: 500 },
+        {
+          name: "Sheepshead Suits",
+          data: suits,
+          style: "normal",
+          weight: 400,
+        },
       ],
     },
   );
