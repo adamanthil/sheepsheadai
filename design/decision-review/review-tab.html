@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Review tab across hands</title>
+<script src="./prototype-runtime.js"></script>
+<style>x-dc{display:none}</style>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f3f1ea;color:#0e0d0a;font-family:Geist,"Helvetica Neue",system-ui,sans-serif}
+a{color:#0e0d0a}a:hover{color:#1f3b2f}
+button{font-family:inherit}
+</style>
+</helmet>
+<div style="background: #f3f1ea; min-height: 1700px; box-sizing: border-box">
+
+<nav aria-label="Site" style="border-bottom: 1px solid #cfccc0">
+<div style="max-width: 1440px; margin: 0 auto; padding: 0 clamp(16px, 5vw, 80px); height: 46px; display: flex; align-items: center; justify-content: space-between; gap: 16px; box-sizing: border-box">
+<div style="display: flex; align-items: center; gap: clamp(12px, 2.2vw, 28px); overflow-x: auto; white-space: nowrap; font-size: 11px; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase">
+<a href="#" style="color: #6e6c63; text-decoration: none">Lobby</a>
+<a href="#" style="color: #6e6c63; text-decoration: none">Leaderboard</a>
+<a href="#" style="color: #6e6c63; text-decoration: none">About</a>
+<a href="#" style="color: #6e6c63; text-decoration: none">Analyze AI ↗</a>
+</div>
+<a href="#" aria-label="Account: @andrew" style="display: inline-flex; align-items: center; text-decoration: none">
+<span aria-hidden="true" style="width: 26px; height: 26px; border-radius: 50%; background: #1f3b2f; color: #ffffff; display: inline-flex; align-items: center; justify-content: center; font-family: 'Instrument Serif', serif; font-size: 15px; box-shadow: 0 0 0 2px #f3f1ea, 0 0 0 3px #0e0d0a">A</span>
+</a>
+</div>
+</nav>
+
+<div style="max-width: 880px; margin: 0 auto; padding: 20px 16px 64px; box-sizing: border-box">
+<h1 style="font-family: 'Instrument Serif', serif; font-weight: 400; font-size: clamp(40px, 8vw, 64px); line-height: 1; letter-spacing: -0.01em; margin: 28px 0 24px">@andrew</h1>
+
+<nav aria-label="Account" style="display: flex; gap: 24px; border-bottom: 1px solid #cfccc0; margin-bottom: 24px; font-size: 14px; overflow-x: auto; white-space: nowrap">
+<a href="#" style="color: #6e6c63; text-decoration: none; padding-bottom: 8px">Overview</a>
+<a href="Main.dc.html" style="color: #6e6c63; text-decoration: none; padding-bottom: 8px">Hand history</a>
+<a href="#" aria-current="page" style="color: #0e0d0a; text-decoration: none; padding-bottom: 8px; border-bottom: 2px solid #0e0d0a; margin-bottom: -1px">Review</a>
+<a href="#" style="color: #6e6c63; text-decoration: none; padding-bottom: 8px">Settings</a>
+</nav>
+
+<p style="font-size: 15px; line-height: 1.55; color: #2c2b27; margin: 0 0 20px; max-width: 620px">Your decisions, held up against what the model would have done in the same seat with the same cards. Every hand is reviewed once it ends.</p>
+
+<section aria-label="Summary" style="margin-bottom: 48px">
+<div style="border-top: 2px solid #0e0d0a; padding-top: 3px"><div style="border-top: 1px solid #0e0d0a; display: flex; justify-content: space-between; gap: 12px; padding-top: 8px; margin-bottom: 16px; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; font-weight: 500; color: #6e6c63">
+<span>You and the model</span>
+<span>{{hands}} hands reviewed</span>
+</div></div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px 24px; margin-bottom: 28px">
+<div><div style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 500; color: #6e6c63">Same choice</div><div style="font-family: 'Instrument Serif', serif; font-size: 44px; line-height: 1.1">{{agreeAll}}</div><div style="font-size: 12px; color: #2c2b27">of {{openCount}} open decisions</div></div>
+<div><div style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 500; color: #6e6c63">Cost you</div><div style="font-family: 'Instrument Serif', serif; font-size: 44px; line-height: 1.1">{{costlyCount}}</div><div style="font-size: 12px; color: #2c2b27">half a point or more</div></div>
+<div><div style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 500; color: #6e6c63">Beat its choice</div><div style="font-family: 'Instrument Serif', serif; font-size: 44px; line-height: 1.1">{{betterCount}}</div><div style="font-size: 12px; color: #2c2b27">half a point or more</div></div>
+<div><div style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 500; color: #6e6c63">Net score vs. model</div><div style="font-family: 'Instrument Serif', serif; font-size: 44px; line-height: 1.1; color: {{netColor}}">{{net}}</div><div style="font-size: 12px; color: #2c2b27">{{netPerHand}} a hand</div></div>
+</div>
+<div style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 500; color: #6e6c63; margin-bottom: 8px">Same choice, by kind of decision</div>
+<sc-for list="{{byKind}}" as="k" hint-placeholder-count="4">
+<div style="display: grid; grid-template-columns: 110px minmax(0, 1fr) 44px 110px 52px; align-items: center; gap: 12px; padding: 7px 0; border-bottom: 1px solid #cfccc0; font-size: 14px; color: #2c2b27">
+<span>{{k.label}}</span>
+<span style="height: 6px; background: #e7e4d8; display: block"><span style="display: block; height: 6px; width: {{k.width}}; background: #1f3b2f"></span></span>
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; text-align: right">{{k.pct}}</span>
+<span style="font-size: 12px; color: #6e6c63; text-align: right">{{k.count}}</span>
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; text-align: right">{{k.net}}</span>
+</div>
+</sc-for>
+<p style="font-size: 12px; color: #6e6c63; margin: 8px 0 0">The last column is your net expected score against the model’s choices for that kind of decision.</p>
+</section>
+
+<section aria-label="Largest differences" style="margin-bottom: 48px">
+<div style="border-top: 2px solid #0e0d0a; padding-top: 3px"><div style="border-top: 1px solid #0e0d0a; display: flex; justify-content: space-between; gap: 12px; padding-top: 8px; margin-bottom: 16px; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; font-weight: 500; color: #6e6c63">
+<span>Largest differences</span>
+<span>Points of expected score · {{hands}} reviewed hands</span>
+</div></div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 10px 16px; margin-bottom: 8px">
+<div role="group" aria-label="Direction" style="display: inline-flex; border: 1px solid #a3a094; border-radius: 3px; overflow: hidden">
+<button type="button" aria-pressed="true" style="font-size: 12px; padding: 6px 10px; border: none; background: #0e0d0a; color: #f3f1ea; cursor: pointer">Cost you most · {{costlyCount}}</button>
+<button type="button" aria-pressed="false" style="font-size: 12px; padding: 6px 10px; border: none; border-left: 1px solid #a3a094; background: transparent; color: #2c2b27; cursor: pointer">Beat the model's choice · {{betterCount}}</button>
+</div>
+<div role="group" aria-label="Decision type" style="display: inline-flex; border: 1px solid #a3a094; border-radius: 3px; overflow: hidden">
+<button type="button" aria-pressed="true" style="font-size: 12px; padding: 6px 10px; border: none; background: #0e0d0a; color: #f3f1ea; cursor: pointer">All</button>
+<button type="button" aria-pressed="false" style="font-size: 12px; padding: 6px 10px; border: none; border-left: 1px solid #a3a094; background: transparent; color: #2c2b27; cursor: pointer">Pick</button>
+<button type="button" aria-pressed="false" style="font-size: 12px; padding: 6px 10px; border: none; border-left: 1px solid #a3a094; background: transparent; color: #2c2b27; cursor: pointer">Bury</button>
+<button type="button" aria-pressed="false" style="font-size: 12px; padding: 6px 10px; border: none; border-left: 1px solid #a3a094; background: transparent; color: #2c2b27; cursor: pointer">Play</button>
+</div>
+</div>
+
+<sc-for list="{{turns}}" as="t" hint-placeholder-count="5">
+<a href="HandReview.dc.html" style="display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; align-items: center; gap: 16px; padding: 14px 0; border-bottom: 1px solid #cfccc0; text-decoration: none">
+<span style="font-family: 'Instrument Serif', serif; font-size: 40px; line-height: 1; color: #b3331e">{{t.swing}}</span>
+<span style="min-width: 0">
+<span style="display: block; font-family: 'Instrument Serif', serif; font-size: 22px; line-height: 1.15; color: #0e0d0a">{{t.what}}</span>
+<span style="display: block; font-size: 13px; color: #6e6c63; margin-top: 3px">{{t.model}} · <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px">{{t.when}} · {{t.table}}</span></span>
+</span>
+<span style="font-size: 10px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; padding: 3px 7px 2px; border-radius: 2px; border: 1px solid #cfccc0; color: #6e6c63; white-space: nowrap">{{t.kind}}</span>
+</a>
+</sc-for>
+
+<p style="font-size: 13px; line-height: 1.5; color: #6e6c63; margin: 16px 0 0">Cost is the model's expected score after your choice, less its expected score after its own, in game points. Each is played forward to your next decision with the cards as dealt; a pick is averaged over every possible blind. Differences under half a point count as about even and are left off this list ({{closeCount}} so far).</p>
+</section>
+
+<section aria-label="Picking">
+<div style="border-top: 2px solid #0e0d0a; padding-top: 3px"><div style="border-top: 1px solid #0e0d0a; display: flex; justify-content: space-between; gap: 12px; padding-top: 8px; margin-bottom: 16px; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; font-weight: 500; color: #6e6c63">
+<span>Picking</span>
+<span>{{pickCount}} pick decisions</span>
+</div></div>
+
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px 24px; margin-bottom: 24px">
+<div>
+<div style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 500; color: #6e6c63">Same choice</div>
+<div style="font-family: 'Instrument Serif', serif; font-size: 44px; line-height: 1.1">{{pickAgree}}</div>
+</div>
+<div>
+<div style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 500; color: #6e6c63">You picked, it passes</div>
+<div style="font-family: 'Instrument Serif', serif; font-size: 44px; line-height: 1.1">{{pickedModelPasses}}</div>
+</div>
+<div>
+<div style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 500; color: #6e6c63">You passed, it picks</div>
+<div style="font-family: 'Instrument Serif', serif; font-size: 44px; line-height: 1.1">{{passedModelPicks}}</div>
+</div>
+<div>
+<div style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 500; color: #6e6c63">Score on those picks</div>
+<div style="font-family: 'Instrument Serif', serif; font-size: 44px; line-height: 1.1; color: {{scoreOnThoseColor}}">{{scoreOnThose}}</div>
+</div>
+</div>
+
+<div role="group" aria-label="Disagreements shown" style="display: inline-flex; max-width: 100%; overflow-x: auto; border: 1px solid #a3a094; border-radius: 3px; margin-bottom: 16px">
+<button type="button" aria-pressed="true" style="font-size: 12px; padding: 6px 10px; border: none; background: #0e0d0a; color: #f3f1ea; cursor: pointer; white-space: nowrap">Picked, model passes · {{pickedModelPasses}}</button>
+<button type="button" aria-pressed="false" style="font-size: 12px; padding: 6px 10px; border: none; border-left: 1px solid #a3a094; background: transparent; color: #2c2b27; cursor: pointer; white-space: nowrap">Passed, model picks · {{passedModelPicks}}</button>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px">
+<sc-for list="{{picks}}" as="p" hint-placeholder-count="4">
+<article style="background: #ffffff; border: 1px solid #cfccc0; border-radius: 4px; box-shadow: 0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05); padding: 16px; display: flex; flex-direction: column; gap: 14px; min-width: 0">
+<div style="display: flex; justify-content: space-between; gap: 12px; font-size: 12px; color: #6e6c63">
+<span style="font-family: 'JetBrains Mono', monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{p.when}} · {{p.table}}</span>
+<span style="font-family: 'JetBrains Mono', monospace; font-weight: 600; color: {{p.resultColor}}; white-space: nowrap">{{p.result}}</span>
+</div>
+<div style="display: flex; gap: 5px">
+<sc-for list="{{p.cards}}" as="c" hint-placeholder-count="6">
+<span style="width: 40px; height: 58px; background: #ffffff; border: 1px solid #d5d2c4; border-radius: 3px; box-shadow: 0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05); display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-family: 'Instrument Serif', serif; line-height: 1; color: {{c.color}}">
+<span style="font-size: 19px">{{c.rank}}</span>
+<span style="font-size: 16px">{{c.sym}}</span>
+</span>
+</sc-for>
+</div>
+<div>
+<div style="display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: #2c2b27; margin-bottom: 6px">
+<span>{{p.seat}} · model picks</span>
+<span style="font-family: 'JetBrains Mono', monospace">{{p.pct}}</span>
+</div>
+<div aria-hidden="true" style="height: 4px; background: #ecebe2"><div style="width: {{p.pct}}; height: 4px; background: #1f3b2f"></div></div>
+</div>
+<div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; border-top: 1px solid #cfccc0; padding-top: 4px">
+<span style="font-size: 13px; color: #2c2b27">Expected score <span style="font-family: 'JetBrains Mono', monospace; font-weight: 600; color: {{p.swingColor}}">{{p.swing}}</span></span>
+<a href="HandReview.dc.html" style="font-size: 13px; text-underline-offset: 3px; min-height: 44px; display: inline-flex; align-items: center; white-space: nowrap">Review hand →</a>
+</div>
+</article>
+</sc-for>
+</div>
+
+</section>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":1700}}'>
+class Component extends DCLogic {
+renderVals() {
+var D = {"hands": 160, "pickCount": 78, "pickAgree": "94%", "pickedModelPasses": 3, "passedModelPicks": 2, "scoreOnThose": "0", "scoreOnThoseColor": "#1d6b42", "picks": [{"when": "Nov 14", "table": "Deephallow", "seat": "Seat 5", "cards": [{"rank": "Q", "sym": "♦", "color": "#b3331e", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "J", "sym": "♠", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "8", "sym": "♦", "color": "#b3331e", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "K", "sym": "♠", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "10", "sym": "♥", "color": "#b3331e", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "7", "sym": "♥", "color": "#b3331e", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}], "pct": "26%", "result": "+4", "resultColor": "#1d6b42", "swing": "pick −1.3 · pass 0.0", "swingColor": "#b3331e"}, {"when": "Nov 11", "table": "Tuckborough", "seat": "Seat 1", "cards": [{"rank": "Q", "sym": "♥", "color": "#b3331e", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "J", "sym": "♥", "color": "#b3331e", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "10", "sym": "♦", "color": "#b3331e", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "9", "sym": "♦", "color": "#b3331e", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "9", "sym": "♠", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "7", "sym": "♥", "color": "#b3331e", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}], "pct": "2%", "result": "+4", "resultColor": "#1d6b42", "swing": "pick −0.3 · pass +0.5", "swingColor": "#b3331e"}, {"when": "Nov 7", "table": "Frogmorton", "seat": "Seat 2", "cards": [{"rank": "Q", "sym": "♠", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "Q", "sym": "♥", "color": "#b3331e", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "8", "sym": "♦", "color": "#b3331e", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "8", "sym": "♣", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "10", "sym": "♠", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "8", "sym": "♥", "color": "#b3331e", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}], "pct": "42%", "result": "−8", "resultColor": "#b3331e", "swing": "pick 0.0 · pass +0.3", "swingColor": "#2c2b27"}], "turns": [{"swing": "−11.9", "what": "Led the 8♦", "model": "Model leads the J♦, 90%", "when": "Nov 14", "table": "Deephallow", "kind": "Trick 5"}, {"swing": "−5.7", "what": "Played the K♦", "model": "Model plays the J♠, 52%", "when": "Nov 10", "table": "Michel Delving", "kind": "Trick 1"}, {"swing": "−3.7", "what": "Led the Q♣", "model": "Model leads the K♦, 100%", "when": "Nov 14", "table": "Deephallow", "kind": "Trick 1"}, {"swing": "−3.5", "what": "Led the Q♠", "model": "Model leads the 9♦, 99%", "when": "Nov 10", "table": "Michel Delving", "kind": "Trick 3"}, {"swing": "−2.1", "what": "Played the 8♠", "model": "Model plays the J♥, 84%", "when": "Nov 16", "table": "Nobottle", "kind": "Trick 4"}, {"swing": "−2.1", "what": "Played the Q♥", "model": "Model plays the 10♦, 75%", "when": "Nov 13", "table": "Hobbiton", "kind": "Trick 4"}], "beats": [{"swing": "+2.9", "what": "Played the Q♦", "model": "Model plays the A♦, 79%", "when": "Nov 10", "table": "Michel Delving", "kind": "Trick 4"}, {"swing": "+2.1", "what": "Played the J♣", "model": "Model plays the J♥, 87%", "when": "Nov 14", "table": "Deephallow", "kind": "Trick 1"}, {"swing": "+2.0", "what": "Played the 9♦", "model": "Model plays the 10♦, 96%", "when": "Nov 8", "table": "Bucklebury", "kind": "Trick 3"}], "costlyCount": 49, "closeCount": 162, "betterCount": 28, "openCount": 718, "agreeAll": "67%", "net": "−34.9", "netColor": "#b3331e", "netPerHand": "−0.22", "byKind": [{"label": "Pick or pass", "pct": "94%", "width": "94%", "count": "78 decisions", "net": "+0.8"}, {"label": "Partner call", "pct": "49%", "width": "49%", "count": "35 decisions", "net": "+0.3"}, {"label": "Bury", "pct": "60%", "width": "60%", "count": "35 decisions", "net": "−4.0"}, {"label": "Card play", "pct": "65%", "width": "65%", "count": "569 decisions", "net": "−31.3"}]};
+return D;
+}
+}
+</script>
+</body>
+</html>
