@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useLayoutEffect } from "react";
 import { ds, TypingNote } from "../../../lib/ds";
 import styles from "./ChatPanel.module.css";
 import type { ChatMessage } from "../../../lib/types";
@@ -25,6 +25,9 @@ export interface ChatPanelProps {
   typing?: string[];
 }
 
+/** How near the bottom (px) still counts as "at the bottom". */
+const PIN_SLACK_PX = 48;
+
 export function ChatPanel({
   messages,
   onSendMessage,
@@ -42,17 +45,33 @@ export function ChatPanel({
   const [actionsOpenFor, setActionsOpenFor] = useState<string | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to bottom within the messages container (not the page)
-  useEffect(() => {
-    if (messagesContainerRef.current) {
-      messagesContainerRef.current.scrollTop =
-        messagesContainerRef.current.scrollHeight;
+  // Whether the reader is at the bottom of the messages, so new ones
+  // should keep them there. Scrolling up to read history unpins.
+  const pinnedRef = useRef(true);
+  const handleScroll = () => {
+    const el = messagesContainerRef.current;
+    if (el) {
+      pinnedRef.current =
+        el.scrollHeight - el.scrollTop - el.clientHeight < PIN_SLACK_PX;
     }
-  }, [messages]);
+  };
+
+  // Follow new messages within the container (not the page). Keyed on the
+  // newest message rather than the array, which callers rebuild on every
+  // render (mute filtering), so re-renders don't yank the reader down.
+  const newestId = messages.at(-1)?.id;
+  useLayoutEffect(() => {
+    const el = messagesContainerRef.current;
+    if (el && pinnedRef.current) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [newestId]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (inputValue.trim()) {
+      // Sending a message means you want to see it, wherever you were.
+      pinnedRef.current = true;
       onSendMessage(inputValue.trim());
       setInputValue("");
     }
@@ -83,7 +102,11 @@ export function ChatPanel({
           </div>
         )}
       </div>
-      <div ref={messagesContainerRef} className={styles.messagesContainer}>
+      <div
+        ref={messagesContainerRef}
+        className={styles.messagesContainer}
+        onScroll={handleScroll}
+      >
         {messages.length === 0 ? (
           <div className={styles.emptyMessage}>
             No messages yet. Say hello! 👋
