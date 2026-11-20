@@ -1,0 +1,12 @@
+# Facebook's link-preview crawler is named outright: it asks for an
+# explicit allow, and it cached the prerelease Disallow: / for a while.
+User-Agent: facebookexternalhit
+Allow: /
+
+User-Agent: *
+Allow: /
+Disallow: /api/
+Disallow: /ws/
+Disallow: /health
+Disallow: /openapi.json
+Disallow: /monitoring
