@@ -93,7 +93,7 @@ fi
 "${COMPOSE[@]}" up -d --remove-orphans
 
 # 7. A Caddyfile content change does not recreate caddy (it is a bind
-#    mount); a graceful reload keeps open websockets.
+#    mount of app/deploy/); a graceful reload keeps open websockets.
 git diff --quiet "$PREV_SHA" HEAD -- app/deploy/Caddyfile ||
   "${COMPOSE[@]}" exec -T caddy caddy reload --config /etc/caddy/Caddyfile
 
