@@ -9,8 +9,12 @@
 
 :root {
   /* Font stacks fall back gracefully if a next/font variable is missing. */
-  --font-display: var(--font-instrument-serif), "Times New Roman", serif;
-  --font-ui: var(--font-geist), "Helvetica Neue", system-ui, sans-serif;
+  --font-display:
+    var(--font-suits-display), var(--font-instrument-serif), "Times New Roman",
+    serif;
+  --font-ui:
+    var(--font-suits-ui), var(--font-geist), "Helvetica Neue", system-ui,
+    sans-serif;
   --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
 
   --bg-page: #f3f1ea;

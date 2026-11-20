@@ -1,6 +1,7 @@
 import "./globals.css";
 import Analytics from "./components/Analytics";
 import { Instrument_Serif, Geist, JetBrains_Mono } from "next/font/google";
+import localFont from "next/font/local";
 
 const instrumentSerif = Instrument_Serif({
   weight: "400",
@@ -14,6 +15,44 @@ const geist = Geist({
   subsets: ["latin"],
   variable: "--font-geist",
   display: "swap",
+});
+
+// The card suits (♠♣♥♦) only: none of the faces above has them, so they
+// came from next/font's metric-matched fallbacks, which differ by platform
+// (Times New Roman's or Arial's suits on Mac and Windows, something else on
+// Android). Sheepshead Suits is a four-glyph subset of Liberation Serif, the
+// open Times substitute, so every platform and the link-preview card
+// (opengraph-image.tsx) draw the same suits. Each face leads its stack in
+// globals.css; the unicode-range keeps it off every other character.
+// (next/font needs literal options, so the two calls repeat themselves.)
+// The font file is already drawn the way the Instrument Serif fallback drew
+// Times New Roman's suits: outlines at 83.94%, Instrument Serif's line
+// metrics. So it goes in the display stack as is.
+const suitsDisplay = localFont({
+  src: "../assets/fonts/SheepsheadSuits-Regular.ttf",
+  variable: "--font-suits-display",
+  display: "swap",
+  declarations: [
+    { prop: "unicode-range", value: "U+2660, U+2663, U+2665-2666" },
+  ],
+  adjustFontFallback: false,
+});
+
+// The Geist fallback drew Arial's suits (the same shapes) at 104.76% with
+// Geist's line metrics; scaling the file by 104.76 / 83.94 and overriding
+// its metrics to Geist's (divided back by that scale) keeps them so.
+const suitsUi = localFont({
+  src: "../assets/fonts/SheepsheadSuits-Regular.ttf",
+  variable: "--font-suits-ui",
+  display: "swap",
+  declarations: [
+    { prop: "unicode-range", value: "U+2660, U+2663, U+2665-2666" },
+    { prop: "size-adjust", value: "124.8%" },
+    { prop: "ascent-override", value: "80.53%" },
+    { prop: "descent-override", value: "23.64%" },
+    { prop: "line-gap-override", value: "0%" },
+  ],
+  adjustFontFallback: false,
 });
 
 const jetbrainsMono = JetBrains_Mono({
@@ -82,7 +121,7 @@ export default function RootLayout({
   /** The @modal slot: overlays opened by intercepting routes. */
   modal: React.ReactNode;
 }) {
-  const fontVars = `${instrumentSerif.variable} ${geist.variable} ${jetbrainsMono.variable}`;
+  const fontVars = `${suitsDisplay.variable} ${suitsUi.variable} ${instrumentSerif.variable} ${geist.variable} ${jetbrainsMono.variable}`;
   return (
     <html lang="en" className={fontVars}>
       <body>
