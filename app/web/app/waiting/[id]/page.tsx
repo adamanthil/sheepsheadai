@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import type { Rules, TableSummary } from "../../../lib/types";
 import { apiFetch } from "../../../lib/api";
@@ -59,6 +59,12 @@ export default function WaitingRoom() {
   // Mobile only: the chat is a full screen opened from the menu.
   const [chatOpen, setChatOpen] = useState(false);
 
+  // Whether the socket has delivered the table. It sends the whole table
+  // on connect and on every change, so it is always the newer word: a
+  // fetch that started before someone joined but answers after the socket
+  // must not put back the old seating, which nothing would then correct.
+  const socketHasTable = useRef(false);
+
   async function load() {
     setLoading(true);
     setError(null);
@@ -66,7 +72,7 @@ export default function WaitingRoom() {
       const res = await apiFetch("/api/tables");
       const list: TableInfo[] = await res.json();
       const t = list.find((t) => t.id === params?.id);
-      if (t) {
+      if (t && !socketHasTable.current) {
         setTable(t);
         // Initialize modes from table rules
         const rules = t.rules ?? {};
@@ -105,6 +111,7 @@ export default function WaitingRoom() {
     typists,
   } = useTableSocket(params?.id, clientId, {
     onTableUpdate: (t, hostFlag) => {
+      socketHasTable.current = true;
       setTable(t as TableInfo);
       if (typeof hostFlag === "boolean") setIsHost(hostFlag);
       const rules = t.rules ?? {};
