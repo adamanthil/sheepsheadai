@@ -124,6 +124,12 @@ export default function WaitingRoom() {
       setCallout(msg);
       setTimeout(() => setCallout(null), 1800);
     },
+    // "Server restarting…" before a deploy, or a refused action; held as
+    // long as the table page holds it.
+    onError: (msg) => {
+      setCallout(msg);
+      setTimeout(() => setCallout(null), 2500);
+    },
     onTableClosed: () => setCallout("Table closed"),
   });
 
