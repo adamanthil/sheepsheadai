@@ -285,7 +285,7 @@
 }
 /* House rules, directly under the table name: the same micro-caps voice as
    the column heads, so it reads as what this table *is* rather than as
-   status. The italic .tableSub below carries the changing state. */
+   status. The host line below carries who runs it and whether it's on. */
 .tableRules {
   font-family: var(--font-ui);
   font-size: 10px;
@@ -299,13 +299,6 @@
 .rulesPart {
   white-space: nowrap;
 }
-.tableSub {
-  font-family: var(--font-display);
-  font-style: italic;
-  font-size: 13px;
-  color: var(--muted);
-  margin-top: 2px;
-}
 .players {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
@@ -318,6 +311,54 @@
 .rowAction {
   display: flex;
   justify-content: flex-end;
+}
+/* min-width: 0 lets the name column shrink, so the host line can cut its
+   name short instead of widening the row. */
+.row > :first-child {
+  min-width: 0;
+}
+/* Who hosts, and whether a hand is on: a grid row of its own across the
+   whole entry, so a phone's narrow name column doesn't squeeze it. One
+   line always; only the name gives way, with an ellipsis. */
+.hostLine {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  margin-top: 5px;
+  white-space: nowrap;
+}
+.hostLabel {
+  flex: none;
+  margin-right: -2px;
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.hostName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-display);
+  font-size: 15px;
+  color: var(--ink-soft);
+}
+/* An @username is a handle, set in the UI face like the seat tiles'. */
+.hostAccount {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  letter-spacing: 0.005em;
+}
+.hostStatus {
+  flex: none;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 13px;
+  color: var(--muted);
 }
 .empty {
   color: var(--muted);

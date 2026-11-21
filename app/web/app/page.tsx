@@ -9,7 +9,7 @@ import { HttpStatusError } from "../lib/apiError";
 import { reportCaught } from "../lib/reportCaught";
 import { STORAGE_KEYS } from "../lib/storage";
 import { createAndJoinTable } from "../lib/createTable";
-import { PlayingCard, ds } from "../lib/ds";
+import { AccountSeal, PlayingCard, ds } from "../lib/ds";
 import { allPassModeLabel, partnerModeLabel } from "../lib/rules";
 import { useIdentity } from "../lib/hooks/useIdentity";
 import { useBusy } from "../lib/hooks/useBusy";
@@ -226,13 +226,6 @@ export default function HomePage() {
     // join is redefined every render; the id is what triggers this.
   }, [rejoinId, displayName]);
 
-  const botCount = (t: TableSummary) =>
-    Object.entries(t.seats || {}).reduce((acc, [k, seatName]) => {
-      const isAI =
-        (t.seatIsAI as Record<string, boolean> | undefined)?.[k] ?? false;
-      return acc + (seatName && isAI ? 1 : 0);
-    }, 0);
-
   const humanFilledCount = (t: TableSummary) =>
     Object.entries(t.seats || {}).reduce((acc, [k, seatName]) => {
       const isAI =
@@ -374,7 +367,6 @@ export default function HomePage() {
             ) : (
               tables.map((t) => {
                 const humanFilled = humanFilledCount(t);
-                const bots = botCount(t);
                 const canJoin = humanFilled < 5;
                 const playing = t.status === "playing";
                 return (
@@ -392,16 +384,6 @@ export default function HomePage() {
                           · {allPassModeLabel(t.rules)}
                         </span>
                       </div>
-                      {(playing || bots > 0) && (
-                        <div className={styles.tableSub}>
-                          {[
-                            playing ? "in play" : null,
-                            bots > 0 ? `${bots} AI` : null,
-                          ]
-                            .filter(Boolean)
-                            .join(" · ")}
-                        </div>
-                      )}
                     </div>
                     <div className={styles.players}>
                       {humanFilled}
@@ -423,6 +405,33 @@ export default function HomePage() {
                         </span>
                       )}
                     </div>
+                    {t.host && (
+                      <div className={styles.hostLine}>
+                        <span className={styles.hostLabel}>Host:</span>
+                        {t.hostAccount ? (
+                          <>
+                            <span
+                              className={`${styles.hostName} ${styles.hostAccount}`}
+                              title={t.host}
+                            >
+                              @{t.hostAccount}
+                            </span>
+                            <AccountSeal
+                              username={t.hostAccount}
+                              size={11}
+                              style={{ alignSelf: "center", marginLeft: -2 }}
+                            />
+                          </>
+                        ) : (
+                          <span className={styles.hostName} title={t.host}>
+                            {t.host}
+                          </span>
+                        )}
+                        {playing && (
+                          <span className={styles.hostStatus}>· in play</span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })
