@@ -21,8 +21,8 @@ import styles from "./leaderboard.module.css";
  * doesn't offer them. */
 type ColumnKey = LeaderboardSort | "hands" | "pick_pct";
 const COLUMNS: { key: ColumnKey; label: string; short: string }[] = [
-  { key: "total", label: "Total Score", short: "Total" },
   { key: "sph", label: "Score / hand", short: "Score/h" },
+  { key: "total", label: "Total Score", short: "Total" },
   { key: "win_pct", label: "Win rate", short: "Win" },
   { key: "pick_pct", label: "Pick rate", short: "Pick" },
   { key: "hands", label: "Hands", short: "Hands" },
