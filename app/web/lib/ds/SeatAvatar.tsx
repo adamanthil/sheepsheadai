@@ -1,4 +1,5 @@
 import React from "react";
+import AccountSeal from "./AccountSeal";
 import { TypingBubble } from "./TypingDots";
 
 export type SeatTone = "default" | "picker" | "partner" | "you";
@@ -88,7 +89,7 @@ export default function SeatAvatar({
           AI
         </span>
       )}
-      {!isAI && account && <AccountSeal username={account} size={size} />}
+      {!isAI && account && <CornerSeal username={account} size={size} />}
       {dealer && <DealerButton size={size} />}
       {typing && <TypingBubble name={name} />}
     </div>
@@ -129,44 +130,18 @@ function DealerButton({ size }: { size: number }) {
   );
 }
 
-/** Gold seal marking a seat held by a verified account; hover or a screen
- * reader gives the username. */
-function AccountSeal({ username, size }: { username: string; size: number }) {
-  const d = Math.max(12, Math.round(size * 0.4));
+/** The account seal on the avatar's corner, ringed in the page colour. */
+function CornerSeal({ username, size }: { username: string; size: number }) {
   return (
-    <span
-      role="img"
-      aria-label={`Account @${username}`}
-      title={`@${username}`}
+    <AccountSeal
+      username={username}
+      size={Math.max(12, Math.round(size * 0.4))}
       style={{
         position: "absolute",
         bottom: -3,
         right: -4,
-        width: d,
-        height: d,
-        borderRadius: "50%",
-        background: "var(--gold)",
         border: "1.5px solid var(--bg-page)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
       }}
-    >
-      <svg
-        viewBox="0 0 12 12"
-        width={d * 0.62}
-        height={d * 0.62}
-        aria-hidden="true"
-      >
-        <path
-          d="M2.5 6.3 5 8.6 9.6 3.6"
-          fill="none"
-          stroke="var(--card-paper)"
-          strokeWidth="1.9"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    </span>
+    />
   );
 }

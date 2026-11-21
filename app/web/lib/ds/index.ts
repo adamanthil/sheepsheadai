@@ -2,6 +2,7 @@ export { default as PlayingCard } from "./PlayingCard";
 export type { PlayingCardProps } from "./PlayingCard";
 export { default as CardText } from "./CardText";
 export { default as SeatAvatar } from "./SeatAvatar";
+export { default as AccountSeal } from "./AccountSeal";
 export type { SeatTone } from "./SeatAvatar";
 export { TypingBubble, TypingDots, TypingNote, typingText } from "./TypingDots";
 export { default as Wordmark } from "./Wordmark";
