@@ -144,6 +144,9 @@ export function useTableSocket(
     let disposed = false;
     // Set on a terminal close (kicked, refused): no reconnect of any kind.
     let gaveUp = false;
+    // Set when the server announces a restart: tables live only in its
+    // memory, so the table will be gone when the reconnect gets through.
+    let restarting = false;
     let attempt = 0;
     let timer: ReturnType<typeof setTimeout> | null = null;
 
@@ -168,10 +171,13 @@ export function useTableSocket(
         setTypists([]);
         if (disposed) return;
         if (e.code === TABLE_GONE_WS_CODE) {
-          // The table closed while we were away: forget it so the lobby
-          // doesn't offer to resume it, and leave its dead page.
+          // The table closed while we were away, or with the server's
+          // restart: forget it so the lobby doesn't offer to resume it,
+          // and leave its dead page for the lobby, saying why.
           window.localStorage.removeItem(STORAGE_KEYS.clientId(tableId));
-          window.location.replace("/");
+          window.location.replace(
+            restarting ? "/?notice=restart" : "/?notice=gone",
+          );
           return;
         }
         if (TERMINAL_WS_CODES.has(e.code)) {
@@ -319,6 +325,7 @@ export function useTableSocket(
         } else if (data.type === "server_restart") {
           // Deploy in progress: the socket is about to drop; the reconnect
           // loop keeps retrying until the server is back.
+          restarting = true;
           callbacksRef.current?.onError?.("Server restarting…");
         }
       };

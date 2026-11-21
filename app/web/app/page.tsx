@@ -26,6 +26,9 @@ const LOBBY_POLL_MS = 5000;
 const NOTICES: Record<string, string> = {
   removed: "The host removed you from that table.",
   idle: "That table closed after sitting idle.",
+  restart:
+    "The server restarted for an update, which closed that table. Any hand in progress was played out by the AI.",
+  gone: "That table has closed.",
 };
 
 export default function HomePage() {
