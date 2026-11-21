@@ -12,6 +12,8 @@ export interface WaitingLayoutProps {
   seatItems: SeatInfo[];
   humanCount: number;
   error: string | null;
+  /** Calm, non-error news, e.g. that only the host sets the rules. */
+  notice: string | null;
   isHost: boolean;
   chooseSeat: (seat: number) => void;
   /** The seat the viewer asked to move into, while that is in flight. */
@@ -112,6 +114,7 @@ export function MobileWaitingLayout(props: MobileWaitingLayoutProps) {
     hostName,
     seatItems,
     error,
+    notice,
     isHost,
     chooseSeat,
     startGame,
@@ -176,6 +179,7 @@ export function MobileWaitingLayout(props: MobileWaitingLayoutProps) {
       </div>
 
       <div className={styles.mobBody}>
+        {notice && <div className={ds.notice}>{notice}</div>}
         {error && <div className={styles.error}>{error}</div>}
         <section>
           <div className={styles.sectionHead}>
@@ -257,6 +261,7 @@ export function DesktopWaitingLayout(props: WaitingLayoutProps) {
     seatItems,
     humanCount,
     error,
+    notice,
     isHost,
     chooseSeat,
     startGame,
@@ -317,6 +322,7 @@ export function DesktopWaitingLayout(props: WaitingLayoutProps) {
           </div>
         </div>
 
+        {notice && <div className={ds.notice}>{notice}</div>}
         {error && <div className={styles.error}>{error}</div>}
 
         <div>

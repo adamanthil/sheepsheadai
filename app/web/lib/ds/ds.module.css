@@ -74,6 +74,21 @@
   background: var(--ink);
 }
 
+/* ---- Notices ---- */
+/* Something worth knowing that isn't an error and isn't the reader's
+   fault (why they're back in the lobby, what only the host may do):
+   quiet ink on the page's deeper tone, where an error is red. */
+.notice {
+  border: 1px solid var(--rule);
+  background: var(--bg-page-deep);
+  color: var(--ink-soft);
+  border-radius: 3px;
+  padding: 10px 14px;
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
 /* ---- Buttons ---- */
 .btn {
   font-family: var(--font-ui);

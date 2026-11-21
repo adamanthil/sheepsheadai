@@ -69,7 +69,9 @@ test("a refused house rule switches back", async ({ page }) => {
   const leasters = page.getByRole("button", { name: "Leasters", exact: true });
   await leasters.click();
 
-  await expect(page.getByText("not_host")).toBeVisible();
+  await expect(
+    page.getByText("Only the host can change the house rules."),
+  ).toBeVisible();
   await expect(doublers).toHaveAttribute("aria-pressed", "true");
   await expect(leasters).toHaveAttribute("aria-pressed", "false");
 });

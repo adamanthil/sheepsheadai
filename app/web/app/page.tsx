@@ -48,12 +48,14 @@ export default function HomePage() {
   } = useIdentity(tables);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Why the player is back here (NOTICES): news, not an error.
+  const [notice, setNotice] = useState<string | null>(null);
 
   // Why the player was sent back here from a table (useTableSocket).
   useEffect(() => {
     const notice = new URLSearchParams(window.location.search).get("notice");
     if (!notice || !(notice in NOTICES)) return;
-    setError(NOTICES[notice]);
+    setNotice(NOTICES[notice]);
     window.history.replaceState(null, "", window.location.pathname);
   }, []);
 
@@ -119,8 +121,9 @@ export default function HomePage() {
   };
 
   const create = async (resolvedDisplayName: string) => {
-    // Clear any previous errors
+    // Clear any previous errors, and the notice they've moved on from
     setError(null);
+    setNotice(null);
     setCreating(true);
 
     try {
@@ -156,6 +159,7 @@ export default function HomePage() {
   const joinTable = async (tableId: string): Promise<boolean> => {
     const resolvedDisplayName = displayName;
     setError(null);
+    setNotice(null);
     // A dealt table, even between hands, is played on the table page; one
     // not in the list yet goes by way of the waiting room, which sends it on.
     const route = tableRoute(
@@ -293,6 +297,7 @@ export default function HomePage() {
             </Link>
           </div>
 
+          {notice && <div className={ds.notice}>{notice}</div>}
           {error && <div className={styles.error}>{error}</div>}
 
           <div className={styles.startBlock}>

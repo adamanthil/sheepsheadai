@@ -52,6 +52,8 @@ export default function WaitingRoom() {
   // ready for a spinner without reintroducing an unused binding.
   const [, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Not an error: what only the host may do, told to someone who tried.
+  const [notice, setNotice] = useState<string | null>(null);
   const [partnerMode, setPartnerMode] = useState<number>(1); // 1 = Called Ace (default), 0 = Jack of Diamonds
   const [allPassMode, setAllPassMode] = useState<AllPassMode>("leasters"); // "leasters" (default) or "doublers"
   const [scoringMode, setScoringMode] = useState<number>(1); // 1 = Double on the Bump (default), 0 = Symmetric
@@ -176,6 +178,7 @@ export default function WaitingRoom() {
     rules: Partial<Rules>,
     what: string,
   ): Promise<boolean> {
+    setNotice(null);
     try {
       const res = await apiFetch(`/api/tables/${params?.id}/rules`, {
         method: "PATCH",
@@ -183,7 +186,11 @@ export default function WaitingRoom() {
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
-        setError(j?.detail || `Failed to update ${what}`);
+        if (j?.detail === "not_host") {
+          setNotice("Only the host can change the house rules.");
+        } else {
+          setError(j?.detail || `Failed to update ${what}`);
+        }
         return false;
       }
       return true;
@@ -371,6 +378,7 @@ export default function WaitingRoom() {
     seatItems,
     humanCount,
     error,
+    notice,
     isHost,
     chooseSeat,
     takingSeat: seating.busy ? seatPressed : null,
