@@ -332,6 +332,7 @@ async def test_badge_shows_only_once_verified_and_without_rejoin(client, outbox)
         if occ == joined["client_id"]
     )
     assert joined["table"]["seatAccount"][seat] is None
+    assert joined["table"]["hostAccount"] is None
 
     username, email = _fresh()
     await client.post(
@@ -346,6 +347,7 @@ async def test_badge_shows_only_once_verified_and_without_rejoin(client, outbox)
         headers=_bearer(token),
     )
     assert again.json()["table"]["seatAccount"][seat] is None
+    assert again.json()["table"]["hostAccount"] is None
 
     await client.post(
         "/api/account/verify", json={"token": await _emailed_token(outbox)}
@@ -354,6 +356,8 @@ async def test_badge_shows_only_once_verified_and_without_rejoin(client, outbox)
     assert table["seatAccount"][int(seat)] == username
     # The seat keeps showing the in-game name, not the username.
     assert table["seats"][int(seat)] == "Bea"
+    # Bea hosts, so the lobby names the host's account too.
+    assert (table["host"], table["hostAccount"]) == ("Bea", username)
     # An AI seat never carries a badge.
     assert all(
         table["seatAccount"][s] is None for s, ai in table["seatIsAI"].items() if ai

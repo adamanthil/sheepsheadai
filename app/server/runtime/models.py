@@ -273,6 +273,8 @@ class Table:
             for i, occ_id in self.seats.items()
         }
 
+        host = self.clients.get(self.host_client_id or "")
+
         return {
             "id": self.id,
             "name": self.name,
@@ -295,11 +297,8 @@ class Table:
                 for i, occ_id in self.seats.items()
             },
             "closingAfterHand": self.close_after_hand,
-            "host": (
-                self.clients[self.host_client_id].display_name
-                if self.host_client_id and self.host_client_id in self.clients
-                else None
-            ),
+            "host": host.display_name if host else None,
+            "hostAccount": host.account_username if host else None,
             "resultsHistory": self.results_history,
             "scoreSegments": self.score_segments,
         }

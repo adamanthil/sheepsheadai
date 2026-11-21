@@ -1098,6 +1098,8 @@ export interface components {
             closingAfterHand: boolean;
             /** Host */
             host: string | null;
+            /** Hostaccount */
+            hostAccount?: string | null;
             /** Host Key */
             host_key: string;
             /** Id */
@@ -1458,6 +1460,8 @@ export interface components {
             closingAfterHand: boolean;
             /** Host */
             host: string | null;
+            /** Hostaccount */
+            hostAccount?: string | null;
             /** Id */
             id: string;
             /** Name */

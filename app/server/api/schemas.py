@@ -414,6 +414,8 @@ class TablePublic(BaseModel):
     seatLeavingAfterHand: Dict[int, bool] | Dict[str, bool]
     closingAfterHand: bool
     host: Optional[str]
+    # Verified account username of the host, as seatAccount, or None.
+    hostAccount: Optional[str] = None
     resultsHistory: List[Dict[str, Any]]
     # Blocks of hands played by one set of players (runtime.scores).
     scoreSegments: List[ScoreSegment]

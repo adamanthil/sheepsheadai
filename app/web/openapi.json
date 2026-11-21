@@ -1493,6 +1493,17 @@
             ],
             "title": "Host"
           },
+          "hostAccount": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hostaccount"
+          },
           "host_key": {
             "title": "Host Key",
             "type": "string"
@@ -2471,6 +2482,17 @@
               }
             ],
             "title": "Host"
+          },
+          "hostAccount": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hostaccount"
           },
           "id": {
             "title": "Id",
