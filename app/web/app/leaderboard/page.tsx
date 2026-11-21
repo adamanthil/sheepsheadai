@@ -37,34 +37,30 @@ const BOARDS: {
   key: LeaderboardBoard;
   label: string;
   hands: string;
-  defaultSort: LeaderboardSort;
 }[] = [
   {
     key: "overall",
     label: "Overall",
     hands: "finished hands",
-    defaultSort: "total",
   },
   {
     key: "called_ace",
     label: "Called Ace",
     hands: "finished called-ace hands",
-    defaultSort: "total",
   },
   {
     key: "jd",
     label: "Jack of Diamonds",
     hands: "finished jack-of-diamonds hands",
-    defaultSort: "total",
   },
   {
     key: "vs_ai",
     label: "Vs AI",
     hands: "finished hands against only the AI",
-    defaultSort: "sph",
   },
 ];
 const DEFAULT_BOARD: LeaderboardBoard = "overall";
+const DEFAULT_SORT: LeaderboardSort = "sph";
 
 const boardInfo = (key: LeaderboardBoard) => BOARDS.find((b) => b.key === key)!;
 
@@ -145,7 +141,7 @@ function viewFromUrl(): View {
   const s = params.get("sort");
   const sort = SORTS.includes(s as LeaderboardSort)
     ? (s as LeaderboardSort)
-    : boardInfo(board).defaultSort;
+    : DEFAULT_SORT;
   const p = params.get("period");
   const period = PERIODS.includes(p as LeaderboardPeriod)
     ? (p as LeaderboardPeriod)
@@ -158,7 +154,7 @@ function viewUrl({ board, sort, period }: View): string {
   const params = new URLSearchParams();
   if (period !== DEFAULT_PERIOD) params.set("period", period);
   if (board !== DEFAULT_BOARD) params.set("board", board);
-  if (sort !== boardInfo(board).defaultSort) params.set("sort", sort);
+  if (sort !== DEFAULT_SORT) params.set("sort", sort);
   const query = params.toString();
   return query ? `?${query}` : "/leaderboard";
 }
@@ -219,7 +215,7 @@ export default function LeaderboardPage() {
   const choose = (key: LeaderboardSort) =>
     show({ board: info.key, sort: key, period });
   const chooseBoard = (key: LeaderboardBoard) =>
-    show({ board: key, sort: boardInfo(key).defaultSort, period });
+    show({ board: key, sort: DEFAULT_SORT, period });
   const choosePeriod = (next: LeaderboardPeriod) =>
     view && next !== period && show({ ...view, period: next });
 
