@@ -64,15 +64,24 @@ const jetbrainsMono = JetBrains_Mono({
 const description =
   "Play live with friends, strangers, and a deep neural network.";
 
+// The deployed site's origin, inlined at build time. CI sets it for the
+// production image only (Dockerfile, .github/workflows/ci.yml); local and
+// e2e builds leave it unset, so they never claim to be the public site.
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+
 export const metadata = {
-  // Link previews need absolute image URLs; without this Next resolves
-  // opengraph-image against http://localhost:3000.
-  metadataBase: new URL("https://sheepshead.ai"),
+  // Link previews need absolute image URLs. Unset, Next resolves
+  // opengraph-image against http://localhost:3000, which is right for a
+  // build that isn't the public site.
+  metadataBase: siteUrl ? new URL(siteUrl) : undefined,
   title: "Sheepshead AI",
   description,
   // The image itself comes from app/opengraph-image.tsx.
   openGraph: {
     type: "website",
+    // The canonical URL. Pages that don't set their own inherit the
+    // homepage's, so a shared table link previews as the site itself.
+    ...(siteUrl && { url: "/" }),
     siteName: "Sheepshead AI",
     title: "Sheepshead AI",
     description,

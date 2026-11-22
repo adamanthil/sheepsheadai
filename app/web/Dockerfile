@@ -15,6 +15,11 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ARG NEXT_PUBLIC_API_BASE=
 ENV NEXT_PUBLIC_API_BASE=$NEXT_PUBLIC_API_BASE
+# The public site's origin for link-preview metadata (og:url, absolute
+# og:image), inlined at build time. CI sets it for the production image;
+# empty, as in a local build, omits og:url and leaves preview URLs local.
+ARG NEXT_PUBLIC_SITE_URL=
+ENV NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL
 # Names the build, so a page left open from an older deploy reloads on its
 # next navigation instead of soft-navigating on stale JavaScript. CI passes
 # the image's content tag (app/scripts/deploy_tags.sh); empty, as in a local

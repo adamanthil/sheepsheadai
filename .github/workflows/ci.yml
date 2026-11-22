@@ -252,7 +252,10 @@ jobs:
           fi
       # NEXT_PUBLIC_API_BASE stays at the Dockerfile's empty default:
       # same-origin behind Caddy. The deployment id is the content tag, so it
-      # changes exactly when the image does. SENTRY_AUTH_TOKEN (a repository
+      # changes exactly when the image does. NEXT_PUBLIC_SITE_URL marks this
+      # as the production image (og:url and absolute preview URLs); the tag
+      # hashes app/web only, so changing it here alone won't rebuild an
+      # existing image. SENTRY_AUTH_TOKEN (a repository
       # secret; empty skips it) uploads the source maps, as a BuildKit secret
       # so it never lands in the image.
       - name: build web if missing
@@ -265,6 +268,7 @@ jobs:
           else
             docker buildx build -t "$IMG" \
               --build-arg NEXT_DEPLOYMENT_ID=${{ steps.tags.outputs.web }} \
+              --build-arg NEXT_PUBLIC_SITE_URL=https://sheepshead.ai \
               --secret id=sentry_auth_token,env=SENTRY_AUTH_TOKEN \
               --label org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }} \
               --cache-from type=gha,scope=web --cache-to type=gha,scope=web,mode=max --push app/web
