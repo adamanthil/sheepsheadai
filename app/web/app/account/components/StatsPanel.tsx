@@ -148,7 +148,7 @@ export default function StatsPanel({
         </dl>
         <p className={account.note}>
           {stats.rank != null
-            ? `Rank #${stats.rank} on the all-time ${board} by total score.`
+            ? `Rank #${stats.rank} on the all-time ${board} by score per hand.`
             : `${plural(stats.qualifies_in ?? 0, `more finished ${info.hand}`)} to make the ${board}, which lists confirmed accounts with at least ${stats.min_hands}.`}
         </p>
       </section>

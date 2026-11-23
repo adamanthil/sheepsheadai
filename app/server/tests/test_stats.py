@@ -283,6 +283,34 @@ async def test_personal_stats_count_only_finished_scored_hands(seeded):
     assert (s["picks"], s["trump_per_pick"], s["queens_per_pick"]) == (2, 0, 0)
 
 
+async def test_account_rank_follows_the_score_per_hand_board(seeded):
+    seeder, client = seeded
+    tag = _tag()
+    # sharp out-scores grinder per hand but trails on total, so the two
+    # sorts disagree on their order.
+    sharp = await seeder.player(username=f"rsharp_{tag}")
+    await seeder.hands(sharp, [10] * 20)
+    grinder = await seeder.player(username=f"rgrind_{tag}")
+    await seeder.hands(grinder, [3] * 200)
+
+    async def rank(pid, sort=None):
+        auth = {"Authorization": f"Bearer {await create_session(seeder.pool, pid)}"}
+        stats = (await client.get("/api/account/stats", headers=auth)).json()
+        if sort is None:
+            return stats["rank"]
+        params = {"sort": sort}
+        board = (
+            await client.get("/api/leaderboard", params=params, headers=auth)
+        ).json()
+        mine = [row for row in board["rows"] if row["is_you"]] or [board["you"]]
+        return mine[0]["rank"]
+
+    assert await rank(sharp) == await rank(sharp, "sph")
+    assert await rank(grinder) == await rank(grinder, "sph")
+    assert await rank(sharp) < await rank(grinder)
+    assert await rank(sharp, "total") > await rank(grinder, "total")
+
+
 async def test_abandoned_hands_count_losses_but_not_wins(seeded):
     seeder, client = seeded
     pid = await seeder.player(username=f"quit_{_tag()}")

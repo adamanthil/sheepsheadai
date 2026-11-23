@@ -192,7 +192,8 @@ export interface paths {
         /**
          * Account Stats
          * @description The caller's stats over every finished hand, or one partner mode's;
-         *     the rank is on that mode's all-time board.
+         *     the rank is on that mode's all-time board, by score per hand (the
+         *     leaderboard's default sort).
          */
         get: operations["account_stats_api_account_stats_get"];
         put?: never;

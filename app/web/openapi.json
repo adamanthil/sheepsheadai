@@ -3065,7 +3065,7 @@
     },
     "/api/account/stats": {
       "get": {
-        "description": "The caller's stats over every finished hand, or one partner mode's;\nthe rank is on that mode's all-time board.",
+        "description": "The caller's stats over every finished hand, or one partner mode's;\nthe rank is on that mode's all-time board, by score per hand (the\nleaderboard's default sort).",
         "operationId": "account_stats_api_account_stats_get",
         "parameters": [
           {

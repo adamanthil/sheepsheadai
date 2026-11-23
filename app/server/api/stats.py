@@ -105,12 +105,13 @@ async def account_stats(
     identity: PlayerIdentity = Depends(current_player),
 ):
     """The caller's stats over every finished hand, or one partner mode's;
-    the rank is on that mode's all-time board."""
+    the rank is on that mode's all-time board, by score per hand (the
+    leaderboard's default sort)."""
     pool = get_db_pool()
     account = await _verified_account(pool, identity)
     stats = await stats_db.player_stats(pool, identity.id, mode)
     board = MODE_BOARD[mode]
-    ranking = await stats_db.ranking(pool, "total", board)
+    ranking = await stats_db.ranking(pool, "sph", board)
     mine = stats_db.row_of(ranking, identity.id)
     min_hands = stats_db.board_min_hands(board)
     qualifies_in: Optional[int] = None
