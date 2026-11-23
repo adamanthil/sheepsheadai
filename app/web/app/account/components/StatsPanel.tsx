@@ -142,8 +142,8 @@ export default function StatsPanel({
           aside={stats.rank != null ? `Rank #${stats.rank}` : undefined}
         />
         <dl className={styles.figureGrid}>
-          <Figure label="Total score" value={signed(stats.total)} big />
-          <Figure label="Score / hand" value={perHand(stats.sph)} />
+          <Figure label="Score / hand" value={perHand(stats.sph)} big />
+          <Figure label="Total score" value={signed(stats.total)} />
           <Figure label="Hands" value={count(stats.hands)} />
         </dl>
         <p className={account.note}>
