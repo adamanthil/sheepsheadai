@@ -41,6 +41,92 @@ The first point is correct. What exists is confounded or indirect:
   the node's own label. Both favour pooling; neither trains a student on
   label-only targets.
 
+### 2.1 The original case for the blend (added 2026-11-23, after §7)
+
+What led to the recipe, traced through `CE_Teacher_Design_202608.md`
+(CE) and `Arm_D_Review_202610.md` (AD). Each item says what was
+measured and what kind of evidence it was.
+
+1. **Per-node labels cannot order the top cards at lead rows** (CE
+   §20.1, 2026-09-01; 48k searched nodes of corpus q). Three-replicate
+   sign agreement on the top pair at trick-0 defender leads was 25.0%
+   against a simulated pure-noise null of 24.9% (median |t| 0.75);
+   trick-1 leads 28.4%. Follows from trick 2 carried signal (81.7% and
+   99.9%). The convention's value, 0.008–0.02 Q per opportunity, sits
+   at or below the committee's 0.015 Q per-node resolution, and more
+   search budget did not lower that floor. *Evidence about the labels.*
+2. **The previous target turned those coin flips into near one-hot
+   targets** (CE §20.1). At trick-0 defender leads the median target
+   max-probability was 0.952 on a card the policy rated 0.49, at a
+   top-2 gap of 0.4 committee SEs, because the Gumbel-style tilt
+   multiplier was 50–80 logit units on min-max-normalized Q. Every
+   student trained on it lost: arm c −0.0276 ± 0.0089, with spread
+   compressed to about 2.9 (CE §17.9). *Evidence against an
+   uncalibrated tilt.*
+3. **The pooled effect is in the labels and in the features** (CE
+   §20.7). Pooled over committee rows, called-suit cards beat other
+   fail cards by +0.0114 ± 0.0011 Q at trick-0 defender leads (10 SE),
+   matching the CRN counterfactual instrument. A linear probe on the
+   frozen hand tokens finds called-suit membership at held-out AUC
+   0.94. From these two facts §20.1 concluded the convention "is
+   resolvable only by pooling across nodes ... what a per-node search
+   label cannot do". *Evidence that pooling is needed somewhere; it
+   does not say the student cannot be the one to do it.*
+4. **The first calibrated arm won** (CE §20.6): +0.0171 ± 0.0068 vs θ_k
+   against −0.0276 for arm c, with no spread compression (3.65). This
+   was read as "the floor was target-borne". The arm changed the tilt
+   form (Gumbel min-max to an SE-unit mirror-descent step), the
+   temperature, the anchor and the blend together, and was certified on
+   2,000 deals per mode, which CE §20.13 addendum 3 later found
+   overstated the gain. *Confounded; consistent with calibration alone
+   being the fix.*
+5. **More model in the blend made lead targets more coherent** (CE
+   §20.7–§20.8). The model's share at trick-0 leads went 16% → 34% →
+   about 70% across arms 1–3 and its capture of the pooled effect 13% →
+   37% → 55% with the bilinear term. Rows tilting toward against away
+   from the called suit went 51/20 → 57/20 and called-suit target mass
+   0.377 → 0.451 / 0.461. The h2h reads were +0.0171, +0.0183, +0.0252,
+   each ± 0.0065: not separable. None of the arms moved the greedy
+   called-suit rate on fresh deals (45.2 / 43.7 / 45.0 against 44.7).
+   *Target-side evidence only; the student's play did not follow.*
+6. **Label-only was set aside by design** (CE §20.13 addendum 6b,
+   2026-09-08). The operator framing recorded there calls the advantage
+   model's pooling "the ESSENTIAL element of §20", so the gamma = 1 arm
+   "discards that element and is a diagnostic, not a candidate recipe".
+7. **The one direct comparison was a tie** (CE §20.13 addenda 7–9b).
+   On the θ₁ twin corpus five target constructions, class blend, global
+   blend, gamma = 1 at two temperatures, all read −0.006 to −0.004 vs
+   θ₁; label-only against the class blend paired −0.0009 ± 0.0035. It
+   was read as "the target stage is not the lever at θ₁", which was
+   right: six trunk epochs were. It was not re-read as a question about
+   the blend once the schedule was fixed.
+8. **On the recall lineage, recipes with more model weight certified
+   higher** (CE §22.6, 2026-10-09). The baseline, whose defender-follow
+   gamma of 0.09 was an accident of a variance floor, read +0.0165
+   play-only; arm A (gamma 0.01, no floor) +0.0055; arm C (class-pooled
+   noise) +0.0106. The arms also differed in dose: target KL p50 0.043
+   / 0.097 / 0.059, and 5% / 22% / 5% of rows at the clip. *Dose and
+   blend moved together.* §7 separates them: the label-only arm at the
+   recipe's η has KL p50 0.071 and plays 0.005 below the recipe, and
+   the gap closes when the dose is matched.
+9. **The model's push is credited by the node's own label** (AD §8,
+   2026-10-13). Splitting each target into its search and model terms
+   and valuing each by Σ(q − p)·y, the model-only gain was positive in
+   all 50 classes, at 3 SE in 43, and close to calibrated at the
+   convention rows. AD §7.5 attributes the fall in trick-0 defender
+   trump leads to the model term. AD §8.5 states the limit itself:
+   "Real EV: not measurable ... The offline search-judged read is the
+   only practical instrument." §4 of this notebook is the same
+   instrument.
+
+In sum, the case rested on three things: a correct diagnosis that
+single labels are noise at lead rows; a large win over an over-sharp
+target that changed several things at once; and target-side reads
+(coherence, capture, label-judged value) that improve as the model's
+share rises. No item compares students trained on blended and
+label-only targets with the tilt form, dose and schedule held equal.
+The one near-comparison (item 7) tied.
+
 The second point is half right, and the half is testable. Cross-entropy
 is linear in the target, so the student fits E[t | s]. If the target
 were linear in the label, that would be the pooled label and the
