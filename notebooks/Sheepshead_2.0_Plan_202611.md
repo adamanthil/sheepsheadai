@@ -1,9 +1,21 @@
 # Sheepshead AI 2.0 Plan (November 2026)
 
-**Status (2026-11-09): PLANNING.** The design below is decided except where
-marked. Of the 2.0 changes, only the observation contract in §1 is built. The
-code is on branch `pick-seat-residual` (worktree `.claude/worktrees/pick-seat`),
-unmerged and not pushed.
+**Status (2026-11-22): PLANNING, reviewed.** The design below is decided except
+where marked. Of the 2.0 changes, only the observation contract in §1 is built;
+it is on `main` with the 1.1 release. The 11-20 review (§7) changed leaster
+search to terminal rollouts. On 11-22 the operator settled every open decision
+(§5): both oracle gates, the release criterion, the tripwires and the leaster
+cert rule. The acting-mode twin is dropped.
+
+## Open before launch
+
+No operator decisions remain. What is left is work:
+
+| # | Item | What is needed |
+|---|---|---|
+| 1 | Build | History oracle, bury head, leaster search with terminal routing, shadow critic and offline gate driver (§5 build order). None started |
+| 2 | Pre-launch gates | The four in §5 |
+| 3 | Panel references | Check that 1.0's recorded panel reads pair with reads on today's panels; if not, re-read 1.0's tripwire checkpoints (§5) |
 
 ## Scope of 2.0
 
@@ -16,7 +28,7 @@ the model and the training recipe:
 | 1 | **Seat at the pick** | `leader_rel` is 0 before play, so the agent cannot see its position relative to the dealer | The seat reaches the trunk and the oracle from the deal on | Observation | Contract built | §1 |
 | 2 | **History oracle** | Recurrent oracle that must learn to recall who played what | Feed-forward oracle with one token per card and its location, about 6× faster to fit | Architecture | Designed; not built | §2 |
 | 3 | **Separate bury head** | BURY and UNDER share the play pointer, so they stop improving after the league | Their own pointer and bilinear term, trained in the bidding PPO phase | Architecture | Designed; not built | §3 |
-| 4 | **Leaster search** | Leaster play is held to θ_k by retention and never improves in policy iteration | Leasters are searched like any other play | Training recipe | Designed; not built | §4 |
+| 4 | **Leaster search** | Leaster play is held to θ_k by retention and never improves in policy iteration | Leasters are searched, with rollouts played to the end of the hand | Training recipe | Designed; not built | §4 |
 
 Everything else about the trunk and program is unchanged: the `perceiver-recall`
 encoder and play pointer, and the bootstrap → oracle → league → policy iteration
@@ -56,8 +68,8 @@ the architecture name carries no release number.
 
 1. Finish run 2, score the tool's seat accuracy, certify against 1.0 and run 1,
    and ship it as 1.1 unless it is clearly worse (§6).
-2. Build the history oracle, bury head and leaster search, pass the pre-launch
-   gates, and run the proposed acting-mode twin (§5).
+2. Build the history oracle, bury head and leaster search, and pass the
+   pre-launch gates (§5).
 3. Launch the `perceiver-recall-v2` retrain. The offline and online oracle gates
    run inside it, after bootstrap.
 
@@ -146,7 +158,9 @@ after it is played face-down.
 **D2. Context token.** The production oracle's fields, unchanged: the header
 scalars, `points_taken_rel`, `secret_partner_rel`, and the called and under card
 embeddings. Seat arrives through `leader_rel`. The pass order needs no input of
-its own, since seat implies who has already passed.
+its own, since seat implies who has already passed. A per-seat "took a trick"
+input was considered for leasters and not added (§7.2): eligibility is nearly
+derivable from `points_taken_rel`, and leaster search no longer reads the oracle.
 
 **D3. Source of the table.** `Player.get_card_locations()` returns a (32, 5) uint8
 table (location, seat, trick, order, under), computed at decision time from `hand`,
@@ -168,7 +182,10 @@ then imports the production classes.
 
 **D5. Aux heads.** Keep both validated oracle heads (per-seat team membership and
 team points with bury), at the same coefficients. `team_aux_labels` skips empty
-rows.
+rows. Both heads stay masked on leaster rows. A leaster aux head and upweighting
+leaster rows were considered and not adopted (operator, 11-20): the oracle is
+weak in leasters (§7.2), but there it only sets baseline variance for leaster
+play in the league.
 
 **D6. Selection.** `ArchitectureSpec.build_oracle`, defaulting to the recurrent
 network, replaces the direct construction at `ppo.py:293` and
@@ -207,7 +224,8 @@ prefix stream goes away. Recurrent architectures keep this path unchanged.
 **D9. Start of training.** No distillation. The probe's distillation step was to
 avoid discarding a 7.7M-episode critic in a running league, and 2.0 has none to
 protect. It uses the program's existing oracle pretraining, `pretrain_oracle` on
-the bootstrap policy's 40,000 episodes, passed as `--oracle-init`.
+the bootstrap policy's 40,000 episodes, passed as `--oracle-init`. The run uses
+the seed-42 fit from the offline gate, not the better of the two seeds.
 
 The speedup applies to oracle fitting and not to rollouts, so the wall-clock gain
 on the whole program is unmeasured.
@@ -265,32 +283,44 @@ them to θ_k and nothing rewards improvement.
   leaster deals that changed rose from 7.3% to 10.7% between iterations 2 and 5 while
   standard play's fell (`Arm_D_Review_202610.md` §9.18).
 
+**Goal (operator, 11-20).** Leaster play in 2.0 is at least as good as in 1.0.
+Leasters are a small and noisy part of play, and tables that play doublers never
+see them, so improving them further is not a goal of this run.
+
 **Design.**
 
 - **L1. Recipe.** Remove the leaster exclusion, and give leasters the same
   lead-feature branch as alone hands. Retention becomes bidding heads only. Every
   unforced play is searched at the recipe's p = 1.0, so no leaster row loses its
   anchor without gaining a target.
-- **L2. One search, one value estimate.** Leasters use the same search algorithm,
-  budget (256 iterations, t0 leads 1024, t1 leads 512, 3 replicates) and oracle at
-  the leaves as every other node. There is no leaster-specific routing.
+- **L2. Terminal rollouts (changed 11-20).** Leasters use the same search
+  algorithm and budget (256 iterations, t0 leads 1024, t1 leads 512, 3 replicates)
+  as every other node, but their rollouts play to the end of the hand instead of
+  stopping at an oracle leaf. The corpus passes a terminal `d_rollout` on leaster
+  nodes; any value above `ORACLE_LEAF_MAX_BOOTSTRAP_DEPTH` (12) also disarms the
+  oracle capture. Reason: in leasters the oracle is no more accurate than the
+  limited critic (§7.2), and terminal rollouts cost about 15% less at equal
+  accuracy (§7.4). Leaster labels then do not depend on the oracle at all.
 - **L3. Determinization.** Reused. `_sample_leaster_deal` handles voids and forced
   plays, and the forced replay weights each PASS, so "everyone passed" is evidence
   the world pool already uses. Leaster worlds are covered by the replay-equivalence
-  tests.
+  tests. (The sampler's docstring says "no importance weighting"; that describes
+  the sampler. The replay director weights every forced bidding action in any
+  world, `is_weighted_bidding_action`. Confirmed by reading, 11-20.)
 - **L4. Node classes.** `play_cell` labels about 600 leaster nodes per corpus as
   "partner". Report every leaster seat under one role, so the class-variance fit does
   not get thin spurious cells.
 - **L5. Cost.** The iteration-6 corpus had 22,860 leaster nodes against 217,140 std
   and alone nodes. Assuming the same unforced share, that is about +10% searched
   nodes: about +5 hours per 46-hour corpus and about +30 hours over six iterations.
+  Terminal rollouts make this an upper estimate (§7.4).
 
 ## 5. Build order and gates
 
 **Build order.** Rename the architecture; card-location table and its tests (D3);
 oracle network (D4–D5); registry and load guard (D6–D7); plumbing (D8); bury head
-(§3); leaster search (§4); gate tooling and final references (below). Build in a separate worktree from the head of
-`pick-seat-residual` while run 2 imports from the current one.
+(§3); leaster search with terminal routing (§4); gate tooling and final
+references (below). Build from `main`.
 
 **Before launch.**
 
@@ -301,60 +331,98 @@ oracle network (D4–D5); registry and load guard (D6–D7); plumbing (D8); bury
 | Distill trains the oracle | One distill epoch on the history oracle (D8) | Oracle weights change |
 | References present | Every path in `FinalConfig.references` at launch | All exist; a missing file is otherwise skipped with only a log line, at the end of the run |
 
-**Proposed pre-work: acting-mode twin (not yet run or scheduled).** Should the corpus
-always sample the policy at continuation, rather than play the committee's argmax on
-resolved rows? Sampling makes the corpus plain DAgger and removes the acting branch from
-`distill_corpus.py`. The case for committee acting is one comparison on an older recipe
-(+0.0055 ± 0.0021 play-only, `CE_Teacher_Design_202608.md` §20.13 addendum 16; a
-full-agent read of the same pair was +0.0008 ± 0.0035), and neither arm improved on its
-parent there.
+**Acting-mode twin: dropped (operator, 11-22).** The proposal was to test whether the
+corpus could sample the policy at continuation instead of playing the committee's argmax
+on resolved rows. The only prior estimate (−0.0055 ± 0.0021 play-only for sampling,
+`CE_Teacher_Design_202608.md` §20.13 addendum 16) predicted it would fail its own bar.
+2.0 keeps committee acting as in 1.0.
 
-| | |
-|---|---|
-| Baseline | 1.0's iteration 1: `runs/202609_recall_rc/pi/iter1`, 8,000 committee-acted games from θ₀ (`league/checkpoints/checkpoint_8000000.pt`) |
-| Twin | Same command and `--seed 20260903`, with `--committee-act-frac 0`, so games match until the first acted deviation; then the same fit, target, distill and cert |
-| Read | Paired play-only, twin minus baseline, 16,000 deals/mode (seeds 42 and 43) |
-| Decision | Lower bound above −0.005: 2.0 samples the policy and the acting branch is removed. Otherwise committee acting stays |
-| Cost | About 2–3 days of machine time |
+**Gate tooling (to build).** `stop_after` only accepts `iter{k}.{stage}`, so the offline
+gate needs a pause point after oracle pretraining.
 
-This is one step at the iteration with the most gain to lose. It does not show whether
-more iterations would make up a loss; a second twin iteration would add about 5 days.
-
-**Gate tooling (to build).** The oracle gates below need support the program does not
-have: `stop_after` only accepts `iter{k}.{stage}`.
-
-- Add pause points after oracle pretraining and at 200k episodes of league generation 1,
-  so the history arm continues from there instead of restarting.
 - Offline gate: a driver for the four fits on the run's own dataset, using the production
   classes and reporting the paired ΔMSE by stratum, adapted from
   `research/oracle_history_probe.py`.
-- Online gate: run the `perceiver-recall-v2-gru-oracle` control arm from the same
-  bootstrap checkpoint and seed. Whether the load path accepts that checkpoint under the
-  control's architecture name is not yet checked.
+- Online gate: a shadow critic in the league trainer. A second oracle (recurrent) with
+  its own optimizer trains on the same batches, loss and epochs as the baseline oracle;
+  its values never enter the advantages. Log per-row squared error for both, and the
+  advantage σ computed from each on the same rollouts. The shadow exists only for the
+  gate: at 200k episodes the trainer stops evaluating and training it and drops its
+  module and optimizer, so the rest of the run pays for the history oracle alone. Build
+  it with an explicit end episode, and test that the run after 200k matches a run that
+  never had a shadow.
 
 **Final comparison.** `FinalConfig.references` becomes:
 
 | Reference | Path | Why |
 |---|---|---|
-| 1.0 | `models/sheepsheadai-1.0-202610.pt` | The bar 2.0 has to beat |
-| 1.1 | Its released file, expected `models/sheepsheadai-1.1-202611.pt` | The deployed model, once shipped |
+| 1.1 | `models/sheepsheadai-1.1-202611.pt` | The deployed model, and the release bar |
+| 1.0 | `models/sheepsheadai-1.0-202610.pt` | 1.1's parent; the reference for the leaster goal |
 | v2 release | `models/v2-release.pt` | Best agent from the earlier training pipeline |
 | 30M | `models/pfsp-swish-30m.pt` | Long-running anchor |
 
 iter11 P1 is dropped.
 
+**Release criterion (operator, 11-22).** 2.0 is an end-to-end retrain on a simpler and
+faster architecture, so matching 1.1 is enough to release.
+
+| Read | Instrument | Clean |
+|---|---|---|
+| Strength | Duplicate h2h against 1.1, 8,000 deals/mode as in 1.0's final (SE about 0.006) | Not statistically worse: edge above −2 SE |
+| Conventions | The final convention probes: defender trump lead at trick 0, partner trump lead, called-suit lead | No regression against 1.0's final reads, 0.84% / 96.9% / 93.6%. The greedy probe carries about 1 point of noise on identical weights |
+| Called-suit over-trump | Fresh-deal scan, 4,000 seeds (`Arm_D_Review_202610.md` §9.19) | Hoped no higher than θ₆'s 21.9% ± 2.3 overall, 9.5% ± 3.0 at trick 0 |
+
+All three clean: release. Any other outcome, including a mixed one: the operator
+reviews and makes the call. If the strength read is within noise, the operator decides
+then whether a larger read is worth its cost (32,000 deals/mode would give an SE near
+0.003). 1.0's recorded reads serve as 1.1's baseline: 1.1's encoder
+and all 23 of 1.0's actor tensors are bit-identical to 1.0's (checked 11-22), and the
+only addition is the pick residual. Play in a given state is therefore the same; only
+which hands get picked differs (3.3% of deal-seats in the cert).
+
+**Tripwires against 1.0's trajectory (operator, 11-22).** Each trips when 2.0 is a full
+stage behind 1.0's curve. A trip halts for operator review; it is not an automatic kill.
+Composite is the per-deal PANEL-A ∪ PANEL-B mean.
+
+| Point | 1.0 read | Trips if | Why here |
+|---|---|---|---|
+| Bootstrap end (400k) | Composite −0.233 (±0.03) | Composite below −0.31, 1.0's 300k level | Where the separate bury head would show |
+| Generation 2 boundary | Composite about +0.086 (PANEL-A +0.215, PANEL-B −0.044) | Composite below +0.041, 1.0's generation-1 level | First read with the history oracle as baseline. Replaces the PANEL-A ≥ +0.06 bar |
+| Handoff | Composite +0.116 | Composite below +0.075 | Before about 19 days of policy iteration |
+| Iteration 1 cert | Play-only +0.0198 ± 0.0029 | Play-only below +0.010 | Before iteration 2's two-day corpus |
+
+The existing health gates stay: bootstrap escape by 30k episodes, and the convention hard
+bounds each generation (partner trump lead ≥ 50%, defender trump lead at trick 0 ≤ 10%).
+The panels were re-keyed on 10-27; confirm recorded reads still pair with new ones, or
+re-read 1.0's checkpoints at these points before launch.
+
 **Inside the run (thresholds pre-registered by the operator, 2026-11-09).**
 
 | Gate | When | Test | Pass |
 |---|---|---|---|
-| Oracle, offline (about 5–6 hours) | Oracle pretraining, on 2.0's own bootstrap dataset | Fit a history and a recurrent oracle, seeds 42 and 43 (four fits), the probe's paired ΔMSE | Not worse by more than ΔEV 0.005 overall and in `pick`, `play_lead_t02_defender`, `play_t3plus` and `leaster` |
-| Oracle, online (about 11 hours per arm) | First 200k league episodes of each arm, same bootstrap and seed | Compare the arms | History's `ev_oracle` within 0.01 of recurrent's over the last 100k; pick and play advantage σ no more than 2% higher |
+| Oracle, offline (about 5–6 hours) | Oracle pretraining, on 2.0's own bootstrap dataset | Fit a history and a recurrent oracle, seeds 42 and 43 (four fits), the probe's paired ΔMSE. ΔEV is ΔMSE over that stratum's own return variance | Fails only if, overall or in `pick`, `play_lead_t02_defender` or `play_t3plus`, the seed-mean deficit exceeds ΔEV 0.005 and history is worse in all four seed pairings. `leaster` is reported, not gated |
+| Oracle, online | First 200k league episodes, one run with the recurrent oracle as a shadow critic, removed at 200k on a pass | Paired per-row ΔMSE and advantage σ on the same rollouts, over the last 100k | History's EV within 0.01 of the shadow's; pick and play advantage σ no more than 2% higher |
 
-The oracle choice applies to the whole model. Leasters are among the offline strata
-because the history layout was worse than recurrent there in the October probe
-(+0.002 MSE, z +3.5), and leaster search relies on those values. If the online gate
-passes, the history arm's 200k episodes are the start of the run, so little time is
-lost.
+The oracle choice applies to the whole model. A fail on either gate halts for review.
+The default outcome is to continue on the recurrent oracle: offline it is already fit,
+and online the shadow is already trained on the run's data, so neither needs a restart.
+
+Changes from the review (11-20) and the operator's decisions (11-22):
+
+- *Leaster stratum dropped as a pass condition.* The October difference there (+0.002
+  MSE) is within seed noise (§7.1), both layouts sit at the limited critic's level in
+  leasters (§7.2), and leaster search no longer reads the oracle (L2). On a 40k-episode
+  dataset the stratum's SE (about 0.0009) also exceeds the bar (about 0.0006).
+- *Offline gate reads seeds, not row-sampling error.* Small strata carry seed-to-seed
+  spread of the same order as the bar (§7.1), so a fail needs all four pairings to
+  agree. This makes the offline gate a screen for gross failure; the online gate is the
+  precise test.
+- *Online gate is a shadow critic, not two arms.* Two league arms play different games,
+  and the registered thresholds sat at that comparison's noise floor (§7.3). Pairing on
+  identical rows cancels it, so the thresholds stay as registered. It does not test
+  whether the policy learns better under one baseline; two 200k arms could not resolve
+  that either. The control arm, its 200k pause point and its load path are no longer
+  needed.
 
 **Optional policy-iteration extension.** The aggregate stop rule stays as in 1.0, and
 the iterate it stops on is the default release. After it fires, run up to two more
@@ -369,9 +437,13 @@ replace the release without passing this check.
 **Measured during the run, with no separate validation.**
 
 - Leaster search: the leaster-hand cert edge after the first policy iteration, against
-  the series in §4.
+  the series in §4. The edge has an SE of 0.007–0.012 per iteration. If it reads more
+  than 2 SE negative at any cert, the run halts for review (operator, 11-22); the goal
+  is no worse than 1.0. No pre-launch leaster twin is planned.
 - Bury head: bury entropy and the picker's bury quality through bootstrap, because the
-  head no longer inherits play's early gradients.
+  head no longer inherits play's early gradients. The review suggested measuring the
+  stake first with a function-preserving surgery on θ₆; the operator declined (11-20)
+  and the head goes into training as designed.
 
 ## 6. The 1.1 interim release: pick-seat residual
 
@@ -504,6 +576,100 @@ unchanged. 1.0 stays pinned with the new `reference` role (`2c5d0d4`) for the
 final comparison in §5. The app's pick analysis and game simulation run on the
 file.
 
+## 7. Review of the plan (2026-11-20)
+
+The code references in §2–§5 were checked against the code and hold. The findings
+below changed L2 and the oracle gates. Scripts and outputs are in
+`runs/leaster_review_202611/`.
+
+### 7.1 History against recurrent in leasters: within seed noise
+
+The October probe's leaster stratum (3,492 test rows), test MSE by fit:
+
+| Fit | Leaster MSE |
+|---|---|
+| Production oracle (7.7M online) | 0.0208 |
+| Recurrent, seed 42 | 0.0221 |
+| Stateless, seeds 42 / 43 | 0.0246 / 0.0228 |
+| History, seeds 42 / 43 | 0.0241 / 0.0238 |
+
+History − recurrent is +0.0020 (z +3.5 on row sampling), but recurrent has one seed, and
+the stateless arm, which is the same network, moves 0.0018 between its two seeds. The
+difference is not established.
+
+### 7.2 The oracle is no better than the limited critic in leasters
+
+60,000 games from `checkpoint_7700000.pt` against itself (4,572 leasters, 425,595
+decision rows), each critic scored against the terminal return (`critic_by_trick.py`).
+Explained variance:
+
+| Rows | Limited | Oracle |
+|---|---|---|
+| Standard play, trick 0 | 0.34 | 0.62 |
+| Standard play, last trick | 0.81 | 0.95 |
+| Leaster play, trick 0 | 0.04 | 0.04 |
+| Leaster play, trick 1 | 0.06 | 0.09 |
+| Leaster play, trick 2 | 0.11 | 0.11 |
+| Leaster play, trick 3 | 0.17 | 0.15 |
+| Leaster play, trick 4 | 0.26 | 0.25 |
+| Leaster play, last trick | 0.33 | 0.35 |
+| Leaster, all rows | 0.163 | 0.166 |
+
+- Leaster-play MSE, limited − oracle: +0.0001 ± 0.0002 (bootstrap over episodes). The
+  oracle gets nothing from the hidden cards in leasters.
+- At the last trick every card is forced and the oracle sees every hand, so the result
+  is determined apart from ties. It explains 35%, against 95% in standard games. Its
+  mean value there is +1.8 points for eventual winners and −0.5 for losers (true +4 and
+  −1). Early-trick leasters may still be mostly noise; this read cannot separate noise
+  from underfit before the last tricks.
+- Cause not tested. Per-seat points are already an input, and eligibility (took a
+  trick) is nearly derivable from them, so a missing input is unlikely. Leasters are
+  about 7% of rows and both aux heads are masked there.
+- Decision (operator): do nothing to the oracle for leasters. Options considered and
+  not adopted: a "took a trick" input, a leaster aux head (a per-seat winner head is the
+  value target on another scale), and upweighting leaster rows. A leaster-only fit would
+  show whether the network can represent the target, if this is revisited.
+
+### 7.3 Online gate thresholds against 1.0's league log
+
+From `runs/202609_recall_rc/league/checkpoints/training_progress.csv`, first 600k
+episodes:
+
+- `ev_oracle` has a per-update SD of about 0.035, with about 67 updates per 100k
+  episodes. The difference of two arms' 100k means has an SE near 0.006, so the 0.01
+  bar is about 1.6 SE. Adjacent 50k means within the one run range from 0.573 to 0.606.
+- Advantage σ 50k means range 0.168–0.180 for pick and 0.118–0.124 for play, about ±3%
+  within one run, against a 2% bar.
+
+### 7.4 Leaster search: terminal rollouts against oracle leaves
+
+60 leaster play nodes from sampled 1.0 games, 12 per trick 0–4, 53 with more than one
+live action; 3 replicates per config; reference 2048 iterations to terminal
+(`leaster_bench.py`, 8 concurrent workers on CPU).
+
+| Config | Seconds per committee | Per-replicate advantage SD (points) | Advantage RMSE against reference (points) |
+|---|---|---|---|
+| 256 iterations, oracle leaf (d_rollout 1) | 13.4 | 0.147 | 0.101 |
+| 256 iterations, terminal | 11.4 | 0.160 | 0.111 |
+| 512 iterations, oracle leaf | 26.1 | 0.109 | 0.104 |
+| 512 iterations, terminal | 23.1 | 0.129 | 0.096 |
+| 1024 iterations, oracle leaf | 50.1 | 0.098 | 0.074 |
+
+- Terminal rollouts are about 15% cheaper: evaluating the recurrent oracle on the event
+  stream costs more than playing out the hand. The history oracle would narrow this by
+  an unmeasured amount.
+- At equal iterations the two are indistinguishable (paired RMSE, terminal − oracle
+  leaf: +0.009 ± 0.009 at 256, −0.009 ± 0.012 at 512).
+- More iterations help either way (1024 − 256: −0.037 ± 0.011), at 4× the time.
+- The reference's own pooled advantage has an SE near 0.05 points, which floors these
+  RMSE figures. The reference shares the terminal estimand, so this shows the oracle
+  leaf buys nothing in leasters, not that terminal is more accurate.
+
+### 7.5 Smaller points
+
+Accepted: a release criterion and trajectory tripwires (both set 11-22, §5), a fixed seed for `--oracle-init` (D9), and the L3 wording (confirmed). Declined:
+the bury-head pre-measurement (§5).
+
 ## Appendix: partner-seat probe (why no new aux head)
 
 `Called_Suit_Schmear_202611.md` §7.2. Linear probe for "the next seat holds the called
@@ -535,3 +701,18 @@ read at the WRONG nodes (§7.1 there) has not been run.
   beat run 1 by +0.0092 ± 0.0027; pick decisions score +0.029 ± 0.004 points per
   decision above θ₆ on the forced PICK/PASS hands. Ships as 1.1
   (`models/sheepsheadai-1.1-202611.pt`); manifest deploy entry moved to it.
+- **2026-11-20.** Plan reviewed (§7). Leaster search moves to terminal rollouts: the
+  oracle matches the limited critic in leasters (last-trick EV 0.35), and terminal
+  rollouts are about 15% cheaper at equal accuracy. The oracle is left as designed for
+  leasters, and the leaster stratum leaves the offline gate's pass conditions. Open
+  before launch: the online and offline oracle gate definitions, the acting twin, the
+  release criterion, the tripwires and the leaster cert rule.
+- **2026-11-22.** Operator decisions: acting-mode twin dropped; release criterion is
+  "not statistically worse than 1.1" with no convention regression and, hoped, no more
+  called-suit over-trumping, mixed results going to operator review; a leaster-hand
+  edge more than 2 SE negative halts the run for review. Online oracle gate becomes a
+  shadow-critic paired test; offline gate fails only on a seed-consistent deficit;
+  tripwires set at one stage behind 1.0's curve. Release h2h at 8,000 deals/mode, with
+  a larger read at the operator's option if it lands within noise. The shadow critic
+  is removed at 200k. No
+  operator decisions remain open.
