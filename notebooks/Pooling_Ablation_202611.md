@@ -1,7 +1,8 @@
 # Pooling Ablation: Borrowed-Strength vs Plain Search Distillation — November 2026
 
-**Status (2026-11-22): pre-registered and RUNNING. Five arms, sequential,
-about 20 h on the M1 Max. Results (§7) PENDING.**
+**Status (2026-11-23): COMPLETE. The blend shows no measurable benefit
+over dose-matched plain search distillation on strength or on trick-0
+convention adherence, for one iteration from θ₀. Results in §7.**
 
 The write-up of the search phase
 ([Building an Expert Sheepshead AI with Reinforcement Learning](https://bender.io/2026/11/17/building-an-expert-sheepshead-ai-with-reinforcement-learning))
@@ -191,13 +192,110 @@ of the comparison.
 
 ## 7. Results
 
-Pending. To be filled from `ablation.log`, each arm's `cert.json` and
-`h2h_vs_R_s0.json`.
+Run 2026-11-22 23:10 to 2026-11-23 14:44, the blend switch of `56469b9`. All arms use
+the last-epoch candidate (epoch 10).
 
-| arm | full h2h vs θ₀ | play-only vs θ₀ | bidding-only | arm − R_s0 (direct, fresh deals) | t0 trump lead | called-suit lead | spread | held-out target KL |
-|---|---|---|---|---|---|---|---|---|
-| R_s0 | | | | — | | | | |
-| P | | | | | | | | |
-| P14 | | | | | | | | |
-| M | | | | | | | | |
-| R_s1 | | | | | | | | |
+### 7.1 Strength
+
+| arm | full h2h vs θ₀ | play-only vs θ₀ | bidding-only | arm − R_s0 (direct, fresh deals) | arm − R_s0 (paired play-only, cert deals) |
+|---|---|---|---|---|---|
+| R_s0 | +0.0218 ± 0.0031 | +0.0195 ± 0.0029 | +0.0027 ± 0.0013 | — | — |
+| R_s1 | +0.0179 ± 0.0033 | +0.0191 ± 0.0031 | −0.0008 ± 0.0012 | −0.0014 ± 0.0021 | −0.0004 ± 0.0024 |
+| P | +0.0214 ± 0.0034 | +0.0147 ± 0.0030 | +0.0062 ± 0.0019 | +0.0024 ± 0.0020 | −0.0048 ± 0.0022 |
+| P14 | +0.0250 ± 0.0030 | +0.0221 ± 0.0028 | +0.0028 ± 0.0014 | −0.0009 ± 0.0016 | +0.0026 ± 0.0020 |
+| M | +0.0125 ± 0.0031 | +0.0124 ± 0.0030 | −0.0003 ± 0.0010 | −0.0063 ± 0.0019 | −0.0071 ± 0.0024 |
+
+The first three columns are the cert (8,000 deals per mode, seed 42).
+The direct column is the full duplicate h2h on 16,000 fresh deals per
+mode (seed 20261122). The paired column differences the cert's per-deal
+play-only scores.
+
+### 7.2 Conventions at trick 0
+
+Seeded probes of `Convention_Optimality_202610.md` §2, 100,000 games
+per mode. θ₀ reads 98.83% / 5.37% / 0.74% on the same deals.
+
+| arm | called-suit lead (called ace) | defender trump lead (JD) | defender trump lead (called ace) |
+|---|---|---|---|
+| R_s0 | 99.84% (27,233 / 27,277) | 3.52% (1,639 / 46,518) | 0.13% (64 / 49,886) |
+| R_s1 | 99.87% (26,594 / 26,628) | 4.76% (2,226 / 46,785) | 0.16% (80 / 50,128) |
+| P | 99.84% (27,254 / 27,297) | 2.39% (1,121 / 46,871) | 0.03% (16 / 49,549) |
+| P14 | 99.81% (27,170 / 27,223) | 3.24% (1,508 / 46,515) | 0.12% (58 / 49,794) |
+| M | 99.89% (26,772 / 26,801) | 3.01% (1,403 / 46,670) | 0.10% (48 / 50,008) |
+
+The called-suit rate is reported at trick 0 only. Later in the hand a
+defender can be right not to lead the called suit, so the cert's
+all-tricks rate (94–97% in every arm) is a health check, not a measure
+of adherence.
+
+### 7.3 Target fit and head sharpness
+
+| arm | target KL p50 (dose) | held-out target KL | play-logit spread | cert |
+|---|---|---|---|---|
+| R_s0 | 0.0435 | 0.103 | 3.69 | PASS |
+| R_s1 | 0.0435 | 0.102 | 3.66 | PASS |
+| P | 0.0710 | 0.187 | 3.12 | FAIL (spread) |
+| P14 | 0.0436 | 0.125 | 3.28 | FAIL (spread) |
+| M | 0.0346 | 0.065 | 4.02 | PASS |
+
+θ₀'s spread is 3.22 on the league probe. The 3.6 bar was set on the
+D8k lineage, whose seed read 3.56–3.60, as a guard against compression
+below the seed. P and P14 sit at θ₀'s value: they did not soften the
+head, they did not sharpen it. The two spread failures are the
+inherited bar, not the compression that preceded deterioration in the
+earlier teacher attempts (`CE_Teacher_Design_202608.md`, attempt 11:
+3.56 → 2.12).
+
+### 7.4 Reading against §6
+
+- **P14 − R within ±0.004: met.** Direct −0.0009 ± 0.0016; paired
+  play-only +0.0026 ± 0.0020. The 95% upper bound on the blend's
+  advantage at matched dose is about +0.004 on the direct read. The
+  criticism stands for one iteration.
+- **Noise floor: readable.** R_s1 − R_s0 is −0.0014 ± 0.0021 direct and
+  −0.0004 ± 0.0024 paired, inside ±0.004.
+- **M loses** by 0.006–0.007 on both reads. The model alone is a worse
+  teacher than the raw labels; the "M ≈ R" reading is refuted.
+- **P at the recipe's η is mixed.** Its play-only read is 0.005 below R
+  and 0.007 below P14, so the plain form does want its temperature
+  retuned. Its bidding-only read is the highest of any arm, and the
+  full h2h ties R on both deal sets.
+- **Conventions do not separate the arms.** Called-suit leads at trick 0
+  land at 99.81–99.89% everywhere. On trump leads the two recipe seeds
+  differ by 1.2 points in JD mode, as much as any arm differs from
+  either, and no ablation arm is worse than both seeds.
+
+### 7.5 Predictions against outcomes
+
+| arm | predicted arm − R | observed (direct) |
+|---|---|---|
+| R_s1 | 0.000, within ±0.004 | −0.0014 ± 0.0021 |
+| P | −0.010 | +0.0024 ± 0.0020 |
+| P14 | −0.007 | −0.0009 ± 0.0016 |
+| M | −0.005 | −0.0063 ± 0.0019 |
+
+The predictions for the two label-only arms were wrong, and wrong for
+the reason the criticism gives. The offline target read (§4) scored the
+blended targets well above the label-only ones (+0.029 against +0.011
+points per decision), and that did not transfer. Held-out target KL
+orders by how much model is in the target (M < R < P14 < P): blended
+targets are smoother and easier to fit, but the student gains nothing
+from that. The advantage model is the play head on frozen θ₀ features;
+the student is the same head with a trainable trunk, so it can do any
+pooling the model can. The blend can only remove information from the
+labels, and the M arm shows what removing all of it costs.
+
+### 7.6 What this does not settle
+
+- One iteration from θ₀. The published run compounded six; later
+  iterations have smaller edges against the same label noise. A plain
+  arm on the iteration-4 corpus (the last with a measurable gain,
+  +0.0046 ± 0.0022) would test that regime, and needs a direct h2h of
+  about 64,000 deals per mode to resolve a gain that size.
+- One corpus size and search budget. With fewer games or fewer rollouts
+  per node the student has less to average over.
+
+The plain arm is established practice: a KL-regularized tilt of search
+values, as in Grill et al. 2020, Gumbel MuZero (Danihelka et al. 2022)
+and MPO. The blend is the novel part, and on this evidence it adds
+nothing to it.
