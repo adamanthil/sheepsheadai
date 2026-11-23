@@ -3327,7 +3327,7 @@
             "name": "sort",
             "required": false,
             "schema": {
-              "default": "total",
+              "default": "sph",
               "enum": [
                 "total",
                 "sph",

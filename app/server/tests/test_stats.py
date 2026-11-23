@@ -456,8 +456,9 @@ async def test_stats_need_a_verified_account(seeded):
 async def test_leaderboard_serves_only_the_top_of_eligible_accounts(seeded):
     seeder, client = seeded
     tag = _tag()
-    # 22 eligible players. Totals rise with i, but win rate falls with it, so
-    # the total and win-rate boards run in opposite directions.
+    # 22 eligible players of 50 hands each. Totals, and so score per hand,
+    # rise with i, but win rate falls with it, so the default board and the
+    # win-rate board run in opposite directions.
     eligible = []
     for i in range(22):
         pid = await seeder.player(username=f"lb{i:02d}_{tag}")
@@ -474,9 +475,9 @@ async def test_leaderboard_serves_only_the_top_of_eligible_accounts(seeded):
     r = await client.get("/api/leaderboard")
     board = r.json()
     ours = [row for row in board["rows"] if row["username"].endswith(tag)]
-    assert board["sort"] == "total" and board["min_hands"] == 20
+    assert board["sort"] == "sph" and board["min_hands"] == 20
     assert len(board["rows"]) == 20
-    # Highest total first, and nobody under 20 hands or unverified.
+    # Best score per hand first, and nobody under 20 hands or unverified.
     assert [row["username"] for row in ours][:3] == [
         f"lb21_{tag}",
         f"lb20_{tag}",
@@ -486,7 +487,7 @@ async def test_leaderboard_serves_only_the_top_of_eligible_accounts(seeded):
     assert f"short_{tag}" not in names and f"hidden_{tag}" not in names
     assert "Same Name" not in names
 
-    # lb00 has the lowest total: off the page, but shown to its owner.
+    # lb00 scores least per hand: off the page, but shown to its owner.
     token = await create_session(seeder.pool, eligible[0])
     r = await client.get(
         "/api/leaderboard", headers={"Authorization": f"Bearer {token}"}

@@ -50,7 +50,7 @@ def _public_row(row: dict, you: bool) -> dict:
 async def leaderboard(
     request: Request,
     board: BoardKey = "overall",
-    sort: SortKey = "total",
+    sort: SortKey = "sph",
     period: PeriodKey = "all_time",
 ):
     # Always best-first and a single page: the bottom of the board is never
