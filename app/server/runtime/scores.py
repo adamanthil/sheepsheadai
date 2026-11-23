@@ -5,7 +5,9 @@ A seat's column follows its occupant as the deal rotates the seats, and
 stays with the seat while the AI stands in for a player who dropped, timed
 out, or left -- their seat is kept, so their total carries on. Only a
 newcomer dealt into a seat starts a new block, from 0, at that deal; a
-hand they took over mid-way stays in the block it was dealt in.
+hand they took over mid-way stays in the block it was dealt in. Everyone
+carried into the new block keeps their place in the scores table, so a
+column can be read down across blocks; newcomers fill the places left.
 
 A leaf module (it imports only the data model), so the dealing and
 results code can both use it.
@@ -13,7 +15,7 @@ results code can both use it.
 
 from __future__ import annotations
 
-from typing import Dict
+from typing import Any, Dict, List
 
 from server.runtime.models import Table
 
@@ -35,16 +37,31 @@ def assign_score_columns(table: Table) -> None:
     if newcomer:
         columns = {seat: _fresh_column(table, seat) for seat in range(1, 6)}
         names = table.to_public_dict()["seats"]
-        table.score_segments.append(
-            {
-                "columns": [
-                    {"id": columns[seat], "name": names[seat] or f"Seat {seat}"}
-                    for seat in range(1, 6)
-                ]
-            }
-        )
+        dealt = [
+            {"id": columns[seat], "name": names[seat] or f"Seat {seat}"}
+            for seat in range(1, 6)
+        ]
+        previous = table.score_segments[-1]["columns"] if table.score_segments else []
+        table.score_segments.append({"columns": _keep_places(previous, dealt)})
         table.running_scores = {}
     table.seat_columns = columns
+
+
+def _keep_places(
+    previous: List[Dict[str, Any]], dealt: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """The new block's columns: each one carried over from ``previous`` at
+    its old position, the rest in ``dealt``'s (seat) order in the places
+    left. The deal rotates the seats every hand, so seat order alone would
+    move a returning player to a different column."""
+    by_id = {c["id"]: c for c in dealt}
+    places: List[Dict[str, Any] | None] = [
+        by_id.pop(c["id"], None) for c in previous[: len(dealt)]
+    ]
+    places += [None] * (len(dealt) - len(places))
+    placed = {id(c) for c in places if c is not None}
+    rest = iter([c for c in dealt if id(c) not in placed])
+    return [c if c is not None else next(rest) for c in places]
 
 
 def rotate_score_columns(table: Table) -> None:

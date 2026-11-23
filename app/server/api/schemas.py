@@ -389,7 +389,8 @@ class ScoreColumn(BaseModel):
 
 
 class ScoreSegment(BaseModel):
-    # In seat order at the block's first deal.
+    # Carried-over columns in their old places, the rest in seat order at
+    # the block's first deal (runtime.scores).
     columns: List[ScoreColumn]
 
 

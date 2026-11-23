@@ -125,16 +125,44 @@ def test_a_newcomer_dealt_in_opens_a_new_block_from_zero():
     _next_deal(table)
 
     assert len(table.score_segments) == 2
+    # Everyone carried over keeps their column; Bob takes AI 4's.
     assert [c["name"] for c in table.score_segments[1]["columns"]] == [
+        "AI 1",
         "Ann",
         "AI 3",
         "Bob",
         "AI 5",
-        "AI 1",
     ]
     assert table.to_public_dict()["runningBySeat"] == {i: 0 for i in range(1, 6)}
     _play_hand(table)
     assert table.results_history[-1]["segment"] == 1
+
+
+def test_players_keep_their_columns_across_blocks():
+    table = _table()
+    table.clients["bob"] = ClientConn(
+        client_id="bob", display_name="Bob", player_id="p-bob"
+    )
+    seat_over_ai(table, 4, "bob")
+    _play_hand(table)
+    _next_deal(table)  # Bob's first deal: block 2
+    for _ in range(2):  # The seats rotate on under them.
+        _play_hand(table)
+        _next_deal(table)
+    table.clients["cat"] = ClientConn(
+        client_id="cat", display_name="Cat", player_id="p-cat"
+    )
+    assert table.seats[3] == "ai1"  # Moved round from seat 1.
+    seat_over_ai(table, 3, "cat")
+    _play_hand(table)
+    _next_deal(table)  # Cat's first deal: block 3
+
+    names = [[c["name"] for c in s["columns"]] for s in table.score_segments]
+    assert names == [
+        ["AI 1", "Ann", "AI 3", "AI 4", "AI 5"],
+        ["AI 1", "Ann", "AI 3", "Bob", "AI 5"],
+        ["Cat", "Ann", "AI 3", "Bob", "AI 5"],
+    ]
 
 
 def test_a_hand_taken_over_mid_way_stays_in_the_block_it_was_dealt_in():

@@ -141,7 +141,8 @@ class Table:
     # History of completed hands at this table (in chronological order)
     results_history: List[Dict[str, Any]] = field(default_factory=list)
     # Blocks of hands played by one set of players, oldest first: each is
-    # {"columns": [{"id", "name"}, ...]} in seat order at its first deal
+    # {"columns": [{"id", "name"}, ...]}, carried-over columns in their old
+    # places and the rest in seat order at its first deal
     # (runtime.scores). Results-history entries name their block by index.
     score_segments: List[Dict[str, Any]] = field(default_factory=list)
     # Seat -> score column of the hand in play (or the last one)
