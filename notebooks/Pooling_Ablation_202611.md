@@ -299,3 +299,58 @@ The plain arm is established practice: a KL-regularized tilt of search
 values, as in Grill et al. 2020, Gumbel MuZero (Danihelka et al. 2022)
 and MPO. The blend is the novel part, and on this evidence it adds
 nothing to it.
+
+## 8. Iteration-4 follow-up (pre-registered 2026-11-23, RUNNING)
+
+§7.6 leaves open whether the blend earns its place once edges are small
+against the same label noise. Iteration 4 is the last iteration with a
+measurable recipe gain (play-only +0.0046 ± 0.0022 vs θ₃; iterations 5
+and 6 read +0.0006 and +0.0013), and the first run entirely under the
+final recipe.
+
+### 8.1 Design
+
+Same construction as §3 on the iteration-4 corpus (8,000 games from θ₃
+= `pi/iter3/bidding/final.pt`) with iteration 4's own fit artifacts.
+Run directory `runs/202609_recall_rc/pi/iter4_ablations/pooling/`.
+
+| arm | advantage the tilt reads | η | target KL p50 |
+|---|---|---|---|
+| R_s0 | Fay–Herriot blend (final recipe) | 0.0097 | 0.0180 |
+| P149 | label alone (`--blend search`) | 0.0149 | 0.0180 (scan: 0.0145 → 0.0187, 0.0155 → 0.0170) |
+| R_s1 | final recipe, distill seed 1 | 0.0097 | 0.0180 |
+
+The model-only and same-η label arms are dropped: §7 showed the first
+loses and the second is a temperature mismatch. Cert as before (8,000
+deals per mode vs θ₃). The direct h2h against R_s0 is raised to 64,000
+fresh deals per mode (seed 20261122), for an expected SE near 0.001,
+because the whole gain to split is under 0.005.
+
+### 8.2 Predictions
+
+| arm | play-only vs θ₃ | arm − R_s0 (direct) |
+|---|---|---|
+| R_s0 | +0.005 (reproduces iteration 4 within 1 SE) | — |
+| R_s1 | +0.005 | 0.000, within ±0.002 |
+| P149 | +0.004 | −0.0005, within ±0.002 with probability 0.75 |
+
+After §7 the expectation is a tie. The case for a gap is that the
+label-only target leans on single noisy labels at exactly the rows
+where the true edge is now smallest; the case against is unchanged,
+the student pools for itself.
+
+### 8.3 Readings fixed in advance
+
+- **P149 − R_s0 within ±0.002.** The null extends to the low-signal
+  regime. The blend adds nothing measurable at either end of the
+  program.
+- **P149 − R_s0 ≤ −0.002 and outside the R_s1 spread.** The blend is
+  worth that much per iteration once edges are small, and §7's null is
+  specific to the first iteration.
+- **P149 − R_s0 ≥ +0.002.** The blend costs strength late, consistent
+  with the model-only harm in the top rows recorded at iterations 5–6.
+- **|R_s1 − R_s0| > 0.002.** The seed spread is as large as the effect
+  sought; no conclusion without more seeds.
+
+Limit, unchanged: θ₃ was itself built by three blended iterations, so
+this compares single steps, not chains.
