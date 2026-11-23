@@ -84,8 +84,19 @@ export default function ScoresOverlay({
                     </th>
                     {block.columns.map((c) => (
                       <th key={c.id} scope="col" className={styles.thRight}>
-                        <span className={styles.thName} title={c.name}>
+                        {/* Above the name, not beside it: the column
+                            stays as narrow as the name. */}
+                        {c.ai && (
+                          <span className={styles.aiTag} aria-hidden="true">
+                            AI
+                          </span>
+                        )}
+                        <span
+                          className={styles.thName}
+                          title={c.ai ? `${c.name} (AI)` : c.name}
+                        >
                           {c.name}
+                          {c.ai && <span className={styles.srOnly}> (AI)</span>}
                         </span>
                       </th>
                     ))}

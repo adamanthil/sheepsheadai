@@ -165,7 +165,8 @@ describe("badges and clock", () => {
 });
 
 describe("scoreBlocks", () => {
-  const cols = (...ids: string[]) => ids.map((id) => ({ id, name: id }));
+  const cols = (...ids: string[]) =>
+    ids.map((id) => ({ id, name: id, ai: id.startsWith("ai") }));
   // Two-seat hands keep the fixtures short; the columns are what count.
   const hand = (
     segment: number,

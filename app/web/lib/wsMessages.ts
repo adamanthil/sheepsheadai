@@ -21,7 +21,13 @@ const looseTable = z.looseObject({
   resultsHistory: z.array(z.looseObject({})),
   scoreSegments: z.array(
     z.object({
-      columns: z.array(z.object({ id: z.string(), name: z.string() })),
+      columns: z.array(
+        z.object({
+          id: z.string(),
+          name: z.string(),
+          ai: z.boolean().default(false),
+        }),
+      ),
     }),
   ),
   rules,
@@ -43,7 +49,7 @@ const chatMessage = z.looseObject({
   type: z.enum(["player", "system"]),
   author: z.string().nullable(),
   author_id: z.string().nullable().optional(),
-  author_is_ai: z.boolean().optional(),
+  author_is_ai: z.boolean().default(false),
   body: z.string(),
   timestamp: z.number(),
 });

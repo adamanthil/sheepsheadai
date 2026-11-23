@@ -2392,6 +2392,11 @@
       },
       "ScoreColumn": {
         "properties": {
+          "ai": {
+            "default": false,
+            "title": "Ai",
+            "type": "boolean"
+          },
           "id": {
             "title": "Id",
             "type": "string"

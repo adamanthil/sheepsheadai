@@ -37,8 +37,15 @@ def assign_score_columns(table: Table) -> None:
     if newcomer:
         columns = {seat: _fresh_column(table, seat) for seat in range(1, 6)}
         names = table.to_public_dict()["seats"]
+        # A column held for a player still at the table is theirs, even
+        # while the AI stands in for them.
+        humans = {table.score_column_key(cid) for cid in table.clients}
         dealt = [
-            {"id": columns[seat], "name": names[seat] or f"Seat {seat}"}
+            {
+                "id": columns[seat],
+                "name": names[seat] or f"Seat {seat}",
+                "ai": columns[seat] not in humans,
+            }
             for seat in range(1, 6)
         ]
         previous = table.score_segments[-1]["columns"] if table.score_segments else []

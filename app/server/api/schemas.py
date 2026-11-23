@@ -386,6 +386,9 @@ class ScoreColumn(BaseModel):
     # A player's own column, or the occupant id of an AI's (runtime.scores).
     id: str
     name: str
+    # The AI's own column, not a player's: tells an AI apart from a player
+    # who shares its name.
+    ai: bool = False
 
 
 class ScoreSegment(BaseModel):

@@ -59,11 +59,11 @@ def test_the_first_deal_opens_a_block_named_for_who_sits_down():
     assert table.score_segments == [
         {
             "columns": [
-                {"id": "ai1", "name": "AI 1"},
-                {"id": "p-ann", "name": "Ann"},
-                {"id": "ai3", "name": "AI 3"},
-                {"id": "ai4", "name": "AI 4"},
-                {"id": "ai5", "name": "AI 5"},
+                {"id": "ai1", "name": "AI 1", "ai": True},
+                {"id": "p-ann", "name": "Ann", "ai": False},
+                {"id": "ai3", "name": "AI 3", "ai": True},
+                {"id": "ai4", "name": "AI 4", "ai": True},
+                {"id": "ai5", "name": "AI 5", "ai": True},
             ]
         }
     ]

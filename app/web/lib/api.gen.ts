@@ -1431,6 +1431,11 @@ export interface components {
         };
         /** ScoreColumn */
         ScoreColumn: {
+            /**
+             * Ai
+             * @default false
+             */
+            ai: boolean;
             /** Id */
             id: string;
             /** Name */
