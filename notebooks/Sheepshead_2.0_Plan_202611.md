@@ -5,7 +5,8 @@ where marked. Of the 2.0 changes, only the observation contract in §1 is built;
 it is on `main` with the 1.1 release. The 11-20 review (§7) changed leaster
 search to terminal rollouts. On 11-22 the operator settled every open decision
 (§5): both oracle gates, the release criterion, the tripwires and the leaster
-cert rule. The acting-mode twin is dropped.
+cert rule. The acting-mode twin, dropped on 11-22, was reopened on 11-24 and is
+running (`Acting_Mode_Twin_202611.md`).
 
 ## Open before launch
 
@@ -336,6 +337,11 @@ corpus could sample the policy at continuation instead of playing the committee'
 on resolved rows. The only prior estimate (−0.0055 ± 0.0021 play-only for sampling,
 `CE_Teacher_Design_202608.md` §20.13 addendum 16) predicted it would fail its own bar.
 2.0 keeps committee acting as in 1.0.
+
+**Reopened (operator, 11-24).** That estimate compared two students that both failed to
+improve under the one-epoch schedule, so it measured damage, not learning. A quarter-size
+twin at θ₀ under the final schedule is running (`Acting_Mode_Twin_202611.md`). Committee
+acting stays the 2.0 default until it reads.
 
 **Gate tooling (to build).** `stop_after` only accepts `iter{k}.{stage}`, so the offline
 gate needs a pause point after oracle pretraining.
@@ -716,3 +722,8 @@ read at the WRONG nodes (§7.1 there) has not been run.
   a larger read at the operator's option if it lands within noise. The shadow critic
   is removed at 200k. No
   operator decisions remain open.
+- **2026-11-24.** Acting-mode twin reopened (`Acting_Mode_Twin_202611.md`): the 11-22
+  drop rested on a comparison of two non-improving students. The pooling ablation
+  (`Pooling_Ablation_202611.md`) found the Fay–Herriot blend adds nothing measurable over
+  dose-matched label-only distillation at iterations 1 and 4; whether 2.0 drops the
+  advantage model is an open operator decision.
