@@ -1140,22 +1140,38 @@ def sigma_u2_rows(
     )
 
 
+BLENDS = ("fay-herriot", "search", "model")
+
+
 def blend_advantages(
     a_obs: torch.Tensor,
     a_model: torch.Tensor,
     has_q: torch.Tensor,
     noise_var: torch.Tensor,
     sigma_u2: "float | torch.Tensor",
+    blend: str = "fay-herriot",
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """(a_hat, v_post, gamma) per row. Rows with Q take the precision-
     weighted blend; rows without take the model alone with variance
     sigma_u^2. ``sigma_u2`` is one value for every row or a per-row
-    tensor (the §20.6 per-class variances)."""
+    tensor (the §20.6 per-class variances).
+
+    ``blend`` (BLENDS) is the ablation switch on the pooling itself:
+    ``search`` forces gamma = 1 on rows with Q (the node's own label and
+    nothing else: plain search-Q distillation through the same tilt),
+    ``model`` forces gamma = 0 (the pooled model alone)."""
+    if blend not in BLENDS:
+        raise ValueError(f"blend must be one of {BLENDS}, got {blend!r}")
     su2 = torch.as_tensor(sigma_u2, dtype=noise_var.dtype).expand_as(noise_var)
     nv = torch.where(has_q, noise_var, torch.zeros_like(noise_var))
-    gamma = torch.where(has_q, su2 / (su2 + nv), torch.zeros_like(nv))
+    if blend == "search":
+        gamma = has_q.to(nv.dtype)
+    elif blend == "model":
+        gamma = torch.zeros_like(nv)
+    else:
+        gamma = torch.where(has_q, su2 / (su2 + nv), torch.zeros_like(nv))
     a_hat = gamma.unsqueeze(1) * a_obs + (1.0 - gamma).unsqueeze(1) * a_model
-    v_post = torch.where(has_q, gamma * nv, su2)
+    v_post = torch.where(has_q & (gamma > 0), gamma * nv, su2)
     return a_hat, v_post, gamma
 
 
@@ -1608,6 +1624,7 @@ def targets_for_table(
     model_variance: str = "class",
     oof: "tuple[torch.Tensor, torch.Tensor | None] | None" = None,
     eta: float | None = None,
+    blend: str = "fay-herriot",
 ) -> dict:
     """Stage 1b + 2 over every targetable row. Returns dense tensors
     (targets, z, gamma, v_post, a_hat, a_model, sigma_u2) aligned with
@@ -1615,7 +1632,9 @@ def targets_for_table(
     tensor aligned with ``table``; ``model_variance`` (MODEL_VARIANCES)
     says how the head's per-row variance enters; ``oof`` supplies
     out-of-fold a_model / per-row sigma_u^2 in place of the model's;
-    ``eta`` is the global value-unit tilt temperature (build_tilt_target)."""
+    ``eta`` is the global value-unit tilt temperature (build_tilt_target);
+    ``blend`` forces the blend weight for the pooling ablation
+    (blend_advantages)."""
     su2_rows = (
         sigma_u2
         if isinstance(sigma_u2, torch.Tensor)
@@ -1640,6 +1659,7 @@ def targets_for_table(
                 table.has_q[b],
                 table.noise_var[b],
                 su2_b,
+                blend=blend,
             )
             t, z = build_tilt_target(
                 table.prior[b],

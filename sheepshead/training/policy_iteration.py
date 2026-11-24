@@ -73,6 +73,7 @@ from sheepshead.rl.corpus_rows import (
     shard_paths,
 )
 from sheepshead.rl.search_advantage import (
+    BLENDS,
     CAPACITIES,
     CE_WEIGHTS,
     MODEL_VARIANCES,
@@ -468,7 +469,10 @@ def stage_target(args) -> dict:
         model_variance=args.model_variance,
         oof=oof,
         eta=eta,
+        blend=args.blend,
     )
+    if args.blend != "fay-herriot":
+        log(f"[target] blend {args.blend}: gamma forced, the pooling ablation")
     q_rows = table.has_q
     head_raised = (
         float((built["sigma_u2"][q_rows] > su2[q_rows]).float().mean())
@@ -551,6 +555,7 @@ def stage_target(args) -> dict:
         "z_max_p50": float(z_abs.median()),
         "z_max_p90": float(z_abs.quantile(0.9)),
         "frac_z_clipped": float((z_abs >= args.tilt_max - 1e-6).float().mean()),
+        "blend": args.blend,
         "model_variance": args.model_variance,
         "model_variance_head_rows": head_raised,
         "sigma_u2_by_class": su2_by_class,
@@ -1371,6 +1376,16 @@ def build_parser() -> argparse.ArgumentParser:
         "max(out-of-fold head, class), so the head can only hand weight to "
         "search where the model knows it is unreliable (Arm_D_Review §9.7); "
         "head = the head alone (arm 4). Non-class modes need a cross-fit.",
+    )
+    tgt.add_argument(
+        "--blend",
+        default="fay-herriot",
+        choices=BLENDS,
+        help="advantage the tilt reads: fay-herriot (default) = the blend of "
+        "the node's search label and the pooled model; search = the label "
+        "alone (gamma 1, plain search-Q distillation through the same "
+        "tilt); model = the pooled model alone (gamma 0). The last two are "
+        "the pooling ablation's arms.",
     )
     tgt.add_argument(
         "--weights",

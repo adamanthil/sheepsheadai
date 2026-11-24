@@ -164,6 +164,27 @@ def test_fit_recovers_a_token_readout_to_the_noise_floor():
     assert pooled["top_agree_model"] >= pooled["top_agree_prior"]
 
 
+def test_forced_blends_are_the_label_and_the_model():
+    a_obs = torch.tensor([[0.02, -0.02, 0.0], [0.05, -0.05, 0.0]])
+    a_model = torch.tensor([[0.01, 0.0, -0.01], [0.0, 0.03, -0.03]])
+    has_q = torch.tensor([True, False])
+    nv = torch.tensor([1e-4, float("nan")])
+    a_hat, v_post, gamma = blend_advantages(
+        a_obs, a_model, has_q, nv, sigma_u2=2e-4, blend="search"
+    )
+    # The label alone where there is one; a row without Q still has only the model.
+    assert gamma.tolist() == [1.0, 0.0]
+    assert torch.equal(a_hat[0], a_obs[0]) and torch.equal(a_hat[1], a_model[1])
+    assert v_post[0] == pytest.approx(1e-4) and v_post[1] == pytest.approx(2e-4)
+    a_hat, v_post, gamma = blend_advantages(
+        a_obs, a_model, has_q, nv, sigma_u2=2e-4, blend="model"
+    )
+    assert gamma.tolist() == [0.0, 0.0] and torch.equal(a_hat, a_model)
+    assert torch.allclose(v_post, torch.tensor([2e-4, 2e-4]))
+    with pytest.raises(ValueError):
+        blend_advantages(a_obs, a_model, has_q, nv, sigma_u2=2e-4, blend="mean")
+
+
 def test_blend_and_tilt_identities():
     a_obs = torch.tensor([[0.02, -0.02, 0.0], [0.05, -0.05, 0.0]])
     a_model = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
