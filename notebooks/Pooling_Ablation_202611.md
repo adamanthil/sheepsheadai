@@ -1,8 +1,9 @@
 # Pooling Ablation: Borrowed-Strength vs Plain Search Distillation — November 2026
 
-**Status (2026-11-23): COMPLETE. The blend shows no measurable benefit
+**Status (2026-11-24): COMPLETE. The blend shows no measurable benefit
 over dose-matched plain search distillation on strength or on trick-0
-convention adherence, for one iteration from θ₀. Results in §7.**
+convention adherence, at iteration 1 (§7) or at iteration 4, the last
+iteration with a measurable gain (§8).**
 
 The write-up of the search phase
 ([Building an Expert Sheepshead AI with Reinforcement Learning](https://bender.io/2026/11/17/building-an-expert-sheepshead-ai-with-reinforcement-learning))
@@ -386,7 +387,7 @@ values, as in Grill et al. 2020, Gumbel MuZero (Danihelka et al. 2022)
 and MPO. The blend is the novel part, and on this evidence it adds
 nothing to it.
 
-## 8. Iteration-4 follow-up (pre-registered 2026-11-23, RUNNING)
+## 8. Iteration-4 follow-up (pre-registered 2026-11-23, complete 2026-11-24)
 
 §7.6 leaves open whether the blend earns its place once edges are small
 against the same label noise. Iteration 4 is the last iteration with a
@@ -440,3 +441,69 @@ the student pools for itself.
 
 Limit, unchanged: θ₃ was itself built by three blended iterations, so
 this compares single steps, not chains.
+
+### 8.4 Results
+
+Run 2026-11-23 14:51 to 2026-11-24 03:09; convention probes to 04:08.
+All three certs PASS.
+
+| arm | full h2h vs θ₃ | play-only vs θ₃ | bidding-only | arm − R_s0 (direct, 64,000 fresh deals/mode) | arm − R_s0 (paired play-only, cert deals) |
+|---|---|---|---|---|---|
+| R_s0 | +0.0054 ± 0.0023 | +0.0053 ± 0.0022 | +0.0001 ± 0.0007 | — | — |
+| R_s1 | +0.0049 ± 0.0023 | +0.0040 ± 0.0022 | +0.0015 ± 0.0008 | +0.0004 ± 0.0007 (called +0.0010 / jd −0.0003) | −0.0012 ± 0.0019 |
+| P149 | +0.0052 ± 0.0025 | +0.0057 ± 0.0022 | −0.0008 ± 0.0012 | −0.0001 ± 0.0007 (called +0.0013 / jd −0.0014) | +0.0004 ± 0.0019 |
+
+R_s0 reproduces October's iteration 4 (play-only +0.0046 ± 0.0022)
+within 1 SE; it is not bit-identical.
+
+Conventions at trick 0 (seeded probes, 100,000 games per mode):
+
+| arm | called-suit lead (called ace) | defender trump lead (JD) | defender trump lead (called ace) |
+|---|---|---|---|
+| θ₃ | 99.94% (29,015 / 29,031) | 1.74% (828 / 47,462) | 0.08% (41 / 48,324) |
+| R_s0 | 99.95% (28,978 / 28,993) | 0.97% (459 / 47,494) | 0.16% (76 / 48,305) |
+| R_s1 | 99.94% (28,906 / 28,922) | 1.47% (698 / 47,438) | 0.20% (95 / 48,269) |
+| P149 | 99.97% (28,584 / 28,592) | 1.42% (676 / 47,666) | 0.08% (39 / 48,403) |
+
+Target fit and head sharpness:
+
+| arm | target KL p50 | rows at the clip | held-out target KL | play-logit spread |
+|---|---|---|---|---|
+| R_s0 | 0.0180 | 7.8% | 0.077 | 5.07 |
+| R_s1 | 0.0180 | 7.8% | 0.078 | 4.99 |
+| P149 | 0.0180 | 5.5% | 0.090 | 4.64 |
+
+### 8.5 Reading against §8.3
+
+- **P149 − R_s0 within ±0.002: met, by a wide margin.** Direct −0.0001
+  ± 0.0007; the 95% interval is −0.0015 to +0.0014, against a recipe
+  gain of about +0.005. The null extends to the low-signal regime.
+- **Noise floor: readable.** R_s1 − R_s0 is +0.0004 ± 0.0007.
+- **Conventions do not separate the arms.** Called-suit leads are
+  saturated at 99.94–99.97% from θ₃ on. On JD-mode trump leads the
+  label-only arm (1.42%) sits between the two recipe seeds (0.97% and
+  1.47%); in called-ace mode it is the lowest of the three.
+- **The pattern of §7.3 repeats.** Blended targets are easier to fit
+  (held-out KL 0.077 against 0.090) and the recipe sharpens the head
+  more (5.0–5.1 against 4.64), with no difference in play.
+- The prediction (§8.2) was a tie and held.
+
+### 8.6 Conclusion
+
+At both ends of the program's useful range, the first iteration and the
+last with a measurable gain, a student distilled from the search
+committee's own centered Q values at matched dose is indistinguishable
+from the final recipe's student in strength and in trick-0 convention
+adherence. The combined bound on the blend's advantage is about +0.004
+at iteration 1 and +0.0014 at iteration 4 (95% upper, direct h2h).
+
+The diagnosis that motivated the blend stands: single labels are noise
+at lead rows, and an uncalibrated tilt of them is destructive (§2.1
+items 1–2). What does the work is the calibrated, KL-regularized tilt
+at a matched dose and enough optimisation. The pooling the advantage
+model performs is done by the student regardless.
+
+Still open: a chain of label-only iterations has not been run (θ₃ was
+built by three blended steps), and neither has a smaller corpus or a
+cheaper search, where the student would have less to average over.
+
