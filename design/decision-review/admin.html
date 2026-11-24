@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Admin: review queue</title>
+<script src="./prototype-runtime.js"></script>
+<style>x-dc{display:none}</style>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f3f1ea;color:#0e0d0a;font-family:Geist,"Helvetica Neue",system-ui,sans-serif}
+a{color:#0e0d0a}a:hover{color:#1f3b2f}
+button{font-family:inherit}
+@media (max-width:640px){
+.kind-row{grid-template-columns:92px minmax(0,1fr) 40px 48px!important;gap:8px!important}
+.kind-count{display:none!important}
+}
+</style>
+</helmet>
+<div style="background: #f3f1ea; min-height: 1700px; box-sizing: border-box">
+
+<nav aria-label="Site" style="border-bottom: 1px solid #cfccc0">
+<div style="max-width: 1440px; margin: 0 auto; padding: 0 clamp(16px, 5vw, 80px); height: 46px; display: flex; align-items: center; justify-content: space-between; gap: 16px; box-sizing: border-box">
+<div style="display: flex; align-items: center; gap: clamp(12px, 2.2vw, 28px); overflow-x: auto; white-space: nowrap; font-size: 11px; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase">
+<a href="#" style="color: #6e6c63; text-decoration: none">Lobby</a>
+<a href="#" style="color: #6e6c63; text-decoration: none">Leaderboard</a>
+<a href="#" style="color: #6e6c63; text-decoration: none">About</a>
+<a href="#" style="color: #6e6c63; text-decoration: none">Analyze AI ↗</a>
+</div>
+<a href="#" aria-label="Account: @andrew" style="display: inline-flex; align-items: center; text-decoration: none">
+<span aria-hidden="true" style="width: 26px; height: 26px; border-radius: 50%; background: #1f3b2f; color: #ffffff; display: inline-flex; align-items: center; justify-content: center; font-family: 'Instrument Serif', serif; font-size: 15px; box-shadow: 0 0 0 2px #f3f1ea, 0 0 0 3px #0e0d0a">A</span>
+</a>
+</div>
+</nav>
+
+<div style="max-width: 880px; margin: 0 auto; padding: 20px 16px 64px; box-sizing: border-box">
+<h1 style="font-family: 'Instrument Serif', serif; font-weight: 400; font-size: clamp(40px, 8vw, 64px); line-height: 1; letter-spacing: -0.01em; margin: 28px 0 24px">@andrew</h1>
+
+<nav aria-label="Account" style="display: flex; gap: 24px; border-bottom: 1px solid #cfccc0; margin-bottom: 24px; font-size: 14px; overflow-x: auto; white-space: nowrap">
+<a href="#" style="color: #6e6c63; text-decoration: none; padding-bottom: 8px">Overview</a>
+<a href="hand-history.html" style="color: #6e6c63; text-decoration: none; padding-bottom: 8px">Hand history</a>
+<a href="review-tab.html" style="color: #6e6c63; text-decoration: none; padding-bottom: 8px">AI review<span style="font-size: 9px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: #6e6c63; border: 1px solid #a3a094; border-radius: 2px; padding: 1px 4px; margin-left: 6px; vertical-align: 2px">Beta</span></a>
+<a href="#" style="color: #6e6c63; text-decoration: none; padding-bottom: 8px">Settings</a>
+<a href="admin.html" aria-current="page" style="color: #0e0d0a; text-decoration: none; padding-bottom: 8px; border-bottom: 2px solid #0e0d0a; margin-bottom: -1px">Admin</a>
+</nav>
+
+<section aria-label="Review queue">
+<div style="border-top: 2px solid #0e0d0a; padding-top: 3px"><div style="border-top: 1px solid #0e0d0a; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 12px; padding-top: 8px; margin-bottom: 18px; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; font-weight: 500; color: #6e6c63">
+<span>AI review queue</span>
+<span style="color: #b3331e">Paused · 2 tables in play</span>
+</div></div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 20px 24px; margin-bottom: 28px">
+<div><div style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 500; color: #6e6c63">Waiting</div><div style="font-family: 'Instrument Serif', serif; font-size: 44px; line-height: 1.1; color: #0e0d0a">37</div><div style="font-size: 13px; color: #2c2b27; margin-top: 2px">hands in the queue</div></div>
+<div><div style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 500; color: #6e6c63">Oldest waiting</div><div style="font-family: 'Instrument Serif', serif; font-size: 44px; line-height: 1.1; color: #0e0d0a">4 h</div><div style="font-size: 13px; color: #2c2b27; margin-top: 2px">queued at 10:12 AM</div></div>
+<div><div style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 500; color: #6e6c63">Reviewed, last 24 h</div><div style="font-family: 'Instrument Serif', serif; font-size: 44px; line-height: 1.1; color: #0e0d0a">212</div><div style="font-size: 13px; color: #2c2b27; margin-top: 2px">hands</div></div>
+<div><div style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 500; color: #6e6c63">Average time</div><div style="font-family: 'Instrument Serif', serif; font-size: 44px; line-height: 1.1; color: #0e0d0a">0.4 s</div><div style="font-size: 13px; color: #2c2b27; margin-top: 2px">per hand, last 24 h</div></div>
+</div>
+<div style="display: flex; justify-content: space-between; gap: 16px; padding: 9px 0; border-bottom: 1px solid #cfccc0; font-size: 14px; color: #2c2b27"><span>Reviewed in total</span><span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; text-align: right">845 of 884 queued</span></div>
+<div style="display: flex; justify-content: space-between; gap: 16px; padding: 9px 0; border-bottom: 1px solid #cfccc0; font-size: 14px; color: #2c2b27"><span>Failed to replay</span><span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; text-align: right">2 hands</span></div>
+<div style="display: flex; justify-content: space-between; gap: 16px; padding: 9px 0; border-bottom: 1px solid #cfccc0; font-size: 14px; color: #2c2b27"><span>Slowest hand, last 24 h</span><span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; text-align: right">1.9 s</span></div>
+<div style="display: flex; justify-content: space-between; gap: 16px; padding: 9px 0; border-bottom: 1px solid #cfccc0; font-size: 14px; color: #2c2b27"><span>Last hand reviewed</span><span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; text-align: right">11:48 AM</span></div>
+<div style="display: flex; justify-content: space-between; gap: 16px; padding: 9px 0; border-bottom: 1px solid #cfccc0; font-size: 14px; color: #2c2b27"><span>Reviewing with</span><span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; text-align: right">sheepsheadai-1.1-202611</span></div>
+<div style="display: flex; justify-content: space-between; gap: 16px; padding: 9px 0; border-bottom: 1px solid #cfccc0; font-size: 14px; color: #2c2b27"><span>Reviews from an older AI version</span><span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; text-align: right">0</span></div>
+
+<p style="font-size: 12px; color: #6e6c63; margin: 12px 0 0">The queue runs while at most one table is in play. Every number on this page is a placeholder.</p>
+</section>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

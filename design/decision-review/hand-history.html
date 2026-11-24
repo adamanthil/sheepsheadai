@@ -14,6 +14,17 @@
 body{margin:0;background:#f3f1ea;color:#0e0d0a;font-family:Geist,"Helvetica Neue",system-ui,sans-serif}
 a{color:#0e0d0a}a:hover{color:#1f3b2f}
 button{font-family:inherit}
+.m-role{display:none;font-family:Geist,"Helvetica Neue",system-ui,sans-serif;font-size:13px;color:inherit;margin-top:2px}
+@media (max-width:640px){
+.ai-table{min-width:0!important}
+.ai-row{grid-template-columns:minmax(0,1fr) 40px minmax(72px,110px) 48px 30px!important}
+.ai-row .c-role{display:none!important}
+.ai-row>span,.ai-row>button{padding-left:4px!important;padding-right:4px!important}
+.ai-row .m-role{display:block}
+.strip-cells{display:none!important}
+.strip-cap{margin-left:0!important}
+.strip-head{font-size:22px!important}
+}
 </style>
 </helmet>
 <div style="background: #f3f1ea; min-height: 1140px; box-sizing: border-box">
@@ -35,54 +46,54 @@ button{font-family:inherit}
 <div style="max-width: 880px; margin: 0 auto; padding: 20px 16px 64px; box-sizing: border-box">
 <h1 style="font-family: 'Instrument Serif', serif; font-weight: 400; font-size: clamp(40px, 8vw, 64px); line-height: 1; letter-spacing: -0.01em; margin: 28px 0 24px">@andrew</h1>
 
-<nav aria-label="Account" style="display: flex; gap: 24px; border-bottom: 1px solid #cfccc0; margin-bottom: 24px; font-size: 14px">
+<nav aria-label="Account" style="display: flex; gap: 24px; border-bottom: 1px solid #cfccc0; margin-bottom: 24px; font-size: 14px; overflow-x: auto; white-space: nowrap">
 <a href="#" style="color: #6e6c63; text-decoration: none; padding-bottom: 8px">Overview</a>
-<a href="#" aria-current="page" style="color: #0e0d0a; text-decoration: none; padding-bottom: 8px; border-bottom: 2px solid #0e0d0a; margin-bottom: -1px">Hand history</a>
+<a href="hand-history.html" aria-current="page" style="color: #0e0d0a; text-decoration: none; padding-bottom: 8px; border-bottom: 2px solid #0e0d0a; margin-bottom: -1px">Hand history</a>
+<a href="review-tab.html" style="color: #6e6c63; text-decoration: none; padding-bottom: 8px">AI review<span style="font-size: 9px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: #6e6c63; border: 1px solid #a3a094; border-radius: 2px; padding: 1px 4px; margin-left: 6px; vertical-align: 2px">Beta</span></a>
 <a href="#" style="color: #6e6c63; text-decoration: none; padding-bottom: 8px">Settings</a>
 </nav>
 
-<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px">
-<div style="display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: 13px; color: #2c2b27">
-<span style="color: #6e6c63">Each mark is one of your decisions, beside what the model would have done:</span>
-<span><span aria-hidden="true" style="font-size: 11px; margin-right: 6px">●</span>same choice</span>
-<span><span aria-hidden="true" style="font-size: 11px; margin-right: 6px; color: #6e6c63">○</span>different, about even</span>
-<span><span aria-hidden="true" style="font-size: 11px; margin-right: 6px; color: #b3331e">▼</span>cost you half a point or more</span>
-<span><span aria-hidden="true" style="font-size: 11px; margin-right: 6px; color: #1d6b42">▲</span>beat the model’s choice</span>
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 24px; margin-bottom: 16px">
+<div role="group" aria-label="What the table shows" style="display: inline-flex; border: 1px solid #a3a094; border-radius: 3px; overflow: hidden">
+<button type="button" onClick="{{showResults}}" aria-pressed="{{resPressed}}" style="min-height: 36px; font-size: 13px; padding: 6px 12px; border: none; background: {{resBg}}; color: {{resFg}}; cursor: pointer; white-space: nowrap">Results</button>
+<button type="button" onClick="{{showAi}}" aria-pressed="{{aiPressed}}" style="min-height: 36px; font-size: 13px; padding: 6px 12px; border: none; border-left: 1px solid #a3a094; background: {{aiBg}}; color: {{aiFg}}; cursor: pointer; white-space: nowrap">AI comparison<span style="font-size: 9px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.7; border: 1px solid currentColor; border-radius: 2px; padding: 1px 4px; margin-left: 6px; vertical-align: 2px">Beta</span></button>
 </div>
+<sc-if value="{{isAi}}" hint-placeholder-val="{{ true }}">
+<span style="font-size: 13px; color: #6e6c63">Expected score your choices lost or gained against the AI model.</span>
+</sc-if>
 </div>
 
+<sc-if value="{{isAi}}" hint-placeholder-val="{{ true }}">
 <div style="overflow-x: auto; border-top: 3px double #a3a094; margin-bottom: 16px">
-<div style="min-width: 800px; font-size: 14px; color: #2c2b27; font-variant-numeric: tabular-nums">
+<div class="ai-table" style="min-width: 600px; font-size: 14px; color: #2c2b27; font-variant-numeric: tabular-nums">
 
-<div style="display: grid; grid-template-columns: 124px minmax(120px, 1.2fr) minmax(90px, 1fr) 56px 96px 216px; align-items: center; border-bottom: 1px solid #a3a094; font-size: 10px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: #6e6c63">
+<div class="ai-row" style="display: grid; grid-template-columns: 150px minmax(90px, 1fr) 56px 200px 60px 40px; align-items: center; border-bottom: 1px solid #a3a094; font-size: 10px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: #6e6c63">
 <span style="padding: 10px 8px">Date</span>
-<span style="padding: 10px 8px">Table</span>
-<span style="padding: 10px 8px">Role</span>
+<span class="c-role" style="padding: 10px 8px">Role</span>
 <span style="padding: 10px 8px; text-align: right">Score</span>
-<span style="padding: 10px 8px; text-align: right">Points</span>
-<span style="padding: 10px 8px; text-align: right">Decisions vs. model · net score</span>
+<span style="padding: 10px 8px; display: grid; grid-template-columns: 1fr 1fr"><span style="text-align: right; padding-right: 10px; color: #b3331e">Cost</span><span style="padding-left: 10px; color: #1d6b42">Gained</span></span>
+<span style="padding: 10px 8px; text-align: right">Net</span>
+<span></span>
 </div>
 
-<div style="display: grid; grid-template-columns: 124px minmax(120px, 1.2fr) minmax(90px, 1fr) 56px 96px 216px; align-items: center; background: #ffffff; color: {{top.tone}}">
-<span style="padding: 10px 8px; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #6e6c63">{{top.when}}</span>
-<span style="padding: 10px 8px">{{top.table}}</span>
-<span style="padding: 10px 8px">{{top.role}}</span>
+<div class="ai-row" style="display: grid; grid-template-columns: 150px minmax(90px, 1fr) 56px 200px 60px 40px; align-items: center; background: #ffffff; color: {{top.tone}}">
+<span style="padding: 10px 8px; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #6e6c63; white-space: nowrap">{{top.when}}<span class="m-role">{{top.role}}</span></span>
+<span class="c-role" style="padding: 10px 8px">{{top.role}}</span>
 <span style="padding: 10px 8px; text-align: right; font-family: 'JetBrains Mono', monospace">{{top.score}}</span>
-<span style="padding: 10px 8px; text-align: right; font-family: 'JetBrains Mono', monospace">{{top.points}} <span style="opacity: 0.75">{{top.scope}}</span></span>
-<span style="padding: 0 8px; text-align: right">
-<button type="button" aria-expanded="true" aria-label="{{top.aria}}" style="min-height: 44px; border: none; background: none; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600; color: {{top.netColor}}; display: inline-flex; align-items: center; gap: 8px"><span aria-hidden="true" style="font-size: 11px; letter-spacing: 3px; font-weight: 400"><sc-for list="{{top.marks}}" as="m" hint-placeholder-count="6"><span style="color: {{m.color}}">{{m.ch}}</span></sc-for></span><span style="min-width: 38px; text-align: right">{{top.net}}</span> <span aria-hidden="true" style="color: #0e0d0a">▴</span></button>
-</span>
+<span style="padding: 0 8px; display: flex; justify-content: center"><span aria-hidden="true" style="position: relative; width: 100%; max-width: 184px; height: 16px"><span style="position: absolute; right: 50%; top: 4px; height: 8px; width: {{top.lostW}}; background: #b3331e"></span><span style="position: absolute; left: 50%; top: 4px; height: 8px; width: {{top.gainedW}}; background: #1d6b42"></span><sc-if value="{{top.lostOver}}" hint-placeholder-val="{{ false }}"><span style="position: absolute; left: 5px; top: 3px; height: 10px; width: 2px; background: {{top.paper}}; transform: skewX(-20deg)"></span></sc-if><sc-if value="{{top.gainedOver}}" hint-placeholder-val="{{ false }}"><span style="position: absolute; right: 5px; top: 3px; height: 10px; width: 2px; background: {{top.paper}}; transform: skewX(-20deg)"></span></sc-if><span style="position: absolute; left: 50%; top: 0; height: 16px; border-left: 1px solid #0e0d0a"></span></span></span>
+<span style="padding: 10px 8px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600; color: {{top.netColor}}">{{top.net}}</span>
+<button type="button" aria-expanded="true" aria-label="{{top.aria}}" style="min-height: 44px; border: none; background: none; cursor: pointer; font-size: 13px; color: #6e6c63">▴</button>
 </div>
 
 <div style="background: #ffffff; border-bottom: 1px solid #a3a094; padding: 8px 16px 18px">
 <div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; margin-bottom: 14px">
 <div>
 <div style="font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; font-weight: 500; color: #6e6c63; margin-bottom: 6px">{{kickerLine}}</div>
-<div style="font-family: 'Instrument Serif', serif; font-size: 28px; line-height: 1.05; color: #0e0d0a">{{inlineHeadline}}</div>
+<div class="strip-head" style="font-family: 'Instrument Serif', serif; font-size: 28px; line-height: 1.05; color: #0e0d0a">{{inlineHeadline}}</div>
 </div>
-<a href="HandReview.dc.html" style="font-size: 13px; text-underline-offset: 3px; min-height: 44px; display: inline-flex; align-items: center; white-space: nowrap">Open full review →</a>
+<a href="hand-page.html" style="font-size: 13px; text-underline-offset: 3px; min-height: 44px; display: inline-flex; align-items: center; white-space: nowrap">Open full review →</a>
 </div>
-<div style="font-size: 11px; color: #6e6c63; margin: 0 0 6px 34px">Expected score through the hand, from your seat</div>
+<div class="strip-cap" style="font-size: 11px; color: #6e6c63; margin: 0 0 6px 34px">The AI’s expected score through the hand, from your seat</div>
 
 <div style="display: flex; gap: 0; align-items: stretch">
 <div aria-hidden="true" style="width: 34px; flex-shrink: 0; position: relative; height: 64px; font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #6e6c63">
@@ -98,7 +109,7 @@ button{font-family:inherit}
 <span style="position: absolute; left: {{s.left}}; top: {{s.top}}; width: 9px; height: 9px; margin: -5px 0 0 -5px; border-radius: 50%; background: {{s.dot}}; box-shadow: 0 0 0 2px #ffffff"></span>
 </sc-for>
 </div>
-<div style="display: grid; grid-template-columns: {{cols}}; border-top: 1px solid #cfccc0">
+<div class="strip-cells" style="display: grid; grid-template-columns: {{cols}}; border-top: 1px solid #cfccc0">
 <sc-for list="{{steps}}" as="s" hint-placeholder-count="9">
 <div style="padding: 10px 2px 0; text-align: center; display: flex; flex-direction: column; gap: 3px; align-items: center">
 <span style="font-size: 10px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: #6e6c63">{{s.label}}</span>
@@ -113,30 +124,56 @@ button{font-family:inherit}
 </div>
 
 <sc-for list="{{rows}}" as="r" hint-placeholder-count="7">
-<div style="display: grid; grid-template-columns: 124px minmax(120px, 1.2fr) minmax(90px, 1fr) 56px 96px 216px; align-items: center; border-bottom: 1px solid #cfccc0; color: {{r.tone}}">
-<span style="padding: 10px 8px; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #6e6c63">{{r.when}}</span>
-<span style="padding: 10px 8px">{{r.table}}</span>
-<span style="padding: 10px 8px">{{r.role}}</span>
+<div class="ai-row" style="display: grid; grid-template-columns: 150px minmax(90px, 1fr) 56px 200px 60px 40px; align-items: center; border-bottom: 1px solid #cfccc0; color: {{r.tone}}">
+<sc-if value="{{r.done}}" hint-placeholder-val="{{ true }}">
+<span style="padding: 10px 8px; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #6e6c63; white-space: nowrap">{{r.when}}<span class="m-role">{{r.role}}</span></span>
+<span class="c-role" style="padding: 10px 8px">{{r.role}}</span>
 <span style="padding: 10px 8px; text-align: right; font-family: 'JetBrains Mono', monospace">{{r.score}}</span>
-<span style="padding: 10px 8px; text-align: right; font-family: 'JetBrains Mono', monospace">{{r.points}} <span style="opacity: 0.75">{{r.scope}}</span></span>
-<span style="padding: 0 8px; text-align: right">
-<sc-if value="{{r.idle}}" hint-placeholder-val="{{ true }}">
-<button type="button" style="min-height: 44px; border: none; background: none; cursor: pointer; font-size: 13px; color: #0e0d0a; text-decoration: underline; text-decoration-color: #a3a094; text-underline-offset: 3px">Review</button>
+<span style="padding: 0 8px; display: flex; justify-content: center"><span aria-hidden="true" style="position: relative; width: 100%; max-width: 184px; height: 16px"><span style="position: absolute; right: 50%; top: 4px; height: 8px; width: {{r.lostW}}; background: #b3331e"></span><span style="position: absolute; left: 50%; top: 4px; height: 8px; width: {{r.gainedW}}; background: #1d6b42"></span><sc-if value="{{r.lostOver}}" hint-placeholder-val="{{ false }}"><span style="position: absolute; left: 5px; top: 3px; height: 10px; width: 2px; background: {{r.paper}}; transform: skewX(-20deg)"></span></sc-if><sc-if value="{{r.gainedOver}}" hint-placeholder-val="{{ false }}"><span style="position: absolute; right: 5px; top: 3px; height: 10px; width: 2px; background: {{r.paper}}; transform: skewX(-20deg)"></span></sc-if><span style="position: absolute; left: 50%; top: 0; height: 16px; border-left: 1px solid #0e0d0a"></span></span></span>
+<span style="padding: 10px 8px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600; color: {{r.netColor}}">{{r.net}}</span>
+<button type="button" aria-expanded="false" aria-label="{{r.aria}}" style="min-height: 44px; border: none; background: none; cursor: pointer; font-size: 13px; color: #6e6c63">▾</button>
 </sc-if>
-<sc-if value="{{r.busy}}" hint-placeholder-val="{{ false }}">
-<span role="status" style="min-height: 44px; display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: #6e6c63">Reviewing 6 of 9
-<span aria-hidden="true" style="width: 48px; height: 3px; background: #e7e4d8; display: inline-block"><span style="display: block; width: 66%; height: 3px; background: #0e0d0a"></span></span>
-</span>
+<sc-if value="{{r.pending}}" hint-placeholder-val="{{ false }}">
+<span style="padding: 10px 8px; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #6e6c63; white-space: nowrap">{{r.when}}<span class="m-role">{{r.role}}</span></span>
+<span class="c-role" style="padding: 10px 8px">{{r.role}}</span>
+<span style="padding: 10px 8px; text-align: right; font-family: 'JetBrains Mono', monospace">{{r.score}}</span>
+<span role="status" style="padding: 10px 8px; text-align: center; font-size: 12px; color: #6e6c63; min-height: 44px; box-sizing: border-box; display: flex; align-items: center; justify-content: center">Waiting for review</span>
+<span></span>
+<span></span>
 </sc-if>
-<sc-if value="{{r.done}}" hint-placeholder-val="{{ false }}">
-<button type="button" aria-expanded="false" aria-label="{{r.aria}}" style="min-height: 44px; border: none; background: none; cursor: pointer; font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600; color: {{r.netColor}}; display: inline-flex; align-items: center; gap: 8px"><span aria-hidden="true" style="font-size: 11px; letter-spacing: 3px; font-weight: 400"><sc-for list="{{r.marks}}" as="m" hint-placeholder-count="6"><span style="color: {{m.color}}">{{m.ch}}</span></sc-for></span><span style="min-width: 38px; text-align: right">{{r.net}}</span> <span aria-hidden="true" style="color: #6e6c63">▾</span></button>
-</sc-if>
-</span>
 </div>
 </sc-for>
 
 </div>
 </div>
+</sc-if>
+
+<sc-if value="{{isResults}}" hint-placeholder-val="{{ false }}">
+<div style="overflow-x: auto; border-top: 3px double #a3a094; margin-bottom: 16px">
+<div style="min-width: 720px; font-size: 14px; color: #2c2b27; font-variant-numeric: tabular-nums">
+<div style="display: grid; grid-template-columns: 150px minmax(110px, 1.2fr) minmax(90px, 1fr) 56px 32px 96px minmax(120px, 1fr); align-items: center; border-bottom: 1px solid #a3a094; font-size: 10px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: #6e6c63">
+<span style="padding: 10px 8px">Date</span>
+<span style="padding: 10px 8px">Table</span>
+<span style="padding: 10px 8px">Role</span>
+<span style="padding: 10px 8px; text-align: right">Score</span>
+<span></span>
+<span style="padding: 10px 8px; text-align: right">Points</span>
+<span style="padding: 10px 8px">Opponents</span>
+</div>
+<sc-for list="{{allRows}}" as="r" hint-placeholder-count="8">
+<div style="display: grid; grid-template-columns: 150px minmax(110px, 1.2fr) minmax(90px, 1fr) 56px 32px 96px minmax(120px, 1fr); align-items: center; min-height: 44px; border-bottom: 1px solid #cfccc0; color: {{r.tone}}">
+<span style="padding: 10px 8px; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #6e6c63; white-space: nowrap">{{r.when}}</span>
+<span style="padding: 10px 8px">{{r.table}}</span>
+<span style="padding: 10px 8px">{{r.role}}</span>
+<span style="padding: 10px 8px; text-align: right; font-family: 'JetBrains Mono', monospace">{{r.score}}</span>
+<span></span>
+<span style="padding: 10px 8px; text-align: right; font-family: 'JetBrains Mono', monospace">{{r.points}} <span style="opacity: 0.75">{{r.scope}}</span></span>
+<span style="padding: 10px 8px; color: #6e6c63">{{r.opponents}}</span>
+</div>
+</sc-for>
+</div>
+</div>
+</sc-if>
 
 <button type="button" style="font-size: 12px; font-weight: 500; letter-spacing: 0.02em; padding: 6px 10px; border-radius: 3px; border: 1px solid #0e0d0a; background: #0e0d0a; color: #f3f1ea; cursor: pointer; min-height: 44px">Show older</button>
 </div>
@@ -145,7 +182,7 @@ button{font-family:inherit}
 <script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":1140}}'>
 class Component extends DCLogic {
 renderVals() {
-var D = {"top": {"when": "Nov 7, 9:58 PM", "table": "Waymoot", "role": "Picker", "score": "−2", "points": "53", "scope": "team", "tone": "#b3331e", "idle": false, "busy": false, "done": true, "marks": [{"ch": "●", "color": "#0e0d0a"}, {"ch": "○", "color": "#6e6c63"}, {"ch": "▼", "color": "#b3331e"}, {"ch": "●", "color": "#0e0d0a"}, {"ch": "●", "color": "#0e0d0a"}, {"ch": "●", "color": "#0e0d0a"}, {"ch": "▼", "color": "#b3331e"}, {"ch": "▲", "color": "#1d6b42"}], "net": "−1.8", "netColor": "#b3331e", "aria": "4 agreed, 1 about even, 2 cost you, 1 beat the model’s choice; net −1.8 points against the model"}, "kickerLine": "Costliest decision · trick 4 · −2.0 points of expected score", "inlineHeadline": "You played the J♣. The model plays the K♣.", "steps": [{"label": "Pick", "brief": "Pick", "action": "Pick", "swing": "—", "swingColor": "#6e6c63", "note": "Agreed", "noteColor": "#6e6c63", "dot": "#0e0d0a", "win": 68, "score": 1.51, "status": "agreed", "oracle": -2.79}, {"label": "Call", "brief": "Call", "action": "A♣", "swing": "0.0", "swingColor": "#6e6c63", "note": "Even: A♠", "noteColor": "#6e6c63", "dot": "#0e0d0a", "win": 66, "score": 0.29, "status": "close", "oracle": -2.72}, {"label": "Bury", "brief": "Bury", "action": "8♠ A♥", "swing": "−0.7", "swingColor": "#b3331e", "note": "Model: 10♣ A♥", "noteColor": "#b3331e", "dot": "#b3331e", "win": 66, "score": 0.3, "status": "costly", "oracle": -2.11}, {"label": "Trick 1", "brief": "T1", "action": "10♣", "swing": "—", "swingColor": "#6e6c63", "note": "Agreed", "noteColor": "#6e6c63", "dot": "#0e0d0a", "win": 65, "score": 0.25, "status": "agreed", "oracle": 0.08}, {"label": "Trick 2", "brief": "T2", "action": "Q♠", "swing": "—", "swingColor": "#6e6c63", "note": "Agreed", "noteColor": "#6e6c63", "dot": "#0e0d0a", "win": 85, "score": 2.32, "status": "agreed", "oracle": 1.07}, {"label": "Trick 3", "brief": "T3", "action": "J♠", "swing": "—", "swingColor": "#6e6c63", "note": "Agreed", "noteColor": "#6e6c63", "dot": "#0e0d0a", "win": 92, "score": 3.02, "status": "agreed", "oracle": 1.59}, {"label": "Trick 4", "brief": "T4", "action": "J♣", "swing": "−2.0", "swingColor": "#b3331e", "note": "Model: K♣", "noteColor": "#b3331e", "dot": "#b3331e", "win": 95, "score": 3.01, "status": "costly", "oracle": 1.91}, {"label": "Trick 5", "brief": "T5", "action": "10♦", "swing": "+0.9", "swingColor": "#1d6b42", "note": "Model: K♣", "noteColor": "#6e6c63", "dot": "#0e0d0a", "win": 85, "score": 1.74, "status": "better", "oracle": -1.81}, {"label": "Trick 6", "brief": "T6", "action": "K♣", "swing": "—", "swingColor": "#6e6c63", "note": "Forced", "noteColor": "#6e6c63", "dot": "#0e0d0a", "win": 40, "score": -0.56, "status": "forced", "oracle": -4.03}], "rows": [{"when": "Nov 7, 9:57 PM", "table": "Waymoot", "role": "Defender", "score": "+1", "points": "73", "scope": "team", "tone": "#2c2b27", "idle": false, "busy": false, "done": true, "marks": [{"ch": "●", "color": "#0e0d0a"}, {"ch": "●", "color": "#0e0d0a"}, {"ch": "●", "color": "#0e0d0a"}, {"ch": "●", "color": "#0e0d0a"}], "net": "—", "netColor": "#2c2b27", "aria": "4 agreed; net 0.0 points against the model"}, {"when": "Nov 7, 9:56 PM", "table": "Waymoot", "role": "Defender", "score": "−1", "points": "40", "scope": "team", "tone": "#b3331e", "idle": false, "busy": false, "done": true, "marks": [{"ch": "●", "color": "#0e0d0a"}, {"ch": "●", "color": "#0e0d0a"}, {"ch": "○", "color": "#6e6c63"}, {"ch": "●", "color": "#0e0d0a"}, {"ch": "●", "color": "#0e0d0a"}], "net": "−0.2", "netColor": "#2c2b27", "aria": "4 agreed, 1 about even; net −0.2 points against the model"}, {"when": "Nov 7, 8:44 PM", "table": "Deephallow", "role": "Picker", "score": "−2", "points": "60", "scope": "team", "tone": "#b3331e", "idle": false, "busy": false, "done": true, "marks": [{"ch": "●", "color": "#0e0d0a"}, {"ch": "○", "color": "#6e6c63"}, {"ch": "●", "color": "#0e0d0a"}, {"ch": "▲", "color": "#1d6b42"}, {"ch": "●", "color": "#0e0d0a"}, {"ch": "●", "color": "#0e0d0a"}, {"ch": "●", "color": "#0e0d0a"}, {"ch": "●", "color": "#0e0d0a"}], "net": "+1.2", "netColor": "#1d6b42", "aria": "6 agreed, 1 about even, 1 beat the model’s choice; net +1.2 points against the model"}, {"when": "Nov 7, 8:42 PM", "table": "Deephallow", "role": "Picker", "score": "+4", "points": "112", "scope": "team", "tone": "#2c2b27", "idle": false, "busy": false, "done": true, "marks": [{"ch": "●", "color": "#0e0d0a"}, {"ch": "●", "color": "#0e0d0a"}, {"ch": "●", "color": "#0e0d0a"}, {"ch": "○", "color": "#6e6c63"}, {"ch": "●", "color": "#0e0d0a"}, {"ch": "●", "color": "#0e0d0a"}, {"ch": "●", "color": "#0e0d0a"}, {"ch": "▼", "color": "#b3331e"}], "net": "−0.6", "netColor": "#b3331e", "aria": "6 agreed, 1 about even, 1 cost you; net −0.6 points against the model"}, {"when": "Nov 7, 8:41 PM", "table": "Deephallow", "role": "Defender", "score": "+1", "points": "64", "scope": "team", "tone": "#2c2b27", "idle": false, "busy": false, "done": true, "marks": [{"ch": "●", "color": "#0e0d0a"}, {"ch": "○", "color": "#6e6c63"}, {"ch": "○", "color": "#6e6c63"}, {"ch": "●", "color": "#0e0d0a"}, {"ch": "●", "color": "#0e0d0a"}], "net": "−0.5", "netColor": "#b3331e", "aria": "3 agreed, 2 about even; net −0.5 points against the model"}, {"when": "Nov 7, 8:40 PM", "table": "Deephallow", "role": "Defender", "score": "+1", "points": "64", "scope": "team", "tone": "#2c2b27", "idle": false, "busy": false, "done": true, "marks": [{"ch": "●", "color": "#0e0d0a"}, {"ch": "○", "color": "#6e6c63"}, {"ch": "○", "color": "#6e6c63"}], "net": "0.0", "netColor": "#2c2b27", "aria": "1 agreed, 2 about even; net 0.0 points against the model"}, {"when": "Nov 7, 8:39 PM", "table": "Deephallow", "role": "Defender", "score": "−1", "points": "35", "scope": "team", "tone": "#b3331e", "idle": false, "busy": false, "done": true, "marks": [{"ch": "▲", "color": "#1d6b42"}, {"ch": "○", "color": "#6e6c63"}, {"ch": "●", "color": "#0e0d0a"}], "net": "+0.6", "netColor": "#1d6b42", "aria": "1 agreed, 1 about even, 1 beat the model’s choice; net +0.6 points against the model"}], "final": -2};
+var D = {"top": {"when": "Nov 7, 9:58 PM", "table": "Waymoot", "role": "Picker", "score": "−2", "points": "53", "scope": "team", "tone": "#b3331e", "idle": false, "busy": false, "done": true, "marks": [{"ch": "●", "color": "#0e0d0a"}, {"ch": "○", "color": "#6e6c63"}, {"ch": "▼", "color": "#b3331e"}, {"ch": "●", "color": "#0e0d0a"}, {"ch": "●", "color": "#0e0d0a"}, {"ch": "●", "color": "#0e0d0a"}, {"ch": "▼", "color": "#b3331e"}, {"ch": "▲", "color": "#1d6b42"}], "lost": 2.7, "gained": 0.9, "net": "−1.8", "netColor": "#b3331e", "aria": "4 agreed, 1 about even, 2 cost you, 1 beat the AI’s choice; net −1.8 points against the AI", "opponents": "0 human · 4 AI"}, "kickerLine": "Costliest decision · trick 4 · −2.0 points of expected score", "inlineHeadline": "You played the J♣. The AI plays the K♣.", "steps": [{"label": "Pick", "brief": "Pick", "action": "Pick", "swing": "—", "swingColor": "#6e6c63", "note": "Agreed", "noteColor": "#6e6c63", "dot": "#0e0d0a", "win": 68, "score": 1.51, "status": "agreed", "oracle": -2.79}, {"label": "Call", "brief": "Call", "action": "A♣", "swing": "0.0", "swingColor": "#6e6c63", "note": "Even: A♠", "noteColor": "#6e6c63", "dot": "#0e0d0a", "win": 66, "score": 0.29, "status": "close", "oracle": -2.72}, {"label": "Bury", "brief": "Bury", "action": "8♠ A♥", "swing": "−0.7", "swingColor": "#b3331e", "note": "AI: 10♣ A♥", "noteColor": "#b3331e", "dot": "#b3331e", "win": 66, "score": 0.3, "status": "costly", "oracle": -2.11}, {"label": "Trick 1", "brief": "T1", "action": "10♣", "swing": "—", "swingColor": "#6e6c63", "note": "Agreed", "noteColor": "#6e6c63", "dot": "#0e0d0a", "win": 65, "score": 0.25, "status": "agreed", "oracle": 0.08}, {"label": "Trick 2", "brief": "T2", "action": "Q♠", "swing": "—", "swingColor": "#6e6c63", "note": "Agreed", "noteColor": "#6e6c63", "dot": "#0e0d0a", "win": 85, "score": 2.32, "status": "agreed", "oracle": 1.07}, {"label": "Trick 3", "brief": "T3", "action": "J♠", "swing": "—", "swingColor": "#6e6c63", "note": "Agreed", "noteColor": "#6e6c63", "dot": "#0e0d0a", "win": 92, "score": 3.02, "status": "agreed", "oracle": 1.59}, {"label": "Trick 4", "brief": "T4", "action": "J♣", "swing": "−2.0", "swingColor": "#b3331e", "note": "AI: K♣", "noteColor": "#b3331e", "dot": "#b3331e", "win": 95, "score": 3.01, "status": "costly", "oracle": 1.91}, {"label": "Trick 5", "brief": "T5", "action": "10♦", "swing": "+0.9", "swingColor": "#1d6b42", "note": "AI: K♣", "noteColor": "#6e6c63", "dot": "#0e0d0a", "win": 85, "score": 1.74, "status": "better", "oracle": -1.81}, {"label": "Trick 6", "brief": "T6", "action": "K♣", "swing": "—", "swingColor": "#6e6c63", "note": "Forced", "noteColor": "#6e6c63", "dot": "#0e0d0a", "win": 40, "score": -0.56, "status": "forced", "oracle": -4.03}], "rows": [{"when": "Nov 7, 9:57 PM", "table": "Waymoot", "role": "Defender", "score": "+1", "points": "73", "scope": "team", "tone": "#2c2b27", "idle": false, "busy": false, "done": true, "marks": [{"ch": "●", "color": "#0e0d0a"}, {"ch": "●", "color": "#0e0d0a"}, {"ch": "●", "color": "#0e0d0a"}, {"ch": "●", "color": "#0e0d0a"}], "lost": -0.0, "gained": 0.0, "net": "—", "netColor": "#2c2b27", "aria": "4 agreed; net 0.0 points against the AI", "opponents": "0 human · 4 AI"}, {"when": "Nov 7, 9:56 PM", "table": "Waymoot", "role": "Defender", "score": "−1", "points": "40", "scope": "team", "tone": "#b3331e", "idle": false, "busy": false, "done": true, "marks": [{"ch": "●", "color": "#0e0d0a"}, {"ch": "●", "color": "#0e0d0a"}, {"ch": "○", "color": "#6e6c63"}, {"ch": "●", "color": "#0e0d0a"}, {"ch": "●", "color": "#0e0d0a"}], "lost": 0.2, "gained": 0.0, "net": "−0.2", "netColor": "#2c2b27", "aria": "4 agreed, 1 about even; net −0.2 points against the AI", "opponents": "0 human · 4 AI"}, {"when": "Nov 7, 8:44 PM", "table": "Deephallow", "role": "Picker", "score": "−2", "points": "60", "scope": "team", "tone": "#b3331e", "idle": false, "busy": false, "done": true, "marks": [{"ch": "●", "color": "#0e0d0a"}, {"ch": "○", "color": "#6e6c63"}, {"ch": "●", "color": "#0e0d0a"}, {"ch": "▲", "color": "#1d6b42"}, {"ch": "●", "color": "#0e0d0a"}, {"ch": "●", "color": "#0e0d0a"}, {"ch": "●", "color": "#0e0d0a"}, {"ch": "●", "color": "#0e0d0a"}], "lost": -0.0, "gained": 1.2, "net": "+1.2", "netColor": "#1d6b42", "aria": "6 agreed, 1 about even, 1 beat the AI’s choice; net +1.2 points against the AI", "opponents": "0 human · 4 AI"}, {"when": "Nov 7, 8:42 PM", "table": "Deephallow", "role": "Picker", "score": "+4", "points": "112", "scope": "team", "tone": "#2c2b27", "idle": false, "busy": false, "done": true, "marks": [{"ch": "●", "color": "#0e0d0a"}, {"ch": "●", "color": "#0e0d0a"}, {"ch": "●", "color": "#0e0d0a"}, {"ch": "○", "color": "#6e6c63"}, {"ch": "●", "color": "#0e0d0a"}, {"ch": "●", "color": "#0e0d0a"}, {"ch": "●", "color": "#0e0d0a"}, {"ch": "▼", "color": "#b3331e"}], "lost": 0.7, "gained": 0.1, "net": "−0.6", "netColor": "#b3331e", "aria": "6 agreed, 1 about even, 1 cost you; net −0.6 points against the AI", "opponents": "0 human · 4 AI"}, {"when": "Nov 7, 8:41 PM", "table": "Deephallow", "role": "Defender", "score": "+1", "points": "64", "scope": "team", "tone": "#2c2b27", "idle": false, "busy": false, "done": true, "marks": [{"ch": "●", "color": "#0e0d0a"}, {"ch": "○", "color": "#6e6c63"}, {"ch": "○", "color": "#6e6c63"}, {"ch": "●", "color": "#0e0d0a"}, {"ch": "●", "color": "#0e0d0a"}], "lost": 0.5, "gained": 0.0, "net": "−0.5", "netColor": "#b3331e", "aria": "3 agreed, 2 about even; net −0.5 points against the AI", "opponents": "0 human · 4 AI"}, {"when": "Nov 7, 8:40 PM", "table": "Deephallow", "role": "Defender", "score": "+1", "points": "64", "scope": "team", "tone": "#2c2b27", "idle": false, "busy": false, "done": true, "marks": [{"ch": "●", "color": "#0e0d0a"}, {"ch": "○", "color": "#6e6c63"}, {"ch": "○", "color": "#6e6c63"}], "lost": 0.1, "gained": 0.1, "net": "0.0", "netColor": "#2c2b27", "aria": "1 agreed, 2 about even; net 0.0 points against the AI", "opponents": "0 human · 4 AI"}, {"when": "Nov 7, 8:39 PM", "table": "Deephallow", "role": "Defender", "score": "−1", "points": "35", "scope": "team", "tone": "#b3331e", "idle": false, "busy": false, "done": true, "marks": [{"ch": "▲", "color": "#1d6b42"}, {"ch": "○", "color": "#6e6c63"}, {"ch": "●", "color": "#0e0d0a"}], "lost": -0.0, "gained": 0.6, "net": "+0.6", "netColor": "#1d6b42", "aria": "1 agreed, 1 about even, 1 beat the AI’s choice; net +0.6 points against the AI", "opponents": "0 human · 4 AI"}], "final": -2};
 var n = D.steps.length;
 var dom = 4;
 D.steps.forEach(function (s) { dom = Math.max(dom, Math.ceil(Math.abs(s.score))); });
@@ -157,9 +194,30 @@ o.top = (y(s.score) / 64 * 100) + '%';
 return o;
 });
 var sparkPoints = D.steps.map(function (s, i) { return (50 + 100 * i) + ',' + y(s.score).toFixed(1); }).join(' ');
-return { top: D.top, kickerLine: D.kickerLine, inlineHeadline: D.inlineHeadline, 
+var self = this;
+var ai = ((this.state && this.state.view) || 'ai') === 'ai';
+// One side of the bar is three points of expected score; longer bars are cut and notched.
+var FULL = 3;
+var bars = function (r, paper) {
+var o = {}; for (var k in r) o[k] = r[k];
+o.lostW = Math.min(r.lost / FULL, 1) * 50 + '%';
+o.gainedW = Math.min(r.gained / FULL, 1) * 50 + '%';
+o.lostOver = r.lost > FULL; o.gainedOver = r.gained > FULL;
+o.paper = paper; o.pending = false;
+return o;
+};
+var rows = D.rows.map(function (r) { return bars(r, '#f3f1ea'); });
+// Illustration only: the oldest row shown as a hand still in the review queue.
+var last = rows[rows.length - 1]; last.done = false; last.pending = true;
+return { top: bars(D.top, '#ffffff'), kickerLine: D.kickerLine, inlineHeadline: D.inlineHeadline, 
 steps: steps, sparkPoints: sparkPoints, vb: '0 0 ' + (n * 100) + ' 64', vbw: n * 100,
-cols: 'repeat(' + n + ', minmax(0, 1fr))', rows: D.rows };
+cols: 'repeat(' + n + ', minmax(0, 1fr))', rows: rows, allRows: [D.top].concat(D.rows),
+isAi: ai, isResults: !ai,
+aiPressed: ai ? 'true' : 'false', resPressed: ai ? 'false' : 'true',
+aiBg: ai ? '#0e0d0a' : 'transparent', aiFg: ai ? '#f3f1ea' : '#2c2b27',
+resBg: ai ? 'transparent' : '#0e0d0a', resFg: ai ? '#2c2b27' : '#f3f1ea',
+showAi: function () { self.setState({ view: 'ai' }); },
+showResults: function () { self.setState({ view: 'results' }); } };
 }
 }
 </script>

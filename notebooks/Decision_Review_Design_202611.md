@@ -1,12 +1,12 @@
 # Decision Review — Design (November 2026)
 
-**Status (2026-11-20): DESIGN SETTLED, NOT BUILT.** The three screens
+**Status (2026-11-24): DESIGN SETTLED, NOT BUILT.** The three screens
 are prototyped with real production data in `design/decision-review/`.
 The review engine (`app/server/services/hand_review.py`) and an offline
 report script (`app/scripts/review_hands.py`) exist and were used to
 produce every number here. No migration, worker, API or web code exists
-yet. Sections 6 and 7 are proposals; everything else was decided during
-the design iteration.
+yet. Section 7 is a sketch; everything else was decided during the
+design iteration (revised 11-24: history layout, wording, queue rules).
 
 ## TL;DR — what this is
 
@@ -17,15 +17,15 @@ score. It is a learning aid first and a model-inspection tool second.
 
 It lives in the account area as three screens:
 
-* **Hand history** gains a column of marks, one per decision, and an
-  expandable strip per hand.
+* **Hand history** gains an "AI comparison" view: per hand, what the
+  player's choices lost and gained against the AI model, and the net.
 * **Hand page** walks one hand decision by decision, with a chart of the
-  model's running expected score.
-* **Review tab** totals every reviewed hand: agreement by kind of
+  AI model's running expected score.
+* **AI review tab** totals every reviewed hand: agreement by kind of
   decision, the largest differences, and picking.
 
-Every hand is reviewed once, automatically, when it ends. Nothing a
-player does triggers inference.
+Hands played by registered accounts are reviewed once, automatically,
+in the background. Nothing a player does triggers inference.
 
 ## 1. What a decision costs
 
@@ -83,21 +83,22 @@ player does triggers inference.
 
 ## 2. Language
 
-* Soft and descriptive. No "blunder" or "mistake": the model is
-  sometimes wrong, and a decision that beats its choice is shown as
-  such, in green.
-* The four states and their marks:
-
-  | Mark | Meaning |
-  |---|---|
-  | ● | same choice as the model |
-  | ○ | different, about even |
-  | ▼ (red) | cost half a point or more |
-  | ▲ (green) | beat the model's choice by half a point or more |
-
-* "About even", not "close call" (which reads as a near miss).
-* Tuned to Sheepshead, minimal model internals. The policy appears only
-  as "how the model plays it" bars. Anything deeper is a link out to
+* **"AI", not "model".** In everything a player reads. "AI model" is
+  kept only in the two sentences that introduce the feature: the line
+  beside the history toggle and the lede of the AI review tab.
+* **Beta.** A small "Beta" tag sits at each entry point: the history
+  toggle, the account tab, and the hand page's kicker.
+* Soft and descriptive. No "blunder" or "mistake": the AI model is
+  sometimes wrong, and a choice that beats its choice is shown as such,
+  in green.
+* One vocabulary on every screen: **agreed**, **about even**,
+  **cost** / **cost you**, **gained**. Not "open decisions", not
+  "close call" (which reads as a near miss), and not "lost" for
+  expected score, which is kept for the hand's result.
+* A signed number is never headed "Cost", since it can be a gain: the
+  hand page's column is "vs. AI" and its figure is "Difference".
+* Tuned to Sheepshead, minimal internals. The policy appears only as
+  "how the AI plays it" bars. Anything deeper is a link out to
   Analyze AI.
 
 ## 3. The screens
@@ -109,65 +110,139 @@ real: 160 hands of one production player, reviewed with
 
 ### 3.1 Hand history (`hand-history.html`)
 
-* One new column, **Decisions vs. model · net score**: a mark per open
-  decision in order, then the hand's net expected score against the
-  model. The column has exactly one meaning; an earlier version that
-  labelled the single worst or best decision was confusing.
-* A legend above the table explains the marks.
+* **A toggle at the top: Results | AI comparison (beta).** Results is
+  listed first; AI comparison is the default, for discoverability. Results is the table
+  as it is today, unchanged (table, stakes, points, opponents, notes).
+* **AI comparison columns:** Date, Role, Score, a Cost/Gained bar, Net.
+  Table name and points are dropped here to give the bar room.
+* **The bar.** From a centre line, a red bar grows left by the total
+  expected score the player's choices cost in that hand, and a green
+  bar grows right by the total they gained. The column heads "Cost" and
+  "Gained" sit either side of the centre and are the legend. Every
+  difference counts, including the about-even ones, so the two bars
+  always add up to Net.
+* **Scale.** Three points fills a side, the same for every row. A
+  longer bar is cut at full width and notched.
+* **One line of explanation** beside the toggle; no separate legend.
 * A row expands to a strip: the costliest decision as a headline, a
   sparkline of expected score from the player's seat, a cell per
-  decision (action, cost, and what the model does), and a link to the
-  hand page.
+  decision (action, difference, and what the AI does), and a link to
+  the hand page.
+* A hand still in the queue shows "Waiting for review" in place of the
+  bar and does not expand. A hand that cannot be reviewed shows a dash.
+* Dates never wrap, in either view, as on the live page.
+* **Phone.** The role moves under the date, the bar narrows, and
+  nothing scrolls sideways. The expanded strip keeps the headline, the
+  link and the sparkline with its dots, and drops the per-decision
+  cells, which are too much for the width. The Results view scrolls
+  sideways, as the live table does.
 * No "costliest decisions" filter in the first version.
-* A hand still waiting for review shows "Review pending" and does not
-  expand. A hand that cannot be reviewed shows a dash. (Neither state
-  is drawn in the prototype yet.)
+* An earlier version showed a mark per decision (● ○ ▼ ▲). It was too
+  detailed to read at a glance and was replaced by the bar.
 
 ### 3.2 Hand page (`hand-page.html`)
 
-* A one-line headline naming the costliest decision, then role, result
-  and a count of decisions by state.
+* A one-line headline naming the costliest decision, then role, result,
+  the hand's net against the AI with its cost and gained totals (the
+  same three figures as the history row), and a count of decisions by
+  state.
 * **The chart**, expected score before each of the player's decisions:
   * **From your seat** — heavy black line with a dot per decision, red
     where the decision cost. The limited-information critic.
   * **With every card known** — solid light grey, 2px. The oracle
     critic on the same states. It reacts at once to a play whose cost
     the seat cannot yet see.
-  * **Had you made the model's choice** — a dotted grey line from the
-    decision to a hollow ring one step later, drawn only where the
+  * **Had you made the AI's choice** — a dotted grey line from
+    the decision to a hollow ring one step later, drawn only where the
     decision cost or gained half a point. A short vertical bar joins
-    the ring to the real line, red or green, labelled with the cost.
-    The bar's length is the cost, so the chart shows the measurement.
+    the ring to the real line, red or green, labelled with the
+    difference. The bar's length is the difference, so the chart shows
+    the measurement.
   * Line style carries meaning: solid lines are the hand as played,
     the dotted line is hypothetical.
   * **Ring anchor.** The ring sits at the real line's next point
-    shifted by the cost, not at the model branch's raw estimate. The
-    two differ when the other seats did not play as the model would
-    (D2); anchoring to the real line keeps the bar equal to the cost
-    shown.
-* A list of decisions with costs; selecting one fills the detail panel:
-  the hand at that moment, the model's policy as bars with the player's
-  choice tagged, both expected scores, the cost, and a sentence on how
-  it was measured.
+    shifted by the difference, not at the AI branch's raw estimate.
+    The two differ when the other seats did not play as the AI model
+    would (D2); anchoring to the real line keeps the bar equal to the
+    figure shown.
+* A list of decisions; selecting one fills the detail panel: the hand
+  at that moment, the AI model's policy as bars with the player's
+  choice tagged, both expected scores, the difference, and a sentence
+  on how it was measured.
+* **High trump**, in the detail under the hand: the highest trump not
+  yet played at that decision, whether it is "in your hand" or "still
+  out", and how many trump the player has not seen. Shown at every
+  decision; "no trump left" once they are all played.
+  * It is bookkeeping, not inference: the trump order less the cards
+    played so far, counting the player's own bury as gone only when
+    they are the picker.
+  * Not stored. It is derived from the recorded plays when the hand
+    page is loaded, so showing more later (the full list of trump
+    still out) needs no migration or re-review.
+* **At the table**, last and secondary, one line: the human players by
+  name with seat and role, then a count of the AI players ("Andrew
+  (you) · seat 3 · Picker, and 4 AI players"). AI players are not
+  named. This is where the table context dropped from the AI
+  comparison view is recovered.
+* The page opens with the headline decision selected.
+* **The headline depends on the hand.** Over 400 reviewed seat-hands
+  in production, only 23% have a decision that cost half a point, so
+  the headline needs four forms:
+
+  | Hand | Share | Headline |
+  |---|---|---|
+  | has a costly decision | 23% | that decision: "You played the J♣. The AI plays the K♣." |
+  | no cost, but a gain of half a point | 10% | the best decision, framed as a gain |
+  | only about-even differences | 43% | a plain statement, e.g. "Three different choices, all about even." |
+  | agreed throughout | 24% | "You and the AI agreed on every decision." |
+
+  Where there is a costly decision, one decision is a fair summary: it
+  is the only costly one in 76% of those hands, and in the median hand
+  it is all of the hand's cost. 88% of headline decisions are card
+  plays. The history strip's headline follows the same four forms.
+* **Phone.** The detail opens in place, directly under the tapped
+  decision, so the hand and the comparison are visible without
+  scrolling. Tapping the open decision closes it; tapping another
+  moves the detail there; Previous and Next step through. Each row
+  carries a small caret. The side panel is not shown. The hand's cards
+  shrink to stay on one row.
+* The cost labels on the chart can crowd the lines (the −0.7 at the
+  bury does); to be tuned against more hands during the build.
 * No "what would have happened" branch panel. It was prototyped and
   dropped as not worth the complexity.
 
-### 3.3 Review tab (`review-tab.html`)
+### 3.3 AI review tab (`review-tab.html`)
 
-Pure queries over stored reviews.
+Pure queries over stored reviews. The account tab is "AI review", with
+the beta tag.
 
-* **You and the model**: share of open decisions with the same choice,
-  how many cost half a point or more, how many beat the model's choice,
-  and the net score against the model (total and per hand).
-* **Same choice, by kind of decision**: pick or pass, partner call,
-  bury, card play, each with its rate, count and net score.
+* **You and the AI**: share of decisions where they agreed,
+  how many cost half a point or more, how many beat its choice, and the
+  net against the AI model (total and per hand).
+* **Agreed, by kind of decision**: pick or pass, partner call,
+  bury, card play, each with its rate, count and net.
 * **Largest differences**: a list switchable between "cost you most"
-  and "beat the model's choice", filterable by kind.
+  and "beat the AI's choice", filterable by kind. Each row is a link,
+  marked with an arrow, that opens the hand page on that decision.
 * **Picking**: pick agreement, and a card per hand where the player
-  picked and the model passes, or the reverse, with the hand shown.
+  picked and the AI model passes, or the reverse, with the hand shown.
 
 There is no coverage meter and no "review more" control, because
 review is automatic.
+
+### 3.4 Admin (`admin.html`)
+
+A sketch, with placeholder numbers. An "Admin" account tab, shown only
+to administrators, with one section for now:
+
+* **AI review queue**: running or paused (and why), hands waiting, age
+  of the oldest waiting hand, hands reviewed in the last 24 hours,
+  average time per hand; then totals, failures, the slowest recent
+  hand, the last hand reviewed, the AI version in use, and how many
+  stored reviews came from an older version.
+
+Later additions, not designed: hands played in the last day, and how
+players did against the AI.
 
 ## 4. What the production data showed
 
@@ -203,44 +278,80 @@ for a hand with no pick to average. The production box has not been
 timed, and contention with live inference in the same process has not
 been measured.
 
-## 6. Runtime (proposed)
+## 6. Runtime
 
 * **One code path.** `review_hand` in `hand_review.py` is the only
   implementation; the worker and the offline script both call it. The
   live table's agent state is not reused: review needs both branches of
   each decision, which live play never computes.
-* **A queue in Postgres.** A row per human seat is inserted when a hand
-  ends; a migration inserts rows for existing hands.
-* **One background worker**, newest hand first, one hand at a time. It
-  takes the server's inference gate for each single evaluation, so a
-  live move waits behind at most one review evaluation. A hand that
-  fails to replay is marked failed after a couple of attempts.
+* **Registered accounts only.** A seat is queued only if its player has
+  an account. At the time of writing that is 882 of 1482 hands.
+  * At hand end: a queue row for each seat whose player has an account.
+  * At registration, before the email is verified: a queue row for
+    every hand that player has already played. An account attaches to
+    the existing player row, so the guest history comes with it.
+  * The migration queues the existing hands of existing accounts.
+* **A queue in Postgres**, one background worker, newest hand first,
+  one hand at a time.
+* **Live play comes first.** The worker runs only while at most one
+  table is being played, and pauses when there are more. It also takes
+  the server's inference gate for each single evaluation, so a live
+  move waits behind at most one review evaluation.
+  * The pause is checked between hands at least; a hand takes a
+    fraction of a second, so checking between evaluations is not
+    needed unless measurement says otherwise.
+  * If the site is ever busy around the clock the queue will not
+    drain; the admin page (3.4) is where that shows.
+* **"In play"** means a table with a hand in progress and a human
+  connected.
+* **Administrators.** `account.is_admin BOOLEAN NOT NULL DEFAULT
+  false`, added just before or with this work. The migration sets
+  nobody; it is set by hand. It gates the admin tab and its endpoint.
+  The seat row records when its review started and how long it took,
+  which is what the admin figures are computed from.
+* **A hand that fails to replay** is marked failed after a couple of
+  attempts and shown as not reviewable.
 * **Players cannot trigger review.** This rules out one account forcing
   hundreds of analyses onto the server.
+* **Model changes do not re-review.** Each review records the model
+  that produced it. A new deployed model reviews new hands only; old
+  reviews stay as they are. Re-reviewing is an operator action
+  (re-queue everything, or everything from one model), run through the
+  same queue and so under the same limits.
 
 ## 7. Storage (sketch, to be revised)
 
-Two tables: one row per reviewed seat (queue state, model, summary
-counts for the history column), and one row per decision (kind, trick,
-action, the model's action, policy, forced flag, the estimate at the
-decision, and both branch estimates). The sketch predates several
-decisions above and needs, at least: the composite bury action, a
-score-first summary (marks and net), the hand and table snapshot the
-detail panel shows, the three pick readouts (all blinds, actual blind,
-pass), and the oracle estimate per decision.
+Two tables: one row per reviewed seat (queue state, summary figures for
+the history view), and one row per decision (kind, trick, action, the
+AI model's action, policy, forced flag, the estimate at the decision,
+and both branch estimates).
+
+* **Both tables carry `ai_model_id`** as a foreign key to `ai_model`,
+  so every stored figure names the version that produced it. The
+  decision rows reference the seat row on (seat, model) together, so
+  the two can never disagree. One review per seat is current; a
+  re-review replaces it.
+* The seat row needs: lost and gained totals (the history bar), the
+  count of decisions by state, and the costliest decision.
+* The decision row needs, beyond the first sketch: the composite bury
+  action, the hand and table snapshot the detail panel shows, the three
+  pick readouts (all blinds, actual blind, pass), and the oracle
+  estimate.
 
 Build order: (1) migration; (2) worker with tests against recorded
 hands; (3) API — review fields on history rows, a per-hand endpoint,
-review-tab aggregates; (4) history column and strip; (5) hand page;
+review-tab aggregates; (0) `is_admin`; (4) history toggle, bar column and strip; (5) hand page;
 (6) review tab.
 
 ## 8. Open questions
 
-* Should costs be multiplied by the stake on doubled hands?
+* Should differences be multiplied by the stake on doubled hands?
 * Should AI-made calls and buries be flagged individually from now on,
-  so those hands are partly reviewable instead of skipped?
-* Is the plain sum the right net score (section 4)?
-* Timing on the production box, and contention under live load.
+  so those hands are partly reviewable instead of skipped? (Hands the
+  history already badges "AI-assisted" are reviewed for the plays the
+  player made; substituted plays are skipped.)
+* Is the plain sum the right net (section 4)?
+* Timing on the production box.
 
 ## 9. Files
 
@@ -250,4 +361,4 @@ review-tab aggregates; (4) history column and strip; (5) hand page;
   `uv run python app/scripts/review_hands.py`.
 * `design/decision-review/` — the three prototypes,
   `prototype-runtime.js` (a small standalone renderer so they open
-  from disk), and screenshots.
+  from disk), the admin sketch, and desktop and phone screenshots.

@@ -14,6 +14,14 @@
 body{margin:0;background:#f3f1ea;color:#0e0d0a;font-family:Geist,"Helvetica Neue",system-ui,sans-serif}
 a{color:#0e0d0a}a:hover{color:#1f3b2f}
 button{font-family:inherit}
+.detail-inline,.m-caret{display:none}
+@media (max-width:640px){
+.detail-side{display:none!important}
+.detail-inline{display:block}
+.m-caret{display:inline;margin-left:8px;font-size:10px;color:#6e6c63;font-weight:400}
+.hand-cards{flex-wrap:nowrap!important;gap:4px!important}
+.hand-cards>span{width:auto!important;flex:1 1 0;max-width:46px;height:58px!important}
+}
 </style>
 </helmet>
 <div style="background: #f3f1ea; min-height: 1500px; box-sizing: border-box">
@@ -35,19 +43,20 @@ button{font-family:inherit}
 <div style="max-width: 880px; margin: 0 auto; padding: 20px 16px 64px; box-sizing: border-box">
 
 <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 24px; margin-top: 12px">
-<a href="Main.dc.html" style="font-size: 13px; text-underline-offset: 3px; min-height: 44px; display: inline-flex; align-items: center">← Hand history</a>
+<a href="hand-history.html" style="font-size: 13px; text-underline-offset: 3px; min-height: 44px; display: inline-flex; align-items: center">← Hand history</a>
 <div style="display: flex; gap: 16px; font-size: 13px">
 <a href="#" style="text-underline-offset: 3px; min-height: 44px; display: inline-flex; align-items: center">← Newer hand</a>
 <a href="#" style="text-underline-offset: 3px; min-height: 44px; display: inline-flex; align-items: center">Older hand →</a>
 </div>
 </div>
 
-<div style="font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; font-weight: 500; color: #6e6c63; margin-top: 20px">Hand review · {{whenTable}}</div>
+<div style="font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; font-weight: 500; color: #6e6c63; margin-top: 20px">AI review<span style="font-size: 9px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: #6e6c63; border: 1px solid #a3a094; border-radius: 2px; padding: 1px 4px; margin: 0 8px; vertical-align: 2px">Beta</span>{{whenTable}}</div>
 <h1 style="font-family: 'Instrument Serif', serif; font-weight: 400; font-size: clamp(28px, 4.6vw, 42px); line-height: 1.05; letter-spacing: -0.01em; margin: 12px 0 16px">{{headline}}</h1>
 <div style="display: flex; flex-wrap: wrap; gap: 8px 28px; font-size: 14px; color: #2c2b27; margin-bottom: 28px">
 <span>{{roleLine}}</span>
 <span style="color: {{resultColor}}">{{resultLine}}</span>
 <span>{{pointsLine}}</span>
+<span>Net vs. AI <span style="font-family: 'JetBrains Mono', monospace; font-weight: 600; color: #b3331e">−1.8</span> <span style="color: #6e6c63">(cost 2.7, gained 0.9)</span></span>
 <span>{{countsLine}}</span>
 </div>
 
@@ -59,7 +68,7 @@ button{font-family:inherit}
 <div style="display: flex; flex-wrap: wrap; gap: 6px 24px; font-size: 13px; color: #2c2b27; margin-bottom: 12px">
 <span style="display: inline-flex; align-items: center; gap: 8px"><span aria-hidden="true" style="width: 22px; border-top: 3px solid #0e0d0a"></span>From your seat</span>
 <span style="display: inline-flex; align-items: center; gap: 8px"><span aria-hidden="true" style="width: 22px; border-top: 2px solid #a3a094"></span>With every card known</span>
-<span style="display: inline-flex; align-items: center; gap: 8px"><span aria-hidden="true" style="display: inline-flex; align-items: center"><span style="width: 16px; border-top: 2px dotted #6e6c63"></span><span style="width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid #6e6c63; box-sizing: border-box"></span></span>Had you made the model’s choice</span>
+<span style="display: inline-flex; align-items: center; gap: 8px"><span aria-hidden="true" style="display: inline-flex; align-items: center"><span style="width: 16px; border-top: 2px dotted #6e6c63"></span><span style="width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid #6e6c63; box-sizing: border-box"></span></span>Had you made the AI’s choice</span>
 </div>
 <div style="display: flex; align-items: stretch">
 <div aria-hidden="true" style="width: 40px; flex-shrink: 0; position: relative; height: 200px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #6e6c63">
@@ -68,7 +77,7 @@ button{font-family:inherit}
 <span style="position: absolute; top: 183px; right: 8px">{{tickBottom}}</span>
 </div>
 <div style="flex: 1; min-width: 0">
-<div role="img" aria-label="Line chart of expected score before each of your decisions: the model's estimate from your seat, its estimate with every card known, and where the estimate would have gone had you made the model’s choice at each decision that cost or gained half a point" style="position: relative; height: 200px">
+<div role="img" aria-label="Line chart of expected score before each of your decisions: the AI's estimate from your seat, its estimate with every card known, and where the estimate would have gone had you made the AI’s choice at each decision that cost or gained half a point" style="position: relative; height: 200px">
 <svg aria-hidden="true" viewBox="{{vb}}" preserveAspectRatio="none" style="position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible">
 <line x1="0" y1="10" x2="{{vbw}}" y2="10" stroke="#cfccc0" stroke-width="1" vector-effect="non-scaling-stroke"></line>
 <line x1="0" y1="100" x2="{{vbw}}" y2="100" stroke="#a3a094" stroke-width="1" stroke-dasharray="3 4" vector-effect="non-scaling-stroke"></line>
@@ -100,7 +109,7 @@ button{font-family:inherit}
 <section aria-label="Your decisions" style="flex: 1 1 260px; min-width: 0">
 <div style="border-top: 2px solid #0e0d0a; padding-top: 3px"><div style="border-top: 1px solid #0e0d0a; display: flex; justify-content: space-between; padding-top: 8px; margin-bottom: 8px; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; font-weight: 500; color: #6e6c63">
 <span>Your decisions</span>
-<span>Cost</span>
+<span>vs. AI</span>
 </div></div>
 <sc-for list="{{steps}}" as="s" hint-placeholder-count="9">
 <button type="button" onClick="{{s.pick}}" aria-pressed="{{s.pressed}}" style="width: 100%; min-height: 48px; display: grid; grid-template-columns: 62px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 6px 10px; text-align: left; cursor: pointer; background: {{s.rowBg}}; border: 1px solid {{s.rowBorder}}; border-bottom-color: {{s.rowRule}}; border-radius: 3px; color: #0e0d0a">
@@ -109,17 +118,15 @@ button{font-family:inherit}
 <span style="font-family: 'Instrument Serif', serif; font-size: 20px; line-height: 1.1">{{s.action}}</span>
 <span style="font-size: 12px; color: {{s.noteColor}}; margin-left: 8px; white-space: nowrap">{{s.note}}</span>
 </span>
-<span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600; color: {{s.swingColor}}">{{s.swing}}</span>
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600; color: {{s.swingColor}}; white-space: nowrap">{{s.swing}}<span class="m-caret" aria-hidden="true">{{s.caret}}</span></span>
 </button>
-</sc-for>
-</section>
-
-<section aria-label="Selected decision" style="flex: 2 1 420px; min-width: 0; background: #ffffff; border: 1px solid #cfccc0; border-radius: 4px; box-shadow: 0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05); padding: 24px; box-sizing: border-box">
+<sc-if value="{{s.open}}" hint-placeholder-val="{{ false }}">
+<div class="detail-inline" style="background: #ffffff; border: 1px solid #a3a094; border-top: none; border-radius: 0 0 3px 3px; padding: 16px 14px 18px; margin-bottom: 8px">
 <div style="font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; font-weight: 500; color: #6e6c63">{{sel.kicker}}</div>
 <h2 style="font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 32px; line-height: 1.05; margin: 8px 0 20px">{{sel.headline}}</h2>
 
 <div style="font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; font-weight: 500; color: #6e6c63; margin-bottom: 8px">Your hand</div>
-<div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 24px">
+<div class="hand-cards" style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px">
 <sc-for list="{{sel.cards}}" as="c" hint-placeholder-count="6">
 <span style="width: 46px; height: 66px; background: #ffffff; border: 1px solid {{c.edge}}; border-radius: 3px; box-shadow: {{c.shadow}}; display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-family: 'Instrument Serif', serif; line-height: 1; color: {{c.color}}">
 <span style="font-size: 22px">{{c.rank}}</span>
@@ -127,8 +134,13 @@ button{font-family:inherit}
 </span>
 </sc-for>
 </div>
+<div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-bottom: 24px; font-size: 13px; color: #6e6c63">
+<span style="font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; font-weight: 500">High trump</span>
+<span><span style="font-family: 'Instrument Serif', serif; font-size: 20px; line-height: 1; color: {{sel.highColor}}">{{sel.high}}</span> <span style="font-weight: 600; color: {{sel.highWhereColor}}">{{sel.highWhere}}</span></span>
+<span>{{sel.unseen}}</span>
+</div>
 
-<div style="font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; font-weight: 500; color: #6e6c63; margin-bottom: 8px">How the model plays it</div>
+<div style="font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; font-weight: 500; color: #6e6c63; margin-bottom: 8px">How the AI plays it</div>
 <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 24px">
 <sc-for list="{{sel.options}}" as="o" hint-placeholder-count="2">
 <div style="display: grid; grid-template-columns: 96px minmax(0, 1fr) 44px 44px; align-items: center; gap: 10px">
@@ -151,12 +163,78 @@ button{font-family:inherit}
 <div style="font-size: 12px; color: #2c2b27; margin-top: 2px">expected score</div>
 </div>
 <div>
-<div style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 500; color: #6e6c63">Model's choice</div>
+<div style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 500; color: #6e6c63">AI’s choice</div>
 <div style="font-family: 'Instrument Serif', serif; font-size: 36px; line-height: 1.1">{{sel.modelScore}}</div>
 <div style="font-size: 12px; color: #2c2b27; margin-top: 2px">expected score</div>
 </div>
 <div>
-<div style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 500; color: #6e6c63">Cost</div>
+<div style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 500; color: #6e6c63">Difference</div>
+<div style="font-family: 'Instrument Serif', serif; font-size: 36px; line-height: 1.1; color: {{sel.swingColor}}">{{sel.swing}}</div>
+<div style="font-size: 12px; color: #2c2b27; margin-top: 2px">{{sel.verdict}}</div>
+</div>
+</div>
+<p style="font-size: 13px; line-height: 1.5; color: #6e6c63; margin: 0 0 20px">{{sel.method}}</p>
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px">
+<div style="display: flex; gap: 8px">
+<button type="button" onClick="{{prev}}" style="min-height: 44px; font-size: 13px; font-weight: 500; padding: 10px 16px; border-radius: 3px; border: 1px solid #a3a094; background: transparent; color: #0e0d0a; cursor: pointer">← Previous</button>
+<button type="button" onClick="{{next}}" style="min-height: 44px; font-size: 13px; font-weight: 500; padding: 10px 16px; border-radius: 3px; border: 1px solid #0e0d0a; background: #0e0d0a; color: #f3f1ea; cursor: pointer">Next decision →</button>
+</div>
+<a href="#" style="font-size: 13px; text-underline-offset: 3px; min-height: 44px; display: inline-flex; align-items: center">Open in Analyze AI ↗</a>
+</div>
+</div>
+</sc-if>
+</sc-for>
+</section>
+
+<section class="detail-side" aria-label="Selected decision" style="flex: 2 1 420px; min-width: 0; background: #ffffff; border: 1px solid #cfccc0; border-radius: 4px; box-shadow: 0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05); padding: 24px; box-sizing: border-box">
+<div style="font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; font-weight: 500; color: #6e6c63">{{sel.kicker}}</div>
+<h2 style="font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 32px; line-height: 1.05; margin: 8px 0 20px">{{sel.headline}}</h2>
+
+<div style="font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; font-weight: 500; color: #6e6c63; margin-bottom: 8px">Your hand</div>
+<div class="hand-cards" style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px">
+<sc-for list="{{sel.cards}}" as="c" hint-placeholder-count="6">
+<span style="width: 46px; height: 66px; background: #ffffff; border: 1px solid {{c.edge}}; border-radius: 3px; box-shadow: {{c.shadow}}; display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-family: 'Instrument Serif', serif; line-height: 1; color: {{c.color}}">
+<span style="font-size: 22px">{{c.rank}}</span>
+<span style="font-size: 18px">{{c.sym}}</span>
+</span>
+</sc-for>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-bottom: 24px; font-size: 13px; color: #6e6c63">
+<span style="font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; font-weight: 500">High trump</span>
+<span><span style="font-family: 'Instrument Serif', serif; font-size: 20px; line-height: 1; color: {{sel.highColor}}">{{sel.high}}</span> <span style="font-weight: 600; color: {{sel.highWhereColor}}">{{sel.highWhere}}</span></span>
+<span>{{sel.unseen}}</span>
+</div>
+
+<div style="font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; font-weight: 500; color: #6e6c63; margin-bottom: 8px">How the AI plays it</div>
+<div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 24px">
+<sc-for list="{{sel.options}}" as="o" hint-placeholder-count="2">
+<div style="display: grid; grid-template-columns: 96px minmax(0, 1fr) 44px 44px; align-items: center; gap: 10px">
+<span style="font-family: 'Instrument Serif', serif; font-size: 19px; white-space: nowrap">{{o.label}}</span>
+<span style="height: 8px; background: #ecebe2; display: block"><span style="display: block; height: 8px; width: {{o.width}}; background: {{o.fill}}"></span></span>
+<span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; text-align: right">{{o.pct}}</span>
+<span>
+<sc-if value="{{o.yours}}" hint-placeholder-val="{{ false }}">
+<span style="font-size: 10px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; padding: 3px 6px 2px; border-radius: 2px; background: #0e0d0a; color: #f3f1ea">You</span>
+</sc-if>
+</span>
+</div>
+</sc-for>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; border-top: 1px solid #cfccc0; padding-top: 16px; margin-bottom: 12px">
+<div>
+<div style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 500; color: #6e6c63">Your choice</div>
+<div style="font-family: 'Instrument Serif', serif; font-size: 36px; line-height: 1.1">{{sel.yourScore}}</div>
+<div style="font-size: 12px; color: #2c2b27; margin-top: 2px">expected score</div>
+</div>
+<div>
+<div style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 500; color: #6e6c63">AI’s choice</div>
+<div style="font-family: 'Instrument Serif', serif; font-size: 36px; line-height: 1.1">{{sel.modelScore}}</div>
+<div style="font-size: 12px; color: #2c2b27; margin-top: 2px">expected score</div>
+</div>
+<div>
+<div style="font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 500; color: #6e6c63">Difference</div>
 <div style="font-family: 'Instrument Serif', serif; font-size: 36px; line-height: 1.1; color: {{sel.swingColor}}">{{sel.swing}}</div>
 <div style="font-size: 12px; color: #2c2b27; margin-top: 2px">{{sel.verdict}}</div>
 </div>
@@ -173,6 +251,12 @@ button{font-family:inherit}
 </section>
 
 </div>
+
+<section aria-label="Players in this hand" style="margin-top: 44px; border-top: 1px solid #a3a094; padding-top: 10px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 20px; font-size: 14px; color: #2c2b27">
+<span style="font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; font-weight: 500; color: #6e6c63">At the table</span>
+<span><span style="font-family: 'Instrument Serif', serif; font-size: 19px; color: #0e0d0a">Andrew</span> <span style="color: #6e6c63">(you) · seat 3 · Picker</span></span>
+<span style="color: #6e6c63">and 4 AI players</span>
+</section>
 </div>
 </div>
 </x-dc>
@@ -180,9 +264,12 @@ button{font-family:inherit}
 class Component extends DCLogic {
 renderVals() {
 var self = this;
-var D = {"whenTable": "Nov 7, 9:58 PM · Waymoot", "headline": "You played the J♣. The model plays the K♣.", "roleLine": "Picker, called A♣", "resultLine": "Lost −2", "resultColor": "#b3331e", "pointsLine": "53 team points", "countsLine": "8 open decisions: 4 agreed, 1 about even, 2 costly, 1 better than the model’s", "chartNote": "Final score −2", "final": -2, "worstIndex": 6, "worstNote": "−2.0 points · costliest decision", "steps": [{"label": "Pick", "brief": "Pick", "action": "Pick", "swing": "—", "swingColor": "#6e6c63", "note": "Agreed", "noteColor": "#6e6c63", "dot": "#0e0d0a", "win": 68, "score": 1.51, "status": "agreed", "oracle": -2.79, "ghost": null}, {"label": "Call", "brief": "Call", "action": "A♣", "swing": "0.0", "swingColor": "#6e6c63", "note": "Even: A♠", "noteColor": "#6e6c63", "dot": "#0e0d0a", "win": 66, "score": 0.29, "status": "close", "oracle": -2.72, "ghost": null}, {"label": "Bury", "brief": "Bury", "action": "8♠ A♥", "swing": "−0.7", "swingColor": "#b3331e", "note": "Model: 10♣ A♥", "noteColor": "#b3331e", "dot": "#b3331e", "win": 66, "score": 0.3, "status": "costly", "oracle": -2.11, "ghost": 0.9}, {"label": "Trick 1", "brief": "T1", "action": "10♣", "swing": "—", "swingColor": "#6e6c63", "note": "Agreed", "noteColor": "#6e6c63", "dot": "#0e0d0a", "win": 65, "score": 0.25, "status": "agreed", "oracle": 0.08, "ghost": null}, {"label": "Trick 2", "brief": "T2", "action": "Q♠", "swing": "—", "swingColor": "#6e6c63", "note": "Agreed", "noteColor": "#6e6c63", "dot": "#0e0d0a", "win": 85, "score": 2.32, "status": "agreed", "oracle": 1.07, "ghost": null}, {"label": "Trick 3", "brief": "T3", "action": "J♠", "swing": "—", "swingColor": "#6e6c63", "note": "Agreed", "noteColor": "#6e6c63", "dot": "#0e0d0a", "win": 92, "score": 3.02, "status": "agreed", "oracle": 1.59, "ghost": null}, {"label": "Trick 4", "brief": "T4", "action": "J♣", "swing": "−2.0", "swingColor": "#b3331e", "note": "Model: K♣", "noteColor": "#b3331e", "dot": "#b3331e", "win": 95, "score": 3.01, "status": "costly", "oracle": 1.91, "ghost": 3.74}, {"label": "Trick 5", "brief": "T5", "action": "10♦", "swing": "+0.9", "swingColor": "#1d6b42", "note": "Model: K♣", "noteColor": "#6e6c63", "dot": "#0e0d0a", "win": 85, "score": 1.74, "status": "better", "oracle": -1.81, "ghost": -1.46}, {"label": "Trick 6", "brief": "T6", "action": "K♣", "swing": "—", "swingColor": "#6e6c63", "note": "Forced", "noteColor": "#6e6c63", "dot": "#0e0d0a", "win": 40, "score": -0.56, "status": "forced", "oracle": -4.03, "ghost": null}], "details": [{"kicker": "Pick or pass · seat 3 · 2 passed before you", "headline": "You picked. So does the model.", "cards": [{"rank": "Q", "sym": "♠", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "J", "sym": "♣", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "J", "sym": "♠", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "10", "sym": "♦", "color": "#b3331e", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "K", "sym": "♣", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "A", "sym": "♥", "color": "#b3331e", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}], "options": [{"label": "Pick", "pct": "99%", "width": "99%", "fill": "#1f3b2f", "yours": true}, {"label": "Pass", "pct": "1%", "width": "1%", "fill": "#a3a094", "yours": false}], "yourScore": "+1.5", "modelScore": "+1.5", "swing": "—", "swingColor": "#6e6c63", "verdict": "same choice", "method": "You and the model make the same choice here."}, {"kicker": "Partner call · after taking the blind", "headline": "You called the A♣. The model calls the A♠.", "cards": [{"rank": "Q", "sym": "♠", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "J", "sym": "♣", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "J", "sym": "♠", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "10", "sym": "♦", "color": "#b3331e", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "K", "sym": "♣", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "A", "sym": "♥", "color": "#b3331e", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "10", "sym": "♣", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "8", "sym": "♠", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}], "options": [{"label": "A♠", "pct": "100%", "width": "100%", "fill": "#1f3b2f", "yours": false}, {"label": "A♣", "pct": "0%", "width": "1%", "fill": "#a3a094", "yours": true}, {"label": "Alone", "pct": "0%", "width": "1%", "fill": "#a3a094", "yours": false}], "yourScore": "+0.3", "modelScore": "+0.3", "swing": "0.0", "swingColor": "#6e6c63", "verdict": "points · about even", "method": "Each choice is played forward to your next decision with the cards as they were dealt, the model playing the other seats."}, {"kicker": "Bury · two cards, chosen together", "headline": "You buried 8♠ and A♥. The model buries 10♣ and A♥.", "cards": [{"rank": "Q", "sym": "♠", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "J", "sym": "♣", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "J", "sym": "♠", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "10", "sym": "♦", "color": "#b3331e", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "K", "sym": "♣", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "A", "sym": "♥", "color": "#b3331e", "edge": "#0e0d0a", "shadow": "0 0 0 1px #0e0d0a"}, {"rank": "10", "sym": "♣", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "8", "sym": "♠", "color": "#0e0d0a", "edge": "#0e0d0a", "shadow": "0 0 0 1px #0e0d0a"}], "options": [{"label": "10♣ A♥", "pct": "88%", "width": "88%", "fill": "#1f3b2f", "yours": false}, {"label": "K♣ A♥", "pct": "8%", "width": "8%", "fill": "#a3a094", "yours": false}, {"label": "10♣ 8♠", "pct": "2%", "width": "2%", "fill": "#a3a094", "yours": false}, {"label": "8♠ A♥", "pct": "0%", "width": "1%", "fill": "#a3a094", "yours": true}], "yourScore": "+0.3", "modelScore": "+0.9", "swing": "−0.7", "swingColor": "#b3331e", "verdict": "points", "method": "Each choice is played forward to your next decision with the cards as they were dealt, the model playing the other seats."}, {"kicker": "Trick 1 · 7♣ led · third to play", "headline": "You played the 10♣. So does the model.", "cards": [{"rank": "Q", "sym": "♠", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "J", "sym": "♣", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "J", "sym": "♠", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "10", "sym": "♦", "color": "#b3331e", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "K", "sym": "♣", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "10", "sym": "♣", "color": "#0e0d0a", "edge": "#0e0d0a", "shadow": "0 0 0 1px #0e0d0a"}], "options": [{"label": "10♣", "pct": "63%", "width": "63%", "fill": "#1f3b2f", "yours": true}, {"label": "K♣", "pct": "37%", "width": "37%", "fill": "#a3a094", "yours": false}], "yourScore": "+0.3", "modelScore": "+0.3", "swing": "—", "swingColor": "#6e6c63", "verdict": "same choice", "method": "You and the model make the same choice here."}, {"kicker": "Trick 2 · A♦ led · last to play", "headline": "You played the Q♠. So does the model.", "cards": [{"rank": "Q", "sym": "♠", "color": "#0e0d0a", "edge": "#0e0d0a", "shadow": "0 0 0 1px #0e0d0a"}, {"rank": "J", "sym": "♣", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "J", "sym": "♠", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "10", "sym": "♦", "color": "#b3331e", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "K", "sym": "♣", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}], "options": [{"label": "Q♠", "pct": "100%", "width": "100%", "fill": "#1f3b2f", "yours": true}, {"label": "J♣", "pct": "0%", "width": "1%", "fill": "#a3a094", "yours": false}, {"label": "J♠", "pct": "0%", "width": "1%", "fill": "#a3a094", "yours": false}, {"label": "10♦", "pct": "0%", "width": "1%", "fill": "#a3a094", "yours": false}], "yourScore": "+2.3", "modelScore": "+2.3", "swing": "—", "swingColor": "#6e6c63", "verdict": "same choice", "method": "You and the model make the same choice here."}, {"kicker": "Trick 3 · your lead", "headline": "You led the J♠. So does the model.", "cards": [{"rank": "J", "sym": "♣", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "J", "sym": "♠", "color": "#0e0d0a", "edge": "#0e0d0a", "shadow": "0 0 0 1px #0e0d0a"}, {"rank": "10", "sym": "♦", "color": "#b3331e", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "K", "sym": "♣", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}], "options": [{"label": "J♠", "pct": "80%", "width": "80%", "fill": "#1f3b2f", "yours": true}, {"label": "J♣", "pct": "20%", "width": "20%", "fill": "#a3a094", "yours": false}, {"label": "10♦", "pct": "0%", "width": "1%", "fill": "#a3a094", "yours": false}, {"label": "K♣", "pct": "0%", "width": "1%", "fill": "#a3a094", "yours": false}], "yourScore": "+3.0", "modelScore": "+3.0", "swing": "—", "swingColor": "#6e6c63", "verdict": "same choice", "method": "You and the model make the same choice here."}, {"kicker": "Trick 4 · 7♥ led · fourth to play", "headline": "You played the J♣. The model plays the K♣.", "cards": [{"rank": "J", "sym": "♣", "color": "#0e0d0a", "edge": "#0e0d0a", "shadow": "0 0 0 1px #0e0d0a"}, {"rank": "10", "sym": "♦", "color": "#b3331e", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "K", "sym": "♣", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}], "options": [{"label": "K♣", "pct": "99%", "width": "99%", "fill": "#1f3b2f", "yours": false}, {"label": "J♣", "pct": "1%", "width": "1%", "fill": "#a3a094", "yours": true}, {"label": "10♦", "pct": "0%", "width": "1%", "fill": "#a3a094", "yours": false}], "yourScore": "+1.8", "modelScore": "+3.7", "swing": "−2.0", "swingColor": "#b3331e", "verdict": "points", "method": "Each choice is played forward to your next decision with the cards as they were dealt, the model playing the other seats."}, {"kicker": "Trick 5 · your lead", "headline": "You led the 10♦. The model leads the K♣.", "cards": [{"rank": "10", "sym": "♦", "color": "#b3331e", "edge": "#0e0d0a", "shadow": "0 0 0 1px #0e0d0a"}, {"rank": "K", "sym": "♣", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}], "options": [{"label": "K♣", "pct": "89%", "width": "89%", "fill": "#1f3b2f", "yours": false}, {"label": "10♦", "pct": "11%", "width": "11%", "fill": "#a3a094", "yours": true}], "yourScore": "−0.2", "modelScore": "−1.1", "swing": "+0.9", "swingColor": "#1d6b42", "verdict": "points", "method": "Each choice is played forward to your next decision with the cards as they were dealt, the model playing the other seats."}, {"kicker": "Trick 6 · 7♦ led · third to play", "headline": "You played the K♣. It was the only legal choice.", "cards": [{"rank": "K", "sym": "♣", "color": "#0e0d0a", "edge": "#0e0d0a", "shadow": "0 0 0 1px #0e0d0a"}], "options": [{"label": "K♣", "pct": "100%", "width": "100%", "fill": "#1f3b2f", "yours": true}], "yourScore": "−0.6", "modelScore": "−0.6", "swing": "—", "swingColor": "#6e6c63", "verdict": "same choice", "method": "One legal choice, so there is nothing to compare."}]};
+var D = {"whenTable": "Nov 7, 9:58 PM · Waymoot", "headline": "You played the J♣. The AI plays the K♣.", "roleLine": "Picker, called A♣", "resultLine": "Lost −2", "resultColor": "#b3331e", "pointsLine": "53 team points", "countsLine": "8 decisions: 4 agreed, 1 about even, 2 cost you, 1 gained", "chartNote": "Final score −2", "final": -2, "worstIndex": 6, "worstNote": "−2.0 points · costliest decision", "steps": [{"label": "Pick", "brief": "Pick", "action": "Pick", "swing": "—", "swingColor": "#6e6c63", "note": "Agreed", "noteColor": "#6e6c63", "dot": "#0e0d0a", "win": 68, "score": 1.51, "status": "agreed", "oracle": -2.79, "ghost": null}, {"label": "Call", "brief": "Call", "action": "A♣", "swing": "0.0", "swingColor": "#6e6c63", "note": "Even: A♠", "noteColor": "#6e6c63", "dot": "#0e0d0a", "win": 66, "score": 0.29, "status": "close", "oracle": -2.72, "ghost": null}, {"label": "Bury", "brief": "Bury", "action": "8♠ A♥", "swing": "−0.7", "swingColor": "#b3331e", "note": "AI: 10♣ A♥", "noteColor": "#b3331e", "dot": "#b3331e", "win": 66, "score": 0.3, "status": "costly", "oracle": -2.11, "ghost": 0.9}, {"label": "Trick 1", "brief": "T1", "action": "10♣", "swing": "—", "swingColor": "#6e6c63", "note": "Agreed", "noteColor": "#6e6c63", "dot": "#0e0d0a", "win": 65, "score": 0.25, "status": "agreed", "oracle": 0.08, "ghost": null}, {"label": "Trick 2", "brief": "T2", "action": "Q♠", "swing": "—", "swingColor": "#6e6c63", "note": "Agreed", "noteColor": "#6e6c63", "dot": "#0e0d0a", "win": 85, "score": 2.32, "status": "agreed", "oracle": 1.07, "ghost": null}, {"label": "Trick 3", "brief": "T3", "action": "J♠", "swing": "—", "swingColor": "#6e6c63", "note": "Agreed", "noteColor": "#6e6c63", "dot": "#0e0d0a", "win": 92, "score": 3.02, "status": "agreed", "oracle": 1.59, "ghost": null}, {"label": "Trick 4", "brief": "T4", "action": "J♣", "swing": "−2.0", "swingColor": "#b3331e", "note": "AI: K♣", "noteColor": "#b3331e", "dot": "#b3331e", "win": 95, "score": 3.01, "status": "costly", "oracle": 1.91, "ghost": 3.74}, {"label": "Trick 5", "brief": "T5", "action": "10♦", "swing": "+0.9", "swingColor": "#1d6b42", "note": "AI: K♣", "noteColor": "#6e6c63", "dot": "#0e0d0a", "win": 85, "score": 1.74, "status": "better", "oracle": -1.81, "ghost": -1.46}, {"label": "Trick 6", "brief": "T6", "action": "K♣", "swing": "—", "swingColor": "#6e6c63", "note": "Forced", "noteColor": "#6e6c63", "dot": "#0e0d0a", "win": 40, "score": -0.56, "status": "forced", "oracle": -4.03, "ghost": null}], "details": [{"kicker": "Pick or pass · seat 3 · 2 passed before you", "headline": "You picked. So does the AI.", "cards": [{"rank": "Q", "sym": "♠", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "J", "sym": "♣", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "J", "sym": "♠", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "10", "sym": "♦", "color": "#b3331e", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "K", "sym": "♣", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "A", "sym": "♥", "color": "#b3331e", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}], "options": [{"label": "Pick", "pct": "99%", "width": "99%", "fill": "#1f3b2f", "yours": true}, {"label": "Pass", "pct": "1%", "width": "1%", "fill": "#a3a094", "yours": false}], "yourScore": "+1.5", "modelScore": "+1.5", "swing": "—", "swingColor": "#6e6c63", "verdict": "agreed", "method": "You and the AI make the same choice here.", "high": "Q♣", "highColor": "#0e0d0a", "highWhere": "still out", "highWhereColor": "#6e6c63", "unseen": "10 trump you have not seen"}, {"kicker": "Partner call · after taking the blind", "headline": "You called the A♣. The AI calls the A♠.", "cards": [{"rank": "Q", "sym": "♠", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "J", "sym": "♣", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "J", "sym": "♠", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "10", "sym": "♦", "color": "#b3331e", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "K", "sym": "♣", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "A", "sym": "♥", "color": "#b3331e", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "10", "sym": "♣", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "8", "sym": "♠", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}], "options": [{"label": "A♠", "pct": "100%", "width": "100%", "fill": "#1f3b2f", "yours": false}, {"label": "A♣", "pct": "0%", "width": "1%", "fill": "#a3a094", "yours": true}, {"label": "Alone", "pct": "0%", "width": "1%", "fill": "#a3a094", "yours": false}], "yourScore": "+0.3", "modelScore": "+0.3", "swing": "0.0", "swingColor": "#6e6c63", "verdict": "points · about even", "method": "Each choice is played forward to your next decision with the cards as they were dealt, the AI playing the other seats.", "high": "Q♣", "highColor": "#0e0d0a", "highWhere": "still out", "highWhereColor": "#6e6c63", "unseen": "10 trump you have not seen"}, {"kicker": "Bury · two cards, chosen together", "headline": "You buried 8♠ and A♥. The AI buries 10♣ and A♥.", "cards": [{"rank": "Q", "sym": "♠", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "J", "sym": "♣", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "J", "sym": "♠", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "10", "sym": "♦", "color": "#b3331e", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "K", "sym": "♣", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "A", "sym": "♥", "color": "#b3331e", "edge": "#0e0d0a", "shadow": "0 0 0 1px #0e0d0a"}, {"rank": "10", "sym": "♣", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "8", "sym": "♠", "color": "#0e0d0a", "edge": "#0e0d0a", "shadow": "0 0 0 1px #0e0d0a"}], "options": [{"label": "10♣ A♥", "pct": "88%", "width": "88%", "fill": "#1f3b2f", "yours": false}, {"label": "K♣ A♥", "pct": "8%", "width": "8%", "fill": "#a3a094", "yours": false}, {"label": "10♣ 8♠", "pct": "2%", "width": "2%", "fill": "#a3a094", "yours": false}, {"label": "8♠ A♥", "pct": "0%", "width": "1%", "fill": "#a3a094", "yours": true}], "yourScore": "+0.3", "modelScore": "+0.9", "swing": "−0.7", "swingColor": "#b3331e", "verdict": "points", "method": "Each choice is played forward to your next decision with the cards as they were dealt, the AI playing the other seats.", "high": "Q♣", "highColor": "#0e0d0a", "highWhere": "still out", "highWhereColor": "#6e6c63", "unseen": "10 trump you have not seen"}, {"kicker": "Trick 1 · 7♣ led · third to play", "headline": "You played the 10♣. So does the AI.", "cards": [{"rank": "Q", "sym": "♠", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "J", "sym": "♣", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "J", "sym": "♠", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "10", "sym": "♦", "color": "#b3331e", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "K", "sym": "♣", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "10", "sym": "♣", "color": "#0e0d0a", "edge": "#0e0d0a", "shadow": "0 0 0 1px #0e0d0a"}], "options": [{"label": "10♣", "pct": "63%", "width": "63%", "fill": "#1f3b2f", "yours": true}, {"label": "K♣", "pct": "37%", "width": "37%", "fill": "#a3a094", "yours": false}], "yourScore": "+0.3", "modelScore": "+0.3", "swing": "—", "swingColor": "#6e6c63", "verdict": "agreed", "method": "You and the AI make the same choice here.", "high": "Q♣", "highColor": "#0e0d0a", "highWhere": "still out", "highWhereColor": "#6e6c63", "unseen": "10 trump you have not seen"}, {"kicker": "Trick 2 · A♦ led · last to play", "headline": "You played the Q♠. So does the AI.", "cards": [{"rank": "Q", "sym": "♠", "color": "#0e0d0a", "edge": "#0e0d0a", "shadow": "0 0 0 1px #0e0d0a"}, {"rank": "J", "sym": "♣", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "J", "sym": "♠", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "10", "sym": "♦", "color": "#b3331e", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "K", "sym": "♣", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}], "options": [{"label": "Q♠", "pct": "100%", "width": "100%", "fill": "#1f3b2f", "yours": true}, {"label": "J♣", "pct": "0%", "width": "1%", "fill": "#a3a094", "yours": false}, {"label": "J♠", "pct": "0%", "width": "1%", "fill": "#a3a094", "yours": false}, {"label": "10♦", "pct": "0%", "width": "1%", "fill": "#a3a094", "yours": false}], "yourScore": "+2.3", "modelScore": "+2.3", "swing": "—", "swingColor": "#6e6c63", "verdict": "agreed", "method": "You and the AI make the same choice here.", "high": "Q♣", "highColor": "#0e0d0a", "highWhere": "still out", "highWhereColor": "#6e6c63", "unseen": "6 trump you have not seen"}, {"kicker": "Trick 3 · your lead", "headline": "You led the J♠. So does the AI.", "cards": [{"rank": "J", "sym": "♣", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "J", "sym": "♠", "color": "#0e0d0a", "edge": "#0e0d0a", "shadow": "0 0 0 1px #0e0d0a"}, {"rank": "10", "sym": "♦", "color": "#b3331e", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "K", "sym": "♣", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}], "options": [{"label": "J♠", "pct": "80%", "width": "80%", "fill": "#1f3b2f", "yours": true}, {"label": "J♣", "pct": "20%", "width": "20%", "fill": "#a3a094", "yours": false}, {"label": "10♦", "pct": "0%", "width": "1%", "fill": "#a3a094", "yours": false}, {"label": "K♣", "pct": "0%", "width": "1%", "fill": "#a3a094", "yours": false}], "yourScore": "+3.0", "modelScore": "+3.0", "swing": "—", "swingColor": "#6e6c63", "verdict": "agreed", "method": "You and the AI make the same choice here.", "high": "Q♣", "highColor": "#0e0d0a", "highWhere": "still out", "highWhereColor": "#6e6c63", "unseen": "6 trump you have not seen"}, {"kicker": "Trick 4 · 7♥ led · fourth to play", "headline": "You played the J♣. The AI plays the K♣.", "cards": [{"rank": "J", "sym": "♣", "color": "#0e0d0a", "edge": "#0e0d0a", "shadow": "0 0 0 1px #0e0d0a"}, {"rank": "10", "sym": "♦", "color": "#b3331e", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}, {"rank": "K", "sym": "♣", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}], "options": [{"label": "K♣", "pct": "99%", "width": "99%", "fill": "#1f3b2f", "yours": false}, {"label": "J♣", "pct": "1%", "width": "1%", "fill": "#a3a094", "yours": true}, {"label": "10♦", "pct": "0%", "width": "1%", "fill": "#a3a094", "yours": false}], "yourScore": "+1.8", "modelScore": "+3.7", "swing": "−2.0", "swingColor": "#b3331e", "verdict": "points", "method": "Each choice is played forward to your next decision with the cards as they were dealt, the AI playing the other seats.", "high": "J♣", "highColor": "#0e0d0a", "highWhere": "in your hand", "highWhereColor": "#1d6b42", "unseen": "2 trump you have not seen"}, {"kicker": "Trick 5 · your lead", "headline": "You led the 10♦. The AI leads the K♣.", "cards": [{"rank": "10", "sym": "♦", "color": "#b3331e", "edge": "#0e0d0a", "shadow": "0 0 0 1px #0e0d0a"}, {"rank": "K", "sym": "♣", "color": "#0e0d0a", "edge": "#d5d2c4", "shadow": "0 1px 0 rgba(15,15,12,0.04), 0 2px 4px rgba(15,15,12,0.05)"}], "options": [{"label": "K♣", "pct": "89%", "width": "89%", "fill": "#1f3b2f", "yours": false}, {"label": "10♦", "pct": "11%", "width": "11%", "fill": "#a3a094", "yours": true}], "yourScore": "−0.2", "modelScore": "−1.1", "swing": "+0.9", "swingColor": "#1d6b42", "verdict": "points", "method": "Each choice is played forward to your next decision with the cards as they were dealt, the AI playing the other seats.", "high": "J♥", "highColor": "#b3331e", "highWhere": "still out", "highWhereColor": "#6e6c63", "unseen": "2 trump you have not seen"}, {"kicker": "Trick 6 · 7♦ led · third to play", "headline": "You played the K♣. It was the only legal choice.", "cards": [{"rank": "K", "sym": "♣", "color": "#0e0d0a", "edge": "#0e0d0a", "shadow": "0 0 0 1px #0e0d0a"}], "options": [{"label": "K♣", "pct": "100%", "width": "100%", "fill": "#1f3b2f", "yours": true}], "yourScore": "−0.6", "modelScore": "−0.6", "swing": "—", "swingColor": "#6e6c63", "verdict": "forced", "method": "One legal choice, so there is nothing to compare.", "high": "—", "highColor": "#0e0d0a", "highWhere": "no trump left", "highWhereColor": "#6e6c63", "unseen": ""}]};
 var n = D.steps.length;
-var cur = Math.min((this.state && this.state.sel) || 0, n - 1);
+var st = this.state || {};
+// The page opens on the decision its headline is about.
+var cur = Math.min(st.sel == null ? D.worstIndex : st.sel, n - 1);
+var shut = !!st.shut;
 var dom = Math.max(4, Math.abs(D.final));
 D.steps.forEach(function (s) { dom = Math.max(dom, Math.ceil(Math.abs(s.score)), Math.ceil(Math.abs(s.oracle)), s.ghost == null ? 0 : Math.ceil(Math.abs(s.ghost))); });
 var y = function (v) { return 100 - v / dom * 90; };
@@ -198,7 +285,10 @@ o.rowBg = on ? '#ffffff' : 'transparent';
 o.rowBorder = on ? '#a3a094' : 'transparent';
 o.rowRule = on ? '#a3a094' : '#cfccc0';
 o.pressed = on ? 'true' : 'false';
-o.pick = function () { self.setState({ sel: i }); };
+o.open = on && !shut;
+o.caret = o.open ? '▴' : '▾';
+// Tapping the open decision again closes it (phone layout).
+o.pick = function () { self.setState(on ? { shut: !shut } : { sel: i, shut: false }); };
 return o;
 });
 var endPt = (50 + 100 * n) + ',' + y(D.final).toFixed(1);
@@ -226,8 +316,8 @@ vb: '0 0 ' + total + ' 200', vbw: total,
 tickTop: '+' + dom, tickBottom: '−' + dom,
 linePoints: line.join(' '), oraclePoints: oracle.join(' '),
 ghostPath: ghostPath, gapCostly: gapCostly, gapBetter: gapBetter, ghosts: ghosts,
-prev: function () { self.setState({ sel: Math.max(0, cur - 1) }); },
-next: function () { self.setState({ sel: Math.min(n - 1, cur + 1) }); }
+prev: function () { self.setState({ sel: Math.max(0, cur - 1), shut: false }); },
+next: function () { self.setState({ sel: Math.min(n - 1, cur + 1), shut: false }); }
 };
 }
 }
