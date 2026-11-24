@@ -5,6 +5,7 @@ import logging
 import time
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from uvicorn.protocols.utils import ClientDisconnected
 
 from server.api.auth import resolve_player
 from server.api.ratelimit import client_key, remote_address
@@ -58,6 +59,21 @@ _sockets_by_ip: dict[str, int] = {}
 MAX_SOCKETS_PER_CLIENT = 4
 
 
+async def _reject(websocket: WebSocket, subprotocol: str | None, code: int) -> None:
+    """Refuse a socket with an application close code the client acts on.
+
+    The code only reaches the client after an accept, so accept and close.
+    A client that already hung up (a stale tab, a backgrounded phone) needs
+    no answer: uvicorn raises ClientDisconnected on the accept, and that is
+    not an error.
+    """
+    try:
+        await websocket.accept(subprotocol=subprotocol)
+        await websocket.close(code=code)
+    except ClientDisconnected:
+        pass
+
+
 def _release_ip_slot(ip: str) -> None:
     remaining = _sockets_by_ip.get(ip, 1) - 1
     if remaining <= 0:
@@ -86,33 +102,28 @@ async def table_ws(websocket: WebSocket, table_id: str):
             token = sp[len(_TOKEN_SUBPROTO_PREFIX) :]
 
     if not client_id or not token:
-        await websocket.accept()
-        await websocket.close(code=4401)
+        await _reject(websocket, None, 4401)
         return
 
     identity = await resolve_player(token)
     if identity is None:
-        await websocket.accept(subprotocol=chosen_subproto)
-        await websocket.close(code=4401)
+        await _reject(websocket, chosen_subproto, 4401)
         return
 
     try:
         table = tables.get_table(table_id)
     except KeyError:
-        await websocket.accept(subprotocol=chosen_subproto)
-        await websocket.close(code=4404)
+        await _reject(websocket, chosen_subproto, 4404)
         return
 
     conn_check = table.clients.get(client_id)
     if conn_check is None or conn_check.player_id != str(identity.id):
-        await websocket.accept(subprotocol=chosen_subproto)
-        await websocket.close(code=4403)
+        await _reject(websocket, chosen_subproto, 4403)
         return
 
     ip = client_key(websocket.client.host) if websocket.client else "unknown"
     if _sockets_by_ip.get(ip, 0) >= MAX_SOCKETS_PER_IP:
-        await websocket.accept(subprotocol=chosen_subproto)
-        await websocket.close(code=4429)
+        await _reject(websocket, chosen_subproto, 4429)
         return
     _sockets_by_ip[ip] = _sockets_by_ip.get(ip, 0) + 1
 
@@ -134,7 +145,11 @@ async def table_ws(websocket: WebSocket, table_id: str):
 async def _serve_connection(
     websocket: WebSocket, table, client_id: str, chosen_subproto: str | None
 ):
-    await websocket.accept(subprotocol=chosen_subproto)
+    try:
+        await websocket.accept(subprotocol=chosen_subproto)
+    except ClientDisconnected:
+        # Gone before the handshake finished; nothing was registered yet.
+        return
 
     conn = table.clients[client_id]
     reclaimed_seat = None
@@ -173,7 +188,10 @@ async def _serve_connection(
             table.id,
             MAX_SOCKETS_PER_CLIENT,
         )
-        await websocket.close(code=4429)
+        try:
+            await websocket.close(code=4429)
+        except ClientDisconnected:
+            pass
         return
 
     # Everything past the socket joining the set runs under this try/finally:
@@ -237,7 +255,9 @@ async def _serve_connection(
                     "Received malformed text over ws connection from client %s",
                     client_id,
                 )
-    except WebSocketDisconnect:
+    # A receive after the client leaves raises WebSocketDisconnect; a send
+    # (the handshake burst above) raises uvicorn's ClientDisconnected.
+    except WebSocketDisconnect, ClientDisconnected:
         pass
     finally:
         c = table.clients.get(client_id)
