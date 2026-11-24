@@ -303,3 +303,34 @@ jobs:
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes \
             -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
             "deploy@$HOST" "$ARGS"
+      # Tell Sentry which commits each release holds, so a commit saying
+      # "Fixes SHEEPSHEAD-SERVER-12" resolves that issue once it is live.
+      # Releases are the images' content tags (SENTRY_RELEASE in
+      # docker-compose.prod.yml, NEXT_DEPLOYMENT_ID in the web build), which
+      # carry no history; Sentry fetches the range from GitHub, starting at
+      # the previous release's head commit. A tag that did not change since
+      # its last deploy is re-sent and its range extended to this commit.
+      # Runs after the deploy, so nothing resolves before its fix is out.
+      - name: associate commits with the Sentry releases
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ needs.images.outputs.sha }}
+          API_TAG: ${{ needs.images.outputs.api }}
+          WEB_TAG: ${{ needs.images.outputs.web }}
+        run: |
+          if [ -z "$SENTRY_AUTH_TOKEN" ]; then
+            echo "SENTRY_AUTH_TOKEN is not set; skipping"
+            exit 0
+          fi
+          release() { # <version> <project>
+            jq -n --arg v "$1" --arg p "$2" --arg repo "$REPO" --arg sha "$SHA" \
+              '{version: $v, projects: [$p], refs: [{repository: $repo, commit: $sha}]}' |
+              curl --fail-with-body -sS -o /dev/null -X POST \
+                -H "Authorization: Bearer $SENTRY_AUTH_TOKEN" \
+                -H "Content-Type: application/json" --data @- \
+                https://sentry.io/api/0/organizations/sheepshead-ai/releases/
+            echo "sentry release $1 ($2) -> $SHA"
+          }
+          release "$API_TAG" sheepshead-server
+          release "$WEB_TAG" sheepshead-web

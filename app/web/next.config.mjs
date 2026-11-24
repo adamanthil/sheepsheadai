@@ -82,6 +82,7 @@ export default withSentryConfig(nextConfig, {
   project: "sheepshead-web",
   authToken: sentryAuthToken,
   // No commit association: the image builds from app/web alone, without git.
+  // CI's deploy job attaches the commits to this release once it is live.
   release: {
     name: process.env.NEXT_DEPLOYMENT_ID || undefined,
     setCommits: false,
