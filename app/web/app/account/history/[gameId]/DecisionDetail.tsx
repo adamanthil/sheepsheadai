@@ -29,6 +29,7 @@ export default function DecisionDetail({
   decision,
   seat,
   seats,
+  blind,
   analyzeHref,
   onPrevious,
   onNext,
@@ -36,12 +37,19 @@ export default function DecisionDetail({
   decision: DecisionReview;
   seat: number;
   seats: HandSeat[];
+  /** The two cards of the hand's blind. */
+  blind: string[];
   /** The pick analyzer opened on this hand's deal. */
   analyzeHref: string;
   onPrevious: (() => void) | null;
   onNext: (() => void) | null;
 }) {
   const chosen = new Set(decision.action.split(" "));
+  // The call is the picker's first look at the blind, so the two cards
+  // it added are pointed out there.
+  const found = new Set(
+    decision.kind === "call" || decision.kind === "under" ? blind : [],
+  );
   const trump = decision.high_trump;
   const differs = decision.difference != null;
   const kind = tone(decision.difference);
@@ -72,14 +80,24 @@ export default function DecisionDetail({
 
       <div className={styles.sectionLabel}>Your hand</div>
       <div className={styles.cards}>
-        {decision.hand.map((card) => (
-          <PlayingCard
-            key={card}
-            code={card}
-            largeIndex
-            className={chosen.has(card) ? styles.cardChosen : undefined}
-          />
-        ))}
+        {decision.hand.map((card) => {
+          const face = (
+            <PlayingCard
+              key={card}
+              code={card}
+              largeIndex
+              className={chosen.has(card) ? styles.cardChosen : undefined}
+            />
+          );
+          return found.has(card) ? (
+            <span key={card} className={styles.fromBlind}>
+              {face}
+              Blind
+            </span>
+          ) : (
+            face
+          );
+        })}
       </div>
       <p className={styles.highTrump}>
         <span className={styles.sectionLabel}>High trump</span>

@@ -417,6 +417,22 @@
   border-color: var(--ink);
   box-shadow: 0 0 0 1px var(--ink);
 }
+/* A card the picker found in the blind: named underneath, with a rule
+   joining the name to its card. */
+.fromBlind {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding-bottom: 3px;
+  border-bottom: 2px solid var(--ink-soft);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  line-height: 1;
+  color: var(--ink-soft);
+}
 .highTrump {
   display: flex;
   flex-wrap: wrap;

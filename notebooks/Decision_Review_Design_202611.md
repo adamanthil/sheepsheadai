@@ -402,6 +402,8 @@ Where the build differs from, or settles, the design above.
   only when one decision cost or gained a full point and the hand's net
   came out a full point the same way (`is_notable`); every other bar is
   faint and its net grey.
+* **The call marks the blind.** At the partner call the two cards the
+  picker found in the blind are labelled in the hand.
 * **History refreshes itself.** While a hand on show is waiting, the
   page looks again every 20 seconds.
 * **A decision's option list is capped**: the choices the AI gives a

@@ -276,6 +276,7 @@ function Review({ gameId }: { gameId: string }) {
                         decision={d}
                         seat={review.seat}
                         seats={review.seats}
+                        blind={review.blind}
                         analyzeHref={analyzeHref}
                         onPrevious={position > 0 ? step(-1) : null}
                         onNext={
