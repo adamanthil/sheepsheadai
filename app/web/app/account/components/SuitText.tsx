@@ -1,7 +1,8 @@
 import React from "react";
+import { RANK_PATTERN } from "../../../lib/ds";
 
 // A card as the review wording writes it: rank, then a red suit's symbol.
-const RED_CARD = /((?:10|[AKQJ987])[♥♦])/;
+const RED_CARD = new RegExp(`(${RANK_PATTERN}[♥♦])`);
 
 /** A sentence that names cards ("You led the Q♣. The AI leads the J♦."),
  * with the hearts and diamonds in the red suit colour like every card

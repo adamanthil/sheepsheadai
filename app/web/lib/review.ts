@@ -4,7 +4,7 @@
  * Vocabulary, the same on every screen: a decision is "agreed", "about
  * even", a "small difference", "cost you" or "gained"; the other party is
  * "the AI". */
-import { parseCard, suitSymbol } from "./ds/cardUtils";
+import { isCardCode, parseCard, suitSymbol } from "./ds/cardUtils";
 import { signed } from "./format";
 import type { DecisionReview, HandReview } from "./types";
 
@@ -14,10 +14,9 @@ export function cardLabel(code: string): string {
   return `${rank}${suitSymbol(suit)}`;
 }
 
-function cardsOf(action: string): string[] {
-  return action
-    .split(" ")
-    .filter((word) => /^(10|[AKQJ987])[CSHD]$/.test(word));
+/** The cards an engine action names: ["8S", "AH"] for "BURY 8S AH". */
+export function actionCards(action: string): string[] {
+  return action.split(" ").filter(isCardCode);
 }
 
 /** The action alone, as short as it goes, with its cards still as codes
@@ -28,7 +27,7 @@ export function actionCodes(action: string): string {
   if (action === "ALONE") return "Alone";
   if (action === "JD PARTNER") return "JD partner";
   if (action === "PLAY UNDER") return "Under";
-  const cards = cardsOf(action).join(" ");
+  const cards = actionCards(action).join(" ");
   return action.startsWith("CALL ") && action.endsWith(" UNDER")
     ? `${cards} under`
     : cards;
@@ -38,7 +37,7 @@ export function actionCodes(action: string): string {
 export function shortAction(action: string): string {
   return actionCodes(action)
     .split(" ")
-    .map((word) => (cardsOf(word).length ? cardLabel(word) : word))
+    .map((word) => (actionCards(word).length ? cardLabel(word) : word))
     .join(" ");
 }
 
@@ -49,7 +48,7 @@ function list(cards: string[]): string {
 /** What was done, as a sentence without its subject: "played the J♣" for
  * the player ("you"), "plays the K♣" for the AI. */
 function verbPhrase(action: string, led: boolean, ai: boolean): string {
-  const cards = cardsOf(action);
+  const cards = actionCards(action);
   if (action === "PICK") return ai ? "picks" : "picked";
   if (action === "PASS") return ai ? "passes" : "passed";
   if (action === "ALONE") return ai ? "goes alone" : "went alone";

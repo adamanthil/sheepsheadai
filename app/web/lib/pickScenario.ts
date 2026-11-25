@@ -2,6 +2,8 @@
  * and the partner mode. The hand review writes these links and the pick
  * analyzer (/analyze/pick) reads them, opening on exactly that deal. */
 
+import { isCardCode } from "./ds/cardUtils";
+
 export interface PickScenario {
   /** 1..5; the seats before it have passed. */
   seat: number;
@@ -10,8 +12,6 @@ export interface PickScenario {
   hand: string[];
   blind: string[];
 }
-
-const CARD = /^(10|[AKQJ987])[CSHD]$/;
 
 export function pickScenarioHref(scenario: PickScenario): string {
   const query = new URLSearchParams({
@@ -26,9 +26,7 @@ export function pickScenarioHref(scenario: PickScenario): string {
 function cards(value: string | null, limit: number): string[] | null {
   if (!value) return [];
   const list = value.split(",");
-  return list.length <= limit && list.every((card) => CARD.test(card))
-    ? list
-    : null;
+  return list.length <= limit && list.every(isCardCode) ? list : null;
 }
 
 /** The scenario a link's query string names, or null if it names none or

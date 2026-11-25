@@ -1,5 +1,7 @@
 import React from "react";
-import { parseCard, suitSymbol, isRedSuit } from "./cardUtils";
+import { CARD_PATTERN, parseCard, suitSymbol, isRedSuit } from "./cardUtils";
+
+const CARDS = new RegExp(`\\b${CARD_PATTERN}\\b`, "g");
 
 interface CardTextProps {
   children: string;
@@ -11,9 +13,8 @@ interface CardTextProps {
  * theme colors. Drop-in for action labels: <CardText>PLAY QC</CardText> → "PLAY Q♣".
  */
 export default function CardText({ children, className }: CardTextProps) {
-  const cardPattern = /\b(?:10[CSHD]|[AKQJ987][CSHD])\b/g;
-  const parts = children.split(cardPattern);
-  const matches = children.match(cardPattern) ?? [];
+  const parts = children.split(CARDS);
+  const matches = children.match(CARDS) ?? [];
 
   const elements: React.ReactNode[] = [];
   for (let i = 0; i < parts.length; i++) {

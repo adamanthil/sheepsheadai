@@ -1,7 +1,14 @@
 import React from "react";
 import Link from "next/link";
-import { CardText, PlayingCard, ds } from "../../../../lib/ds";
 import {
+  CardText,
+  PlayingCard,
+  ds,
+  isRedSuit,
+  parseCard,
+} from "../../../../lib/ds";
+import {
+  actionCards,
   actionCodes,
   cardLabel,
   decisionHeadline,
@@ -22,7 +29,7 @@ import styles from "./handReview.module.css";
 const MAX_OPTIONS = 6;
 
 function isRed(card: string): boolean {
-  return card.endsWith("H") || card.endsWith("D");
+  return isRedSuit(parseCard(card).suit);
 }
 
 /** One decision in full: the hand it was made from, how the AI would have
@@ -49,7 +56,7 @@ export default function DecisionDetail({
   onPrevious: (() => void) | null;
   onNext: (() => void) | null;
 }) {
-  const chosen = new Set(decision.action.split(" "));
+  const chosen = new Set(actionCards(decision.action));
   // The call is the picker's first look at the blind, so the two cards
   // it added are pointed out there.
   const found = new Set(

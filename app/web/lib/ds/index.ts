@@ -7,7 +7,15 @@ export type { SeatTone } from "./SeatAvatar";
 export { TypingBubble, TypingDots, TypingNote, typingText } from "./TypingDots";
 export { default as Wordmark } from "./Wordmark";
 export { default as MiniCardMark } from "./MiniCardMark";
-export { parseCard, suitSymbol, isRedSuit, cardName } from "./cardUtils";
+export {
+  CARD_PATTERN,
+  RANK_PATTERN,
+  isCardCode,
+  parseCard,
+  suitSymbol,
+  isRedSuit,
+  cardName,
+} from "./cardUtils";
 export type { Suit, ParsedCard } from "./cardUtils";
 export { useMediaQuery, useIsMobile } from "./useMediaQuery";
 export { default as ds } from "./ds.module.css";

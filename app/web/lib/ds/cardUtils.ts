@@ -9,6 +9,18 @@ export interface ParsedCard {
   special: "UNDER" | null;
 }
 
+/** A rank and a face-up card code ("QC", "10H") as regular expression
+ * source, for the patterns that pick cards out of text. */
+export const RANK_PATTERN = "(?:10|[AKQJ987])";
+export const CARD_PATTERN = `${RANK_PATTERN}[CSHD]`;
+
+const CARD_CODE = new RegExp(`^${CARD_PATTERN}$`);
+
+/** Whether ``text`` is exactly one face-up card code. */
+export function isCardCode(text: string): boolean {
+  return CARD_CODE.test(text);
+}
+
 /** Parse a card code like "QC", "10H", "AD", "__", "UNDER". */
 export function parseCard(code: string): ParsedCard {
   if (!code || code === "__")
