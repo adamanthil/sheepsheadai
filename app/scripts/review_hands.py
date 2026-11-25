@@ -21,7 +21,7 @@ import statistics
 import sys
 import time
 from dataclasses import asdict, dataclass
-from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
+from typing import Dict, List, Optional, Sequence
 
 import asyncpg
 
@@ -30,160 +30,19 @@ sys.path.insert(0, APP_DIR)
 
 from server.services.hand_review import (  # noqa: E402
     DecisionReview,
-    HandRecord,
     Readout,
     ReplayError,
-    recorded_actions,
     review_hand,
 )
+from server.services.persistence.hand_records import (  # noqa: E402
+    StoredHand,
+    load_hands,
+    skipped_positions,
+)
 from sheepshead.agent import ppo  # noqa: E402
-from sheepshead.game import ACTION_LOOKUP  # noqa: E402
 
 DEFAULT_DSN = "postgres://sheepshead:sheepshead@localhost:5433/sheepshead_prod"
 DEFAULT_MODEL = "models/sheepsheadai-1.1-202611.pt"
-
-GAMES_SQL = """
-SELECT g.game_id, g.time_closed, t.name AS table_name, t.is_doublers,
-       g.is_called_partner, g.is_double_on_the_bump, g.is_alone, g.is_leaster,
-       called.code AS called_card, under.code AS under_card,
-       (SELECT array_agg(c.code) FROM cardset_card cc JOIN card c USING (card_id)
-         WHERE cc.cardset_id = g.blind_id) AS blind,
-       (SELECT array_agg(c.code) FROM cardset_card cc JOIN card c USING (card_id)
-         WHERE cc.cardset_id = g.bury_id) AS bury
-FROM game g
-JOIN game_table t USING (game_table_id)
-LEFT JOIN card called ON called.card_id = g.called_card_id
-LEFT JOIN card under ON under.card_id = g.under_card_id
-WHERE g.time_closed IS NOT NULL
-ORDER BY g.time_closed
-"""
-
-SEATS_SQL = """
-SELECT gp.game_id, gp.position, gp.player_id, gp.name, gp.is_picker, gp.score,
-       gp.is_substituted_pick, gp.ai_actions,
-       (SELECT array_agg(c.code) FROM cardset_card cc JOIN card c USING (card_id)
-         WHERE cc.cardset_id = gp.starting_hand_id) AS hand
-FROM game_player gp
-"""
-
-PLAYS_SQL = """
-SELECT t.game_id, t.index AS trick, tc.index AS play, gp.position,
-       c.code AS card, tc.is_substituted
-FROM trick t
-JOIN trick_card tc USING (trick_id)
-JOIN game_player gp USING (game_player_id)
-JOIN card c USING (card_id)
-ORDER BY t.game_id, t.index, tc.index
-"""
-
-
-@dataclass
-class StoredHand:
-    game_id: str
-    when: str
-    table: str
-    record: HandRecord
-    # Human seats -> display name.
-    humans: Dict[int, str]
-    scores: Dict[int, Optional[int]]
-    # (seat, trick, card) plays and pick decisions the AI made for a human.
-    substituted_plays: Set[Tuple[int, int]]
-    substituted_pick: Set[int]
-    # Seats with AI decisions that no flag accounts for (a call or a bury).
-    unflagged_ai: Set[int]
-
-
-async def load_hands(dsn: str) -> List[StoredHand]:
-    conn = await asyncpg.connect(dsn)
-    try:
-        games = await conn.fetch(GAMES_SQL)
-        seats = await conn.fetch(SEATS_SQL)
-        plays = await conn.fetch(PLAYS_SQL)
-    finally:
-        await conn.close()
-
-    seats_by_game: Dict[Any, List[asyncpg.Record]] = {}
-    for row in seats:
-        seats_by_game.setdefault(row["game_id"], []).append(row)
-    plays_by_game: Dict[Any, List[asyncpg.Record]] = {}
-    for row in plays:
-        plays_by_game.setdefault(row["game_id"], []).append(row)
-
-    hands: List[StoredHand] = []
-    for g in games:
-        gid = g["game_id"]
-        tricks: List[List[Tuple[int, str]]] = []
-        substituted_plays: Set[Tuple[int, int]] = set()
-        flagged: Dict[int, int] = {}
-        for p in plays_by_game.get(gid, []):
-            while len(tricks) <= p["trick"]:
-                tricks.append([])
-            tricks[p["trick"]].append((p["position"], p["card"]))
-            if p["is_substituted"]:
-                substituted_plays.add((p["position"], p["trick"]))
-                flagged[p["position"]] = flagged.get(p["position"], 0) + 1
-        picker: Optional[int] = None
-        humans: Dict[int, str] = {}
-        substituted_pick: Set[int] = set()
-        unflagged_ai: Set[int] = set()
-        for s in seats_by_game[gid]:
-            seat = s["position"]
-            if s["is_picker"]:
-                picker = seat
-            if s["player_id"] is None:
-                continue
-            humans[seat] = s["name"]
-            if s["is_substituted_pick"]:
-                substituted_pick.add(seat)
-            accounted = flagged.get(seat, 0) + int(s["is_substituted_pick"])
-            if s["ai_actions"] > accounted:
-                unflagged_ai.add(seat)
-        hands.append(
-            StoredHand(
-                game_id=str(gid),
-                when=g["time_closed"].strftime("%b %d %H:%M"),
-                table=g["table_name"],
-                record=HandRecord(
-                    partner_mode=1 if g["is_called_partner"] else 0,
-                    double_on_the_bump=g["is_double_on_the_bump"],
-                    doublers=g["is_doublers"],
-                    hands={s["position"]: list(s["hand"]) for s in seats_by_game[gid]},
-                    blind=list(g["blind"]),
-                    picker=picker,
-                    alone=bool(g["is_alone"]),
-                    called_card=g["called_card"],
-                    under_card=g["under_card"],
-                    bury=list(g["bury"] or []),
-                    tricks=tricks,
-                ),
-                humans=humans,
-                scores={s["position"]: s["score"] for s in seats_by_game[gid]},
-                substituted_plays=substituted_plays,
-                substituted_pick=substituted_pick,
-                unflagged_ai=unflagged_ai,
-            )
-        )
-    return hands
-
-
-def skipped_positions(hand: StoredHand) -> Set[Tuple[int, int]]:
-    """(seat, position in the action sequence) of the decisions the AI made
-    on a human seat's behalf."""
-    skip: Set[Tuple[int, int]] = set()
-    trick = 0
-    plays_in_trick = 0
-    for position, (seat, action_id) in enumerate(recorded_actions(hand.record)):
-        action = ACTION_LOOKUP[action_id]
-        if action in ("PICK", "PASS"):
-            if seat in hand.substituted_pick:
-                skip.add((seat, position))
-        elif action.startswith("PLAY "):
-            if (seat, trick) in hand.substituted_plays:
-                skip.add((seat, position))
-            plays_in_trick += 1
-            if plays_in_trick == 5:
-                trick, plays_in_trick = trick + 1, 0
-    return skip
 
 
 @dataclass
@@ -329,6 +188,14 @@ def report(rows: List[Row], top: int) -> None:
             )
 
 
+async def read_hands(dsn: str) -> List[StoredHand]:
+    conn = await asyncpg.connect(dsn)
+    try:
+        return await load_hands(conn)
+    finally:
+        await conn.close()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--dsn", default=DEFAULT_DSN)
@@ -343,7 +210,7 @@ def main() -> None:
     parser.add_argument("--out", help="write every reviewed decision as JSON lines")
     args = parser.parse_args()
 
-    hands = asyncio.run(load_hands(args.dsn))
+    hands = asyncio.run(read_hands(args.dsn))
     if args.limit:
         hands = hands[: args.limit]
     agent = ppo.load_agent(args.model)
@@ -380,8 +247,8 @@ def main() -> None:
         for review in result.decisions:
             rows.append(
                 Row(
-                    game_id=hand.game_id,
-                    when=hand.when,
+                    game_id=str(hand.game_id),
+                    when=hand.time_closed.strftime("%b %d %H:%M"),
                     table=hand.table,
                     player=hand.humans[review.seat],
                     final_score=hand.scores[review.seat],

@@ -9,9 +9,10 @@ has populated module state.
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Optional, Union
 
 import asyncpg
+from asyncpg.pool import PoolConnectionProxy
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,10 @@ DB_UNAVAILABLE: tuple[type[BaseException], ...] = (
 # can access the pool and AI identity without holding a request/app reference.
 _pool: Optional[asyncpg.Pool] = None
 _ai_player_id: Optional[int] = None
+
+# Anything a query can be run on: the pool, or one connection (a
+# transaction holds one).
+Querier = Union[asyncpg.Pool, asyncpg.Connection, PoolConnectionProxy]
 
 
 def set_db_state(pool: asyncpg.Pool, ai_player_id: int) -> None:
