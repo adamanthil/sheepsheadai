@@ -98,12 +98,18 @@ async def test_history_rows_say_where_the_review_stands(db_app, agent):
     }
     review = done["hands"][0]["review"]
     assert review["status"] == "reviewed"
-    stored = await pool.fetchrow(
-        "SELECT hr.cost, hr.gained, hr.costly, hr.better FROM hand_review hr "
-        "JOIN game_player gp USING (game_player_id) WHERE gp.player_id = $1",
-        players[1],
+    # The row and the hand's own page band the same decisions.
+    game_id = done["hands"][0]["game_id"]
+    async with _client(app) as client:
+        page = (
+            await client.get(f"/api/account/hands/{game_id}/review", headers=auth)
+        ).json()
+    summary = page["summary"]
+    for figure in ("cost", "gained", "net", "notable"):
+        assert review[figure] == summary[figure]
+    assert review["notable"] == is_notable(
+        summary["cost"], summary["gained"], summary["costly"], summary["better"]
     )
-    assert review["notable"] == is_notable(*stored)
     assert review["net"] == pytest.approx(review["gained"] - review["cost"], abs=0.05)
     assert review["cost"] >= 0 and review["gained"] >= 0
 
@@ -146,6 +152,9 @@ async def test_a_hand_review_lists_every_decision_of_the_seat(db_app, agent):
     assert [d["index"] for d in decisions] == list(range(len(decisions)))
     summary = body["summary"]
     assert summary["decisions"] == sum(d["standing"] != "forced" for d in decisions)
+    # The summary is the decisions counted up as they are read.
+    for band in ("agreed", "even", "slight", "costly", "better"):
+        assert summary[band] == sum(d["standing"] == band for d in decisions)
     plays = [d for d in decisions if d["kind"] == "play"]
     assert len(plays) == 6 and [d["trick"] for d in plays] == list(range(6))
     # Nobody can tell who the partner is before a card is played, and

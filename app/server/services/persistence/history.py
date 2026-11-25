@@ -19,6 +19,7 @@ from uuid import UUID
 
 import asyncpg
 
+from server.services.persistence.review_reads import BETTER_SQL, COSTLY_SQL
 from server.services.persistence.stats import (
     ABANDONED_SQL,
     AI_ASSISTED_SQL,
@@ -85,13 +86,21 @@ bury AS (
 SELECT p.*, s.on_picker_team, s.taken, tm.picker_raw, tm.defender_raw,
        tm.opponent_humans, tm.opponent_ai, coalesce(b.points, 0) AS bury,
        hr.status AS review_status, hr.cost AS review_cost,
-       hr.gained AS review_gained, hr.costly AS review_costly,
-       hr.better AS review_better
+       hr.gained AS review_gained, flagged.costly AS review_costly,
+       flagged.better AS review_better
 FROM page p
 JOIN seat s ON s.game_player_id = p.game_player_id
 JOIN team tm ON tm.game_id = p.game_id
 LEFT JOIN bury b ON b.game_id = p.game_id
 LEFT JOIN hand_review hr ON hr.game_player_id = p.game_player_id
+-- How many of the hand's decisions cost, and gained, a full point: banded
+-- here, as the review is read, never stored.
+LEFT JOIN LATERAL (
+    SELECT count(*) FILTER (WHERE {COSTLY_SQL})::int AS costly,
+           count(*) FILTER (WHERE {BETTER_SQL})::int AS better
+    FROM decision_review d
+    WHERE d.game_player_id = p.game_player_id
+) flagged ON TRUE
 ORDER BY p.time_closed DESC, p.game_id DESC
 """
 
@@ -149,21 +158,22 @@ def _review(row: asyncpg.Record) -> Optional[dict]:
     status = row["review_status"]
     if status is None:
         return None
-    reviewed = status == "reviewed"
+    if status != "reviewed":
+        return {
+            "status": status,
+            "cost": None,
+            "gained": None,
+            "net": None,
+            "notable": False,
+        }
+    # Stored in single precision; they are figures to one decimal.
+    cost, gained = round(row["review_cost"], 1), round(row["review_gained"], 1)
     return {
         "status": status,
-        "cost": row["review_cost"] if reviewed else None,
-        "gained": row["review_gained"] if reviewed else None,
-        "net": (
-            hand_net(row["review_cost"], row["review_gained"]) if reviewed else None
-        ),
-        "notable": reviewed
-        and is_notable(
-            row["review_cost"],
-            row["review_gained"],
-            row["review_costly"],
-            row["review_better"],
-        ),
+        "cost": cost,
+        "gained": gained,
+        "net": hand_net(cost, gained),
+        "notable": is_notable(cost, gained, row["review_costly"], row["review_better"]),
     }
 
 

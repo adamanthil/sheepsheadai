@@ -1,18 +1,20 @@
 """The bands a reviewed decision falls into, by its difference in expected
 score against the AI's choice.
 
-The one definition of them. The review engine (services.hand_review) bands
-decisions as it makes them, the stored reviews are banded again when read
-back (persistence.review_reads, whose SQL is built from the same two
-numbers and tested against ``standing``), and the web app is sent each
-decision's standing rather than the thresholds.
+The one definition of them, applied when a review is read and never
+stored: what is kept of a decision is its difference, so moving a threshold
+re-bands every review already made. The read queries
+(persistence.review_reads) band in SQL built from the same two numbers and
+tested against ``standing``; a hand's summary is counted up here; and the
+web app is sent each decision's standing rather than the thresholds.
 
 Pure arithmetic: no model, database or web types, so anything may import it.
 """
 
 from __future__ import annotations
 
-from typing import Literal, Optional
+from dataclasses import dataclass
+from typing import Iterable, Literal, Optional, Tuple
 
 # Three bands for a difference in expected score, set from how often the
 # two choices really ended in different scores when production hands were
@@ -54,3 +56,58 @@ def is_notable(cost: float, gained: float, costly: int, better: int) -> bool:
     differences cancelled does not count."""
     net = hand_net(cost, gained)
     return (costly > 0 and net <= -FLAG_FROM) or (better > 0 and net >= FLAG_FROM)
+
+
+@dataclass(frozen=True)
+class ReviewSummary:
+    """One seat's reviewed hand in a few figures."""
+
+    # Decisions where the seat had a choice, split by standing.
+    decisions: int
+    agreed: int
+    even: int
+    slight: int
+    costly: int
+    better: int
+    # Expected score the seat's choices cost and gained, both >= 0; every
+    # difference counts, so gained - cost is the hand's net.
+    cost: float
+    gained: float
+    net: float
+    # Index of the decision that sums the hand up: the costliest, else the
+    # best gain; None when no difference reaches FLAG_FROM.
+    headline_index: Optional[int]
+    notable: bool
+
+
+def summarize(
+    decisions: Iterable[Tuple[int, bool, Optional[float]]],
+) -> ReviewSummary:
+    """A hand's decisions counted up. Each is (index, forced, difference),
+    as ``standing`` takes them."""
+    rows = list(decisions)
+    standings = [standing(difference, forced) for _, forced, difference in rows]
+    differences = [(difference, index) for index, _, difference in rows if difference]
+    worst = min(differences, default=None)
+    best = max(differences, default=None)
+    headline: Optional[int] = None
+    if worst is not None and worst[0] <= -FLAG_FROM:
+        headline = worst[1]
+    elif best is not None and best[0] >= FLAG_FROM:
+        headline = best[1]
+    cost = round(-sum(d for d, _ in differences if d < 0), 1)
+    gained = round(sum(d for d, _ in differences if d > 0), 1)
+    costly, better = standings.count("costly"), standings.count("better")
+    return ReviewSummary(
+        decisions=sum(s != "forced" for s in standings),
+        agreed=standings.count("agreed"),
+        even=standings.count("even"),
+        slight=standings.count("slight"),
+        costly=costly,
+        better=better,
+        cost=cost,
+        gained=gained,
+        net=hand_net(cost, gained),
+        headline_index=headline,
+        notable=is_notable(cost, gained, costly, better),
+    )

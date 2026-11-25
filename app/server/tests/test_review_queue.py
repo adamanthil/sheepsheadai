@@ -138,12 +138,7 @@ async def test_the_worker_stores_a_review_under_its_model(db_app, agent):
     )
     assert decisions and all(d["ai_model_id"] == model_id for d in decisions)
     assert [d["index"] for d in decisions] == list(range(len(decisions)))
-    # The summary is the decisions counted up.
-    open_decisions = [d for d in decisions if not d["is_forced"]]
-    assert row["decisions"] == len(open_decisions)
-    assert row["decisions"] == (
-        row["agreed"] + row["even"] + row["slight"] + row["costly"] + row["better"]
-    )
+    # Beside the decisions the hand keeps only what they cost and gained.
     differences = [d["difference"] for d in decisions if d["difference"] is not None]
     assert row["cost"] == pytest.approx(-sum(d for d in differences if d < 0), abs=0.05)
     assert row["gained"] == pytest.approx(

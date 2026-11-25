@@ -15,8 +15,9 @@ from uuid import UUID
 
 import asyncpg
 
-from server.services.hand_review import DecisionReview, summarize
+from server.services.hand_review import DecisionReview
 from server.services.persistence.pool import Querier
+from server.services.review_bands import summarize
 
 # A hand is given up on after failing this many times for an unexpected
 # reason. A record the engine cannot follow fails at once: it never will.
@@ -88,7 +89,9 @@ async def store_review(
     evaluations: int,
 ) -> None:
     """Record a finished review, replacing any earlier one of the seat."""
-    summary = summarize(decisions)
+    # Only the two sums are kept beside the decisions: they do not depend
+    # on the bands. Everything banded is counted when the review is read.
+    summary = summarize((d.index, d.forced, d.difference) for d in decisions)
     async with pool.acquire() as conn, conn.transaction():
         # Decisions first: they are tied to the model the old review named.
         await conn.execute(
@@ -99,24 +102,15 @@ async def store_review(
             UPDATE hand_review
             SET status = 'reviewed', failure = NULL, ai_model_id = $2,
                 time_reviewed = now(), duration_ms = $3, evaluations = $4,
-                decisions = $5, agreed = $6, even = $7, slight = $8,
-                costly = $9, better = $10, cost = $11, gained = $12,
-                headline_index = $13
+                cost = $5, gained = $6
             WHERE game_player_id = $1
             """,
             game_player_id,
             ai_model_id,
             duration_ms,
             evaluations,
-            summary.decisions,
-            summary.agreed,
-            summary.even,
-            summary.slight,
-            summary.costly,
-            summary.better,
             summary.cost,
             summary.gained,
-            summary.headline_index,
         )
         await conn.executemany(
             """

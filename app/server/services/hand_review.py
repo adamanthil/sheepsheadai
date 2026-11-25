@@ -47,7 +47,7 @@ from typing import Collection, Dict, List, Optional, Sequence, Tuple
 import torch
 
 from server.services.ai_loader import inference_turn_in_thread
-from server.services.review_bands import FLAG_FROM, Standing, standing
+from server.services.review_bands import Standing, standing
 from sheepshead.agent import ppo
 from sheepshead.agent.observation import (
     last_trick_observation_for,
@@ -155,49 +155,6 @@ class HandReview:
     decisions: List[DecisionReview] = field(default_factory=list)
     # Model forward passes spent, for sizing the work.
     evaluations: int = 0
-
-
-@dataclass(frozen=True)
-class ReviewSummary:
-    """One seat's reviewed hand in a few figures."""
-
-    # Decisions where the seat had a choice, split by standing.
-    decisions: int
-    agreed: int
-    even: int
-    slight: int
-    costly: int
-    better: int
-    # Expected score the seat's choices cost and gained, both >= 0; every
-    # difference counts, so gained - cost is the hand's net.
-    cost: float
-    gained: float
-    # Index of the decision that sums the hand up: the costliest, else the
-    # best gain; None when no difference reaches FLAG_FROM.
-    headline_index: Optional[int]
-
-
-def summarize(decisions: Sequence[DecisionReview]) -> ReviewSummary:
-    standings = [d.standing for d in decisions]
-    differences = [(d.difference, d.index) for d in decisions if d.difference]
-    worst = min(differences, default=None)
-    best = max(differences, default=None)
-    headline: Optional[int] = None
-    if worst is not None and worst[0] <= -FLAG_FROM:
-        headline = worst[1]
-    elif best is not None and best[0] >= FLAG_FROM:
-        headline = best[1]
-    return ReviewSummary(
-        decisions=sum(s != "forced" for s in standings),
-        agreed=standings.count("agreed"),
-        even=standings.count("even"),
-        slight=standings.count("slight"),
-        costly=standings.count("costly"),
-        better=standings.count("better"),
-        cost=round(-sum(d for d, _ in differences if d < 0), 1),
-        gained=round(sum(d for d, _ in differences if d > 0), 1),
-        headline_index=headline,
-    )
 
 
 def _build_game(record: HandRecord) -> Game:

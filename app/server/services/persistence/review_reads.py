@@ -18,13 +18,13 @@ REVIEW_LIST_SIZE = 30
 # A reviewed decision's standing against the AI's choice, as
 # review_bands.standing gives it (test_review_api holds the two together).
 # Every query that bands a decision is built from these.
-_COSTLY_SQL = f"d.difference <= -{FLAG_FROM}"
-_BETTER_SQL = f"d.difference >= {FLAG_FROM}"
+COSTLY_SQL = f"d.difference <= -{FLAG_FROM}"
+BETTER_SQL = f"d.difference >= {FLAG_FROM}"
 STANDING_SQL = f"""
 CASE WHEN d.is_forced THEN 'forced'
      WHEN d.difference IS NULL THEN 'agreed'
-     WHEN {_COSTLY_SQL} THEN 'costly'
-     WHEN {_BETTER_SQL} THEN 'better'
+     WHEN {COSTLY_SQL} THEN 'costly'
+     WHEN {BETTER_SQL} THEN 'better'
      WHEN abs(d.difference) < {EVEN_BELOW} THEN 'even'
      ELSE 'slight' END
 """
@@ -44,9 +44,7 @@ async def hand_review(
     it was never queued."""
     row = await pool.fetchrow(
         """
-        SELECT hr.game_player_id, hr.status, hr.decisions, hr.agreed, hr.even,
-               hr.slight, hr.costly, hr.better, hr.cost, hr.gained,
-               hr.headline_index, m.label AS ai_model
+        SELECT hr.game_player_id, hr.status, m.label AS ai_model
         FROM hand_review hr
         JOIN game_player gp ON gp.game_player_id = hr.game_player_id
         LEFT JOIN ai_model m ON m.ai_model_id = hr.ai_model_id
@@ -60,7 +58,8 @@ async def hand_review(
     decisions = await pool.fetch(
         f"""
         SELECT d.index, d.kind, d.trick_index, d.hand, d.table_cards,
-               d.action, d.model_action, d.policy, d.expected_score,
+               d.action, d.model_action, d.policy, d.is_forced,
+               d.expected_score,
                d.oracle_score, d.chosen_score, d.model_score, d.difference,
                {STANDING_SQL} AS standing
         FROM decision_review d
@@ -226,12 +225,6 @@ async def account_review(pool: asyncpg.Pool, player_id: UUID) -> dict:
         """
         SELECT count(*) FILTER (WHERE hr.status = 'reviewed')::int AS reviewed,
                count(*) FILTER (WHERE hr.status = 'queued')::int AS waiting,
-               coalesce(sum(hr.decisions), 0)::int AS decisions,
-               coalesce(sum(hr.agreed), 0)::int AS agreed,
-               coalesce(sum(hr.even), 0)::int AS even,
-               coalesce(sum(hr.slight), 0)::int AS slight,
-               coalesce(sum(hr.costly), 0)::int AS costly,
-               coalesce(sum(hr.better), 0)::int AS better,
                coalesce(sum(hr.gained - hr.cost), 0)::float AS net
         FROM hand_review hr
         JOIN game_player gp ON gp.game_player_id = hr.game_player_id
@@ -239,18 +232,26 @@ async def account_review(pool: asyncpg.Pool, player_id: UUID) -> dict:
         """,
         player_id,
     )
+    # Every decision with a choice, banded as it is read and counted by
+    # kind; the totals over every kind are these added up.
     kinds = await pool.fetch(
         f"""
-        SELECT {_KIND_SQL} AS kind,
+        SELECT kind,
                count(*)::int AS decisions,
-               count(*) FILTER (WHERE d.difference IS NULL)::int AS agreed,
-               count(*) FILTER (WHERE {_COSTLY_SQL})::int AS costly,
-               count(*) FILTER (WHERE {_BETTER_SQL})::int AS better,
-               coalesce(sum(d.difference), 0)::float AS net
-        FROM decision_review d
-        JOIN game_player gp ON gp.game_player_id = d.game_player_id
-        WHERE gp.player_id = $1 AND NOT d.is_forced
-        GROUP BY 1
+               count(*) FILTER (WHERE standing = 'agreed')::int AS agreed,
+               count(*) FILTER (WHERE standing = 'even')::int AS even,
+               count(*) FILTER (WHERE standing = 'slight')::int AS slight,
+               count(*) FILTER (WHERE standing = 'costly')::int AS costly,
+               count(*) FILTER (WHERE standing = 'better')::int AS better,
+               coalesce(sum(difference), 0)::float AS net
+        FROM (
+            SELECT {_KIND_SQL} AS kind, d.difference,
+                   {STANDING_SQL} AS standing
+            FROM decision_review d
+            JOIN game_player gp ON gp.game_player_id = d.game_player_id
+            WHERE gp.player_id = $1 AND NOT d.is_forced
+        ) banded
+        GROUP BY kind
         """,
         player_id,
     )
@@ -259,12 +260,10 @@ async def account_review(pool: asyncpg.Pool, player_id: UUID) -> dict:
     return {
         "hands_reviewed": totals["reviewed"],
         "hands_waiting": totals["waiting"],
-        "decisions": totals["decisions"],
-        "agreed": totals["agreed"],
-        "even": totals["even"],
-        "slight": totals["slight"],
-        "costly": totals["costly"],
-        "better": totals["better"],
+        **{
+            figure: sum(row[figure] for row in kinds)
+            for figure in ("decisions", "agreed", "even", "slight", "costly", "better")
+        },
         "net": round(totals["net"], 1),
         "by_kind": [
             {
@@ -278,9 +277,9 @@ async def account_review(pool: asyncpg.Pool, player_id: UUID) -> dict:
             for kind in REVIEW_KINDS
             if kind in by_kind
         ],
-        "cost_most": await _differences(pool, player_id, _COSTLY_SQL, "d.difference"),
+        "cost_most": await _differences(pool, player_id, COSTLY_SQL, "d.difference"),
         "gained_most": await _differences(
-            pool, player_id, _BETTER_SQL, "d.difference DESC"
+            pool, player_id, BETTER_SQL, "d.difference DESC"
         ),
         "pick_decisions": pick["decisions"] if pick else 0,
         "pick_agreed": pick["agreed"] if pick else 0,

@@ -9,6 +9,7 @@ than stored (the high trump, and whether the partner had been shown).
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
@@ -19,20 +20,8 @@ from server.services.high_trump import high_trump, played_before
 from server.services.persistence import history as history_db
 from server.services.persistence import review_reads
 from server.services.persistence.hand_records import load_hands
-from server.services.review_bands import hand_net, is_notable
+from server.services.review_bands import summarize
 from sheepshead.game import PARTNER_BY_CALLED_ACE
-
-_SUMMARY_FIGURES = (
-    "decisions",
-    "agreed",
-    "even",
-    "slight",
-    "costly",
-    "better",
-    "cost",
-    "gained",
-    "headline_index",
-)
 
 
 def partner_card(record: HandRecord) -> Optional[str]:
@@ -79,15 +68,6 @@ def _decision(stored: Dict[str, Any], record: HandRecord, seat: int) -> dict:
     }
 
 
-def _summary(row: asyncpg.Record) -> dict:
-    summary = {key: row[key] for key in _SUMMARY_FIGURES}
-    summary["net"] = hand_net(row["cost"], row["gained"])
-    summary["notable"] = is_notable(
-        row["cost"], row["gained"], row["costly"], row["better"]
-    )
-    return summary
-
-
 async def hand_review_view(
     pool: asyncpg.Pool, player_id: UUID, game_id: UUID
 ) -> Optional[dict]:
@@ -131,7 +111,16 @@ async def hand_review_view(
             }
             for s in seats
         ],
-        "summary": _summary(row) if row is not None and reviewed else None,
+        "summary": (
+            asdict(
+                summarize(
+                    (d["index"], d["is_forced"], d["difference"])
+                    for d in stored["decisions"]
+                )
+            )
+            if stored is not None and reviewed
+            else None
+        ),
         "decisions": decisions,
         "ai_model": row["ai_model"] if row is not None else None,
         "newer_game_id": newer,
