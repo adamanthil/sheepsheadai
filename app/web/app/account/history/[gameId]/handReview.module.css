@@ -236,6 +236,9 @@
 .dotCost {
   background: var(--accent-2);
 }
+.dotGain {
+  background: #1d6b42;
+}
 .dotSelected {
   width: 13px;
   height: 13px;
@@ -324,6 +327,9 @@
 }
 .rowNote.cost {
   color: var(--accent-2);
+}
+.rowNote.gain {
+  color: #1d6b42;
 }
 .rowDifference {
   font-family: var(--font-mono);

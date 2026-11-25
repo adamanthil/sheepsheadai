@@ -165,7 +165,7 @@ export default function ExpectedScoreChart({
               <button
                 key={d.index}
                 type="button"
-                className={`${styles.dot} ${d.standing === "costly" ? styles.dotCost : ""} ${d.index === selected ? styles.dotSelected : ""}`}
+                className={`${styles.dot} ${d.standing === "costly" ? styles.dotCost : d.standing === "better" ? styles.dotGain : ""} ${d.index === selected ? styles.dotSelected : ""}`}
                 style={{ left: left(i), top: top(d.expected_score) }}
                 aria-label={`${decisionLabel(d)}: expected score ${signed(d.expected_score)}`}
                 aria-pressed={d.index === selected}

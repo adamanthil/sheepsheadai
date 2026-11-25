@@ -253,7 +253,7 @@ function Review({ gameId }: { gameId: string }) {
                         {actionCodes(d.action)}
                       </CardText>
                       <span
-                        className={`${styles.rowNote} ${d.standing === "costly" ? styles.cost : ""}`}
+                        className={`${styles.rowNote} ${d.standing === "costly" ? styles.cost : d.standing === "better" ? styles.gain : ""}`}
                       >
                         {decisionNote(d)}
                       </span>

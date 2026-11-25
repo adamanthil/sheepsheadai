@@ -72,7 +72,7 @@ export default function HandStrip({ review }: { review: HandReview }) {
                 {decisions.map((d, i) => (
                   <span
                     key={d.index}
-                    className={`${styles.stripDot} ${d.standing === "costly" ? styles.stripDotCost : ""}`}
+                    className={`${styles.stripDot} ${d.standing === "costly" ? styles.stripDotCost : d.standing === "better" ? styles.stripDotGain : ""}`}
                     style={{
                       left: `${((i + 0.5) / n) * 100}%`,
                       top: `${(y(d.expected_score) / 64) * 100}%`,
@@ -96,7 +96,7 @@ export default function HandStrip({ review }: { review: HandReview }) {
                       {d.difference != null ? signed(d.difference) : "—"}
                     </span>
                     <span
-                      className={`${styles.cellNote} ${d.standing === "costly" ? styles.costText : ""}`}
+                      className={`${styles.cellNote} ${d.standing === "costly" ? styles.costText : d.standing === "better" ? styles.gainText : ""}`}
                     >
                       {decisionNote(d)}
                     </span>

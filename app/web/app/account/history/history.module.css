@@ -312,6 +312,9 @@
 .stripDotCost {
   background: var(--accent-2);
 }
+.stripDotGain {
+  background: #1d6b42;
+}
 .stripCells {
   display: grid;
   list-style: none;
@@ -357,7 +360,8 @@
 .cellNote.costText {
   color: var(--accent-2);
 }
-.cellDifference.gainText {
+.cellDifference.gainText,
+.cellNote.gainText {
   color: #1d6b42;
 }
 
