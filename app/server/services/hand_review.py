@@ -24,6 +24,15 @@ probability of each pair (over both orders), the model's choice is the pair
 it buries taking its first choice twice, and the comparison is made once
 both cards are down.
 
+Each reviewed decision also carries the full-information critic's estimate
+of the hand at that point, where the model has one: what the hand was
+worth with every card known, which moves at once when a play costs
+something the seat cannot yet see.
+
+Every forward pass takes one turn at the server's inference gate, so a
+review running beside live tables never holds them up for longer than a
+single step.
+
 No database or web types here: the caller builds a HandRecord from
 wherever the hand is stored.
 """
@@ -35,8 +44,15 @@ import itertools
 from dataclasses import dataclass, field
 from typing import Collection, Dict, List, Optional, Sequence, Tuple
 
+import torch
+
+from server.services.ai_loader import inference_turn_in_thread
 from sheepshead.agent import ppo
-from sheepshead.agent.observation import last_trick_observation_for, observation_for
+from sheepshead.agent.observation import (
+    last_trick_observation_for,
+    observation_for,
+    oracle_observation_for,
+)
 from sheepshead.agent.ppo import PPOAgent
 from sheepshead.agent.traced_game import find_actor, run_inference_step
 from sheepshead.game import ACTION_IDS, ACTION_LOOKUP, DECK, UNDER_TOKEN, Game, Player
@@ -44,6 +60,14 @@ from sheepshead.rewards import RETURN_SCALE
 
 PICK = ACTION_IDS["PICK"]
 PASS = ACTION_IDS["PASS"]
+# Three bands for a difference in expected score, set from how often the
+# two choices really ended in different scores when production hands were
+# played out both ways (notebooks/Decision_Review_Design_202611.md, 11):
+# under EVEN_BELOW the final score almost never moves; from FLAG_FROM it
+# moves about four times in ten, nine in ten of those the predicted way;
+# in between it is a real but small difference.
+EVEN_BELOW = 0.25
+FLAG_FROM = 1.0
 
 
 class ReplayError(ValueError):
@@ -111,10 +135,36 @@ class DecisionReview:
     pick_all_blinds: Optional[Readout] = None
     pick_actual_blind: Optional[Readout] = None
     pass_actual_deal: Optional[Readout] = None
+    # Expected score at the decision with every card known (the oracle
+    # critic); None for a model without one.
+    oracle_score: Optional[float] = None
 
     @property
     def agreed(self) -> bool:
         return self.action == self.model_action
+
+    @property
+    def difference(self) -> Optional[float]:
+        """What the seat's choice gained (+) or cost (-) in expected score,
+        to the one decimal it is shown at; None where there is nothing to
+        compare."""
+        if self.chosen is None or self.model is None or self.agreed:
+            return None
+        return round(self.chosen.score - self.model.score, 1)
+
+    @property
+    def standing(self) -> str:
+        """forced | agreed | even | slight | costly | better."""
+        if self.forced:
+            return "forced"
+        difference = self.difference
+        if difference is None:
+            return "agreed"
+        if difference <= -FLAG_FROM:
+            return "costly"
+        if difference >= FLAG_FROM:
+            return "better"
+        return "even" if abs(difference) < EVEN_BELOW else "slight"
 
 
 @dataclass
@@ -122,6 +172,49 @@ class HandReview:
     decisions: List[DecisionReview] = field(default_factory=list)
     # Model forward passes spent, for sizing the work.
     evaluations: int = 0
+
+
+@dataclass(frozen=True)
+class ReviewSummary:
+    """One seat's reviewed hand in a few figures."""
+
+    # Decisions where the seat had a choice, split by standing.
+    decisions: int
+    agreed: int
+    even: int
+    slight: int
+    costly: int
+    better: int
+    # Expected score the seat's choices cost and gained, both >= 0; every
+    # difference counts, so gained - cost is the hand's net.
+    cost: float
+    gained: float
+    # Index of the decision that sums the hand up: the costliest, else the
+    # best gain; None when no difference reaches FLAG_FROM.
+    headline_index: Optional[int]
+
+
+def summarize(decisions: Sequence[DecisionReview]) -> ReviewSummary:
+    standings = [d.standing for d in decisions]
+    differences = [(d.difference, d.index) for d in decisions if d.difference]
+    worst = min(differences, default=None)
+    best = max(differences, default=None)
+    headline: Optional[int] = None
+    if worst is not None and worst[0] <= -FLAG_FROM:
+        headline = worst[1]
+    elif best is not None and best[0] >= FLAG_FROM:
+        headline = best[1]
+    return ReviewSummary(
+        decisions=sum(s != "forced" for s in standings),
+        agreed=standings.count("agreed"),
+        even=standings.count("even"),
+        slight=standings.count("slight"),
+        costly=standings.count("costly"),
+        better=standings.count("better"),
+        cost=round(-sum(d for d, _ in differences if d < 0), 1),
+        gained=round(sum(d for d, _ in differences if d > 0), 1),
+        headline_index=headline,
+    )
 
 
 def _build_game(record: HandRecord) -> Game:
@@ -264,7 +357,8 @@ class _Reviewer:
     def read(self, player: Player) -> Tuple[Readout, List[Tuple[int, float]]]:
         """The model's estimate and policy at ``player``'s decision. Advances
         that seat's memory, as its own decision does."""
-        inference = run_inference_step(self.agent, player, self.device)
+        with inference_turn_in_thread():
+            inference = run_inference_step(self.agent, player, self.device)
         self.evaluations += 1
         if inference.win_prob is None:
             raise ValueError("hand review needs a model with a win-probability head")
@@ -403,6 +497,12 @@ def review_hand(
     reviewer = _Reviewer(agent, record)
     result = HandReview()
     counts: Dict[int, int] = {}
+    # Per reviewed seat: its oracle observations in order (own decisions
+    # and trick ends), and where each reviewed decision sits among them.
+    oracle_events: Dict[int, list] = {seat: [] for seat in seats}
+    oracle_marks: Dict[int, List[Tuple[int, DecisionReview]]] = {
+        seat: [] for seat in seats
+    }
 
     for position, (seat, action_id) in enumerate(actions):
         player = game.players[seat - 1]
@@ -441,12 +541,32 @@ def review_hand(
             if not review.agreed or (every_pick and kind == "pick"):
                 reviewer.compare(game, seat, review, chosen_ids, model_ids)
             result.decisions.append(review)
+            oracle_marks[seat].append((len(oracle_events[seat]), review))
         else:
             # The memory update a seat's own decision makes (runtime.ai_move).
             agent.observe(observation_for(player, agent), player_id=seat)
             reviewer.evaluations += 1
+        if seat in oracle_events:
+            oracle_events[seat].append(oracle_observation_for(player, agent))
         player.act(action_id)
+        if game.was_trick_just_completed and not game.is_done():
+            for watcher, events in oracle_events.items():
+                events.append(
+                    game.players[watcher - 1].get_last_trick_oracle_state_dict()
+                )
         reviewer.observe_trick_end(game)
+
+    if agent.oracle_critic is not None:
+        for seat, marks in oracle_marks.items():
+            if not marks:
+                continue
+            with inference_turn_in_thread(), torch.no_grad():
+                values = agent.oracle_critic.forward_sequences(
+                    [oracle_events[seat]], device=ppo.device
+                )[0]
+            reviewer.evaluations += 1
+            for at, review in marks:
+                review.oracle_score = float(values[at]) * RETURN_SCALE
 
     result.evaluations = reviewer.evaluations
     return result
