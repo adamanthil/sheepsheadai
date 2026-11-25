@@ -14,7 +14,7 @@ import {
   tone,
   totalTone,
 } from "../../../lib/review";
-import { signed } from "../../../lib/format";
+import { shortDate, signed } from "../../../lib/format";
 import type {
   AccountReview,
   ReviewDifference,
@@ -25,11 +25,6 @@ import SectionHead from "../components/SectionHead";
 import Segmented from "../components/Segmented";
 import SuitText from "../components/SuitText";
 import styles from "./review.module.css";
-
-const DAY = new Intl.DateTimeFormat(undefined, {
-  month: "short",
-  day: "numeric",
-});
 
 const KIND_LABEL = {
   pick: "Pick or pass",
@@ -309,8 +304,7 @@ function DifferenceRow({ difference }: { difference: ReviewDifference }) {
             <SuitText>{lines.ai}</SuitText>,{" "}
             {Math.round(difference.ai_probability * 100)}% ·{" "}
             <span className={styles.mono}>
-              {DAY.format(new Date(difference.time_closed))} ·{" "}
-              {difference.table_name}
+              {shortDate(difference.time_closed)} · {difference.table_name}
             </span>
           </span>
         </span>
@@ -389,7 +383,7 @@ function PickCard({ pick }: { pick: ReviewPick }) {
     <li className={styles.pick}>
       <div className={styles.pickHead}>
         <span className={styles.mono}>
-          {DAY.format(new Date(pick.time_closed))} · {pick.table_name}
+          {shortDate(pick.time_closed)} · {pick.table_name}
         </span>
         <span
           className={styles.mono}

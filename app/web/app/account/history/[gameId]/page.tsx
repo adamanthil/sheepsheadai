@@ -28,26 +28,13 @@ import {
   partnerLine,
   tone,
 } from "../../../../lib/review";
-import { signed } from "../../../../lib/format";
+import { shortDateTime, signed } from "../../../../lib/format";
+import { ROLE_LABEL } from "../../../../lib/roles";
 import { pickScenarioHref } from "../../../../lib/pickScenario";
 import type { HandReview } from "../../../../lib/types";
 import DecisionDetail from "./DecisionDetail";
 import ExpectedScoreChart from "./ExpectedScoreChart";
 import styles from "./handReview.module.css";
-
-const WHEN = new Intl.DateTimeFormat(undefined, {
-  month: "short",
-  day: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-});
-
-const ROLE = {
-  picker: "Picker",
-  partner: "Partner",
-  defender: "Defender",
-  leaster: "Leaster",
-};
 
 /** One hand, decision by decision, against the AI. */
 export default function HandReviewPage() {
@@ -145,7 +132,7 @@ function Review({ gameId }: { gameId: string }) {
         : review.called_card
           ? `Picker, called ${cardLabel(review.called_card)}`
           : "Picker"
-      : ROLE[hand.role];
+      : ROLE_LABEL[hand.role];
   const result = hand.score > 0 ? "Won" : hand.score < 0 ? "Lost" : "Even";
   const analyzeHref = pickScenarioHref({
     seat: review.seat,
@@ -188,7 +175,7 @@ function Review({ gameId }: { gameId: string }) {
           <BetaTag />
         </span>
         <span>
-          {WHEN.format(new Date(hand.time_closed))} · {hand.table_name}
+          {shortDateTime(hand.time_closed)} · {hand.table_name}
         </span>
       </div>
       <h1 className={styles.headline}>
@@ -315,7 +302,7 @@ function Review({ gameId }: { gameId: string }) {
           <span key={s.seat}>
             <span className={styles.tableName}>{s.name}</span>{" "}
             <span className={styles.muted}>
-              {s.is_you ? "(you) · " : ""}seat {s.seat} · {ROLE[s.role]}
+              {s.is_you ? "(you) · " : ""}seat {s.seat} · {ROLE_LABEL[s.role]}
             </span>
           </span>
         ))}

@@ -5,17 +5,11 @@ import AccountShell from "../AccountShell";
 import { useRequiredAccount } from "../useRequiredAccount";
 import accountStyles from "../account.module.css";
 import { accountErrorMessage, fetchReviewQueue } from "../../../lib/account";
+import { shortDateTime } from "../../../lib/format";
 import type { ReviewQueue } from "../../../lib/types";
 import { BigFigure, BigFigures } from "../components/BigFigures";
 import SectionHead from "../components/SectionHead";
 import styles from "./admin.module.css";
-
-const WHEN = new Intl.DateTimeFormat(undefined, {
-  month: "short",
-  day: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-});
 
 // Seconds between refreshes while the page is open.
 const REFRESH_SECONDS = 15;
@@ -101,7 +95,7 @@ function Queue() {
           label="Oldest waiting"
           note={
             queue.oldest_queued
-              ? `queued ${WHEN.format(new Date(queue.oldest_queued))}`
+              ? `queued ${shortDateTime(queue.oldest_queued)}`
               : "nothing waiting"
           }
         >
@@ -136,9 +130,7 @@ function Queue() {
         <div>
           <dt>Last hand reviewed</dt>
           <dd>
-            {queue.last_reviewed
-              ? WHEN.format(new Date(queue.last_reviewed))
-              : "—"}
+            {queue.last_reviewed ? shortDateTime(queue.last_reviewed) : "—"}
           </dd>
         </div>
         <div>

@@ -22,23 +22,10 @@ import type { HandHistoryRow } from "../../../lib/types";
 import AccountShell from "../AccountShell";
 import VerifiedOnly from "../components/VerifiedOnly";
 import { useRequiredAccount } from "../useRequiredAccount";
-import { signed } from "../../../lib/format";
+import { shortDateTime, signed } from "../../../lib/format";
+import { ROLE_LABEL } from "../../../lib/roles";
 import accountStyles from "../account.module.css";
 import styles from "./history.module.css";
-
-const ROLE_LABEL: Record<HandHistoryRow["role"], string> = {
-  picker: "Picker",
-  partner: "Partner",
-  defender: "Defender",
-  leaster: "Leaster",
-};
-
-const WHEN = new Intl.DateTimeFormat(undefined, {
-  month: "short",
-  day: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-});
 
 /** Every finished hand the account played, newest first, a page at a time. */
 export default function HandHistoryPage() {
@@ -282,7 +269,7 @@ function AiRow({ hand }: { hand: HandHistoryRow }) {
         onClick={reviewed ? toggle : undefined}
       >
         <td className={styles.when}>
-          {WHEN.format(new Date(hand.time_closed))}
+          {shortDateTime(hand.time_closed)}
           <span className={`${styles.roleUnder} ${styles.tone}`}>{role}</span>
         </td>
         <td className={`${styles.tone} ${styles.roleCell}`}>{role}</td>
@@ -346,7 +333,7 @@ function Row({ hand }: { hand: HandHistoryRow }) {
   const { humans, ai } = hand.opponents;
   return (
     <tr className={hand.counted_score < 0 ? styles.loss : undefined}>
-      <td className={styles.when}>{WHEN.format(new Date(hand.time_closed))}</td>
+      <td className={styles.when}>{shortDateTime(hand.time_closed)}</td>
       <td className={styles.tone}>
         <span className={styles.tableName} title={hand.table_name}>
           {hand.table_name}

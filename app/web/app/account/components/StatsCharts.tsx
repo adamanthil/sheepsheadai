@@ -1,6 +1,7 @@
 "use client";
 
 import { signed } from "../../../lib/format";
+import { ROLE_LABEL, type Role } from "../../../lib/roles";
 import React, { useId, useMemo, useState } from "react";
 import type { AccountRunningScore, AccountStats } from "../../../lib/types";
 import { count, pct, perHand } from "./statsFormat";
@@ -12,14 +13,6 @@ import styles from "./StatsCharts.module.css";
    deutan), which is legal because every chart here also separates them
    by position: above or below zero. */
 
-type Role = AccountRunningScore["roles"][number];
-
-const ROLE_LABEL: Record<Role, string> = {
-  picker: "Picker",
-  partner: "Partner",
-  defender: "Defender",
-  leaster: "Leaster",
-};
 const ROLE_WORD: Record<Role, string> = {
   picker: "as picker",
   partner: "as partner",
