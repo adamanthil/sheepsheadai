@@ -318,7 +318,7 @@ describe("partnerLine", () => {
     hand: hand(),
     seat: 3,
     seats: seats("defender"),
-    called_card: "AH",
+    partner_card: "AH",
     called_under: false,
     partner_mode: 1,
   };
@@ -360,12 +360,15 @@ describe("partnerLine", () => {
   it("shows the jack of diamonds, or that the picker is alone", () => {
     expect(
       partnerLine(
-        { ...called, partner_mode: 0, called_card: null },
+        { ...called, partner_mode: 0, partner_card: "JD" },
         decision({}),
       ),
     ).toMatchObject({ label: "Partner", card: "JD" });
     expect(
-      partnerLine({ ...called, hand: hand(true) }, decision({})),
+      partnerLine(
+        { ...called, hand: hand(true), partner_card: null },
+        decision({}),
+      ),
     ).toMatchObject({ card: null, note: "none, the picker is alone" });
   });
 });

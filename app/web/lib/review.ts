@@ -172,7 +172,7 @@ export type PartnerLine = {
 export function partnerLine(
   review: Pick<
     HandReview,
-    "hand" | "seat" | "seats" | "called_card" | "called_under" | "partner_mode"
+    "hand" | "seat" | "seats" | "partner_card" | "called_under" | "partner_mode"
   >,
   decision: Pick<DecisionReview, "kind" | "hand" | "partner_known">,
 ): PartnerLine | null {
@@ -189,7 +189,7 @@ export function partnerLine(
       note: youPicked ? "none, you went alone" : "none, the picker is alone",
     };
   }
-  const card = review.partner_mode === 1 ? review.called_card : "JD";
+  const card = review.partner_card;
   if (!card) return null;
   const held = decision.hand.includes(card);
   const note = held

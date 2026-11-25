@@ -52,6 +52,7 @@ export const handReview: HandReview = {
   seat: 1,
   called_card: "AH",
   called_under: false,
+  partner_card: "AH",
   dealt_hand: ["QC", "QD", "AD", "AC", "10C", "9H"],
   blind: ["JD", "9C"],
   partner_mode: 1,

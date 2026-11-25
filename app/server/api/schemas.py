@@ -405,6 +405,10 @@ class HandReviewResponse(BaseModel):
     # The picker called the ace "under": they held none of its suit and
     # put a card face down to play when it is led.
     called_under: bool
+    # The card whose play shows the table who the partner is: the called
+    # ace, or the jack of diamonds where that names the partner. None in a
+    # leaster and where the picker went alone.
+    partner_card: Optional[str]
     # The deal as the pick analyzer takes it: the six cards the seat was
     # dealt, the blind, and the partner mode (0 = jack of diamonds, 1 =
     # called ace).

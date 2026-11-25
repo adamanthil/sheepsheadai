@@ -1404,6 +1404,8 @@ export interface components {
             newer_game_id: string | null;
             /** Older Game Id */
             older_game_id: string | null;
+            /** Partner Card */
+            partner_card: string | null;
             /** Partner Mode */
             partner_mode: number;
             /** Seat */

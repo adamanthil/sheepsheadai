@@ -2212,6 +2212,17 @@
             ],
             "title": "Older Game Id"
           },
+          "partner_card": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Partner Card"
+          },
           "partner_mode": {
             "title": "Partner Mode",
             "type": "integer"
@@ -2243,6 +2254,7 @@
           "seat",
           "called_card",
           "called_under",
+          "partner_card",
           "dealt_hand",
           "blind",
           "partner_mode",

@@ -129,6 +129,7 @@ async def test_a_hand_review_lists_every_decision_of_the_seat(db_app, agent):
     assert len(body["dealt_hand"]) == 6 and len(body["blind"]) == 2
     assert not set(body["dealt_hand"]) & set(body["blind"])
     assert body["partner_mode"] == PARTNER_BY_CALLED_ACE
+    assert body["partner_card"] == body["called_card"]
     # Humans are named; the AI seats are not.
     assert [(s["seat"], s["is_ai"], s["is_you"]) for s in body["seats"]] == [
         (1, False, False),
