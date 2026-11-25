@@ -2902,6 +2902,14 @@
             "title": "Agreed",
             "type": "integer"
           },
+          "better": {
+            "title": "Better",
+            "type": "integer"
+          },
+          "costly": {
+            "title": "Costly",
+            "type": "integer"
+          },
           "decisions": {
             "title": "Decisions",
             "type": "integer"
@@ -2925,6 +2933,8 @@
           "kind",
           "decisions",
           "agreed",
+          "costly",
+          "better",
           "net"
         ],
         "title": "ReviewKindRow",

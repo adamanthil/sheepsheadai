@@ -168,10 +168,14 @@ async def account_review(pool: asyncpg.Pool, player_id: UUID) -> dict:
         player_id,
     )
     kinds = await pool.fetch(
-        """
+        f"""
         SELECT CASE d.kind WHEN 'under' THEN 'call' ELSE d.kind END AS kind,
                count(*)::int AS decisions,
                count(*) FILTER (WHERE d.difference IS NULL)::int AS agreed,
+               count(*) FILTER (WHERE d.difference <= -{FLAG_FROM})::int
+                   AS costly,
+               count(*) FILTER (WHERE d.difference >= {FLAG_FROM})::int
+                   AS better,
                coalesce(sum(d.difference), 0)::float AS net
         FROM decision_review d
         JOIN game_player gp ON gp.game_player_id = d.game_player_id
@@ -211,6 +215,8 @@ async def account_review(pool: asyncpg.Pool, player_id: UUID) -> dict:
                 "kind": kind,
                 "decisions": by_kind[kind]["decisions"],
                 "agreed": by_kind[kind]["agreed"],
+                "costly": by_kind[kind]["costly"],
+                "better": by_kind[kind]["better"],
                 "net": round(by_kind[kind]["net"], 1),
             }
             for kind in ("pick", "call", "bury", "play")

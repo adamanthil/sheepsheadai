@@ -1640,6 +1640,10 @@ export interface components {
         ReviewKindRow: {
             /** Agreed */
             agreed: number;
+            /** Better */
+            better: number;
+            /** Costly */
+            costly: number;
             /** Decisions */
             decisions: number;
             /**

@@ -206,6 +206,10 @@ function Differences({ review }: { review: AccountReview }) {
   const [filter, setFilter] = useState<KindFilter>("all");
   const [all, setAll] = useState(false);
   const list = which === "cost" ? review.cost_most : review.gained_most;
+  // The two counts follow the kind chosen, as the list under them does.
+  const ofKind = review.by_kind.find((kind) => kind.kind === filter);
+  const costly = filter === "all" ? review.costly : (ofKind?.costly ?? 0);
+  const better = filter === "all" ? review.better : (ofKind?.better ?? 0);
   const shown = list.filter(
     (d) =>
       filter === "all" || (d.kind === "under" ? "call" : d.kind) === filter,
@@ -224,14 +228,14 @@ function Differences({ review }: { review: AccountReview }) {
             aria-pressed={which === "cost"}
             onClick={() => setWhich("cost")}
           >
-            Cost you most · {review.costly}
+            Cost you most · {costly}
           </button>
           <button
             type="button"
             aria-pressed={which === "gained"}
             onClick={() => setWhich("gained")}
           >
-            Beat the AI’s choice · {review.better}
+            Beat the AI’s choice · {better}
           </button>
         </div>
         <div

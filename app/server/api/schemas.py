@@ -418,6 +418,9 @@ class ReviewKindRow(BaseModel):
     kind: Literal["pick", "call", "bury", "play"]
     decisions: int
     agreed: int
+    # Decisions of this kind that cost, and that gained, a full point.
+    costly: int
+    better: int
     net: float
 
 
