@@ -10,36 +10,6 @@
   --track: var(--bg-sunk);
 }
 
-/* ---- segmented range presets ------------------------------------------ */
-.seg {
-  display: inline-flex;
-  max-width: 100%;
-  overflow-x: auto;
-  border: 1px solid var(--rule-strong);
-  border-radius: 3px;
-}
-.seg button {
-  font-family: var(--font-ui);
-  font-size: 12px;
-  white-space: nowrap;
-  padding: 5px 10px;
-  border: none;
-  background: transparent;
-  color: var(--ink-soft);
-  cursor: pointer;
-}
-.seg button + button {
-  border-left: 1px solid var(--rule-strong);
-}
-.seg button:hover {
-  color: var(--accent);
-}
-.seg .segOn,
-.seg .segOn:hover {
-  background: var(--ink);
-  color: var(--bg-page);
-}
-
 /* ---- running score ----------------------------------------------------- */
 .running {
   --plot-h: 300px;

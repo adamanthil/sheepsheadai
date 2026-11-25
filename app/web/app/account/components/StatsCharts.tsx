@@ -3,6 +3,7 @@
 import React, { useId, useMemo, useState } from "react";
 import type { AccountRunningScore, AccountStats } from "../../../lib/types";
 import { count, pct, perHand, signed } from "./statsFormat";
+import Segmented from "./Segmented";
 import styles from "./StatsCharts.module.css";
 
 /* Hand-drawn SVG and positioned HTML; no chart library. Win green and
@@ -314,35 +315,6 @@ export function RunningScoreChart({
 export const RANGES = [50, 100, 250, 1000, 0] as const;
 export type Range = (typeof RANGES)[number];
 
-/** A row of buttons, one pressed: a small filter. */
-export function Segmented<T extends string | number>({
-  label,
-  options,
-  value,
-  onChange,
-}: {
-  label: string;
-  options: { value: T; label: string }[];
-  value: T;
-  onChange: (v: T) => void;
-}) {
-  return (
-    <div className={styles.seg} role="group" aria-label={label}>
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          aria-pressed={value === o.value}
-          className={value === o.value ? styles.segOn : undefined}
-          onClick={() => onChange(o.value)}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 export function RangePicker({
   value,
   onChange,
@@ -354,6 +326,7 @@ export function RangePicker({
 }) {
   return (
     <Segmented
+      size="dense"
       label="Hands shown"
       options={RANGES.filter((r) => r === 0 || r < total).map((r) => ({
         value: r,

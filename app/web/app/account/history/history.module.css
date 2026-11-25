@@ -94,34 +94,6 @@
   gap: 10px 24px;
   margin-bottom: 16px;
 }
-.toggle {
-  display: inline-flex;
-  border: 1px solid var(--rule-strong);
-  border-radius: 3px;
-  overflow: hidden;
-}
-.toggle button {
-  min-height: 36px;
-  font-family: var(--font-ui);
-  font-size: 13px;
-  padding: 6px 12px;
-  border: none;
-  background: transparent;
-  color: var(--ink-soft);
-  cursor: pointer;
-  white-space: nowrap;
-}
-.toggle button + button {
-  border-left: 1px solid var(--rule-strong);
-}
-.toggle button[aria-pressed="true"] {
-  background: var(--ink);
-  color: var(--bg-page);
-}
-.toggle button:focus-visible {
-  outline: 2px solid var(--accent-soft);
-  outline-offset: -2px;
-}
 .viewNote {
   font-size: 13px;
   color: var(--muted);

@@ -1,0 +1,45 @@
+.seg {
+  display: inline-flex;
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--rule-strong);
+  border-radius: 3px;
+}
+.seg button {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  white-space: nowrap;
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.seg button + button {
+  border-left: 1px solid var(--rule-strong);
+}
+.seg button:hover {
+  color: var(--accent);
+}
+.seg button[aria-pressed="true"],
+.seg button[aria-pressed="true"]:hover {
+  background: var(--ink);
+  color: var(--bg-page);
+}
+.seg button:focus-visible {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: -2px;
+}
+
+.dense button {
+  padding: 5px 10px;
+}
+/* From here up the buttons are tall enough for a finger. */
+.regular button {
+  min-height: 32px;
+}
+.large button {
+  font-size: 13px;
+  min-height: 36px;
+  padding: 6px 12px;
+}

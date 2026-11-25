@@ -15,10 +15,10 @@ import {
   RangePicker,
   RangeRows,
   RoleBars,
-  Segmented,
   runningScoreWindow,
   type Range,
 } from "./StatsCharts";
+import Segmented from "./Segmented";
 import { count, perHand, signed } from "./statsFormat";
 import styles from "./StatsPanel.module.css";
 
@@ -129,6 +129,7 @@ export default function StatsPanel({
     <div className={styles.panel} aria-busy={busy}>
       <div className={styles.mode}>
         <Segmented
+          size="dense"
           label="Games counted"
           options={STATS_MODES.map((m) => ({ value: m.key, label: m.label }))}
           value={mode}

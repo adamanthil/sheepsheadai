@@ -23,6 +23,7 @@ import type {
   ReviewDifference,
   ReviewPick,
 } from "../../../lib/types";
+import Segmented from "../components/Segmented";
 import SuitText from "../components/SuitText";
 import styles from "./review.module.css";
 
@@ -39,12 +40,12 @@ const KIND_LABEL = {
 };
 
 type KindFilter = "all" | "pick" | "call" | "bury" | "play";
-const FILTERS: { key: KindFilter; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "pick", label: "Pick" },
-  { key: "call", label: "Call" },
-  { key: "bury", label: "Bury" },
-  { key: "play", label: "Play" },
+const FILTERS: { value: KindFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "pick", label: "Pick" },
+  { value: "call", label: "Call" },
+  { value: "bury", label: "Bury" },
+  { value: "play", label: "Play" },
 ];
 
 // Differences listed before "Show more".
@@ -144,22 +145,17 @@ function Totals() {
 
   const perHand = review.net / review.hands_reviewed;
   const toggle = review.pick_decisions > 0 && (
-    <div className={styles.viewToggle} role="group" aria-label="Review of">
-      <button
-        type="button"
-        aria-pressed={view === "decisions"}
-        onClick={() => show("decisions")}
-      >
-        Overview
-      </button>
-      <button
-        type="button"
-        aria-pressed={view === "picking"}
-        onClick={() => show("picking")}
-      >
-        Picking
-      </button>
-    </div>
+    <Segmented
+      size="large"
+      className={styles.viewToggle}
+      label="Review of"
+      options={[
+        { value: "decisions", label: "Overview" },
+        { value: "picking", label: "Picking" },
+      ]}
+      value={view}
+      onChange={show}
+    />
   );
   if (view === "picking" && review.pick_decisions > 0) {
     return (
@@ -268,38 +264,21 @@ function Differences({ review }: { review: AccountReview }) {
         <span>Points of expected score</span>
       </div>
       <div className={styles.controls}>
-        <div className={styles.segmented} role="group" aria-label="Which way">
-          <button
-            type="button"
-            aria-pressed={which === "cost"}
-            onClick={() => setWhich("cost")}
-          >
-            Cost you most · {costly}
-          </button>
-          <button
-            type="button"
-            aria-pressed={which === "gained"}
-            onClick={() => setWhich("gained")}
-          >
-            Beat the AI’s choice · {better}
-          </button>
-        </div>
-        <div
-          className={styles.segmented}
-          role="group"
-          aria-label="Kind of decision"
-        >
-          {FILTERS.map((f) => (
-            <button
-              key={f.key}
-              type="button"
-              aria-pressed={filter === f.key}
-              onClick={() => setFilter(f.key)}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
+        <Segmented
+          label="Which way"
+          options={[
+            { value: "cost", label: `Cost you most · ${costly}` },
+            { value: "gained", label: `Beat the AI’s choice · ${better}` },
+          ]}
+          value={which}
+          onChange={setWhich}
+        />
+        <Segmented
+          label="Kind of decision"
+          options={FILTERS}
+          value={filter}
+          onChange={setFilter}
+        />
       </div>
       {shown.length === 0 ? (
         <p className={accountStyles.note}>Nothing here yet.</p>
@@ -405,26 +384,21 @@ function Picking({ review }: { review: AccountReview }) {
       {picks.length > 0 && (
         <>
           <div className={styles.controls}>
-            <div
-              className={styles.segmented}
-              role="group"
-              aria-label="Which picks"
-            >
-              <button
-                type="button"
-                aria-pressed={which === "picked"}
-                onClick={() => setWhich("picked")}
-              >
-                Picked, AI passes · {review.picked_ai_passes.length}
-              </button>
-              <button
-                type="button"
-                aria-pressed={which === "passed"}
-                onClick={() => setWhich("passed")}
-              >
-                Passed, AI picks · {review.passed_ai_picks.length}
-              </button>
-            </div>
+            <Segmented
+              label="Which picks"
+              options={[
+                {
+                  value: "picked",
+                  label: `Picked, AI passes · ${review.picked_ai_passes.length}`,
+                },
+                {
+                  value: "passed",
+                  label: `Passed, AI picks · ${review.passed_ai_picks.length}`,
+                },
+              ]}
+              value={which}
+              onChange={setWhich}
+            />
           </div>
           <ul className={styles.picks}>
             {list.map((pick) => (

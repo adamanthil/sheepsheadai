@@ -20,6 +20,7 @@ import {
 import type { HandReview } from "../../../lib/types";
 import BetaTag from "../components/BetaTag";
 import CostGainBar from "../components/CostGainBar";
+import Segmented from "../components/Segmented";
 import HandStrip from "./HandStrip";
 import type { HandHistoryRow } from "../../../lib/types";
 import AccountShell from "../AccountShell";
@@ -149,23 +150,24 @@ function History() {
     <>
       {error && <p className={accountStyles.error}>{error}</p>}
       <div className={styles.viewBar}>
-        <div className={styles.toggle} role="group" aria-label="Table view">
-          <button
-            type="button"
-            aria-pressed={view === "results"}
-            onClick={() => show("results")}
-          >
-            Results
-          </button>
-          <button
-            type="button"
-            aria-pressed={view === "ai"}
-            onClick={() => show("ai")}
-          >
-            AI comparison
-            <BetaTag />
-          </button>
-        </div>
+        <Segmented
+          size="large"
+          label="Table view"
+          options={[
+            { value: "results", label: "Results" },
+            {
+              value: "ai",
+              label: (
+                <>
+                  AI comparison
+                  <BetaTag />
+                </>
+              ),
+            },
+          ]}
+          value={view}
+          onChange={show}
+        />
         {view === "ai" && (
           <p className={styles.viewNote}>
             Expected score your choices lost or gained against the AI model.
