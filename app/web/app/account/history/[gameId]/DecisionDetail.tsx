@@ -25,8 +25,11 @@ import SuitText from "../../components/SuitText";
 import TrickRow from "./TrickRow";
 import styles from "./handReview.module.css";
 
-// The most choices listed before the rest are summed up in a line.
+// The most choices listed before the rest are summed up in a line, and
+// the least chance one needs to be listed: a choice that rounds to 0% is
+// left to the line.
 const MAX_OPTIONS = 6;
+const LISTED_FROM = 0.005;
 
 function isRed(card: string): boolean {
   return isRedSuit(parseCard(card).suit);
@@ -68,7 +71,7 @@ export default function DecisionDetail({
   // chance, and always the player's own.
   const likely = decision.policy.filter(([action, probability], i) =>
     i < MAX_OPTIONS
-      ? probability >= 0.005 || i === 0 || action === decision.action
+      ? probability >= LISTED_FROM || i === 0 || action === decision.action
       : action === decision.action,
   );
   const unlisted = decision.policy.length - likely.length;

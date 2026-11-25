@@ -1,5 +1,6 @@
 /** Wording for the AI review pages: how a decision, and a whole hand, is
- * put into words. Pure functions over the review API's shapes.
+ * put into words, and which of its figures are coloured as a cost or a
+ * gain. Pure functions over the review API's shapes.
  *
  * Vocabulary, the same on every screen: a decision is "agreed", "about
  * even", a "small difference", "cost you" or "gained"; the other party is

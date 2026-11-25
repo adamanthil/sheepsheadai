@@ -32,14 +32,15 @@ import Segmented from "../components/Segmented";
 import SuitText from "../components/SuitText";
 import styles from "./review.module.css";
 
-const KIND_LABEL = {
+const KIND_LABEL: Record<ReviewKind, string> = {
   pick: "Pick or pass",
   call: "Partner call",
   bury: "Bury",
   play: "Card play",
 };
 
-type KindFilter = "all" | "pick" | "call" | "bury" | "play";
+type ReviewKind = AccountReview["by_kind"][number]["kind"];
+type KindFilter = "all" | ReviewKind;
 const FILTERS: { value: KindFilter; label: string }[] = [
   { value: "all", label: "All" },
   { value: "pick", label: "Pick" },

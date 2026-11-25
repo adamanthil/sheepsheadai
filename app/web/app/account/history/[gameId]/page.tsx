@@ -119,11 +119,13 @@ function Review({ gameId }: { gameId: string }) {
     setShut(index === selected ? !shut : false);
     setPicked(index);
   };
-  const step = (by: number) => () => {
+  // Select a decision from somewhere other than its own row.
+  const jumpTo = (index: number) => {
     moved.current = true;
-    setPicked(decisions[position + by].index);
+    setPicked(index);
     setShut(false);
   };
+  const step = (by: number) => () => jumpTo(decisions[position + by].index);
 
   const roleLine =
     hand.role === "picker"
@@ -220,11 +222,7 @@ function Review({ gameId }: { gameId: string }) {
             decisions={decisions}
             finalScore={hand.score}
             selected={selected}
-            onSelect={(index) => {
-              moved.current = true;
-              setPicked(index);
-              setShut(false);
-            }}
+            onSelect={jumpTo}
           />
 
           <div
