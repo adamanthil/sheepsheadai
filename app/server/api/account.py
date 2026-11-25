@@ -61,6 +61,7 @@ def _public(account: Account) -> AccountPublic:
         username=account.username,
         email=account.email,
         email_verified=account.email_verified,
+        is_admin=account.is_admin,
     )
 
 

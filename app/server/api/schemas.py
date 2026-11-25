@@ -170,6 +170,8 @@ class AccountPublic(BaseModel):
     username: str
     email: str
     email_verified: bool
+    # May open the admin area.
+    is_admin: bool
 
 
 class AccountMeResponse(BaseModel):

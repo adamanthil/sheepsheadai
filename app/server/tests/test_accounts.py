@@ -93,6 +93,8 @@ async def test_register_upgrades_the_guest_in_place_then_verifies(client, outbox
         "username": username,
         "email": email,
         "email_verified": False,
+        # Nobody becomes an administrator through the application.
+        "is_admin": False,
     }
 
     verify_token = await _emailed_token(outbox)

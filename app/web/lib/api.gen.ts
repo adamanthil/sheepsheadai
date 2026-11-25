@@ -629,6 +629,8 @@ export interface components {
             email: string;
             /** Email Verified */
             email_verified: boolean;
+            /** Is Admin */
+            is_admin: boolean;
             /** Username */
             username: string;
         };

@@ -47,6 +47,10 @@
             "title": "Email Verified",
             "type": "boolean"
           },
+          "is_admin": {
+            "title": "Is Admin",
+            "type": "boolean"
+          },
           "username": {
             "title": "Username",
             "type": "string"
@@ -55,7 +59,8 @@
         "required": [
           "username",
           "email",
-          "email_verified"
+          "email_verified",
+          "is_admin"
         ],
         "title": "AccountPublic",
         "type": "object"
