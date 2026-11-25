@@ -5,16 +5,8 @@
  * even", a "small difference", "cost you" or "gained"; the other party is
  * "the AI". */
 import { parseCard, suitSymbol } from "./ds/cardUtils";
+import { signed } from "./format";
 import type { DecisionReview, HandReview } from "./types";
-
-const MINUS = "−";
-
-/** "+1.2", "−0.7", "0.0": a difference in expected score. */
-export function signed(value: number, digits = 1): string {
-  const text = Math.abs(value).toFixed(digits);
-  if (Number(text) === 0) return text;
-  return (value > 0 ? "+" : MINUS) + text;
-}
 
 /** "J♣" for "JC". */
 export function cardLabel(code: string): string {
@@ -261,7 +253,7 @@ export function handHeadline(review: HandReview): Headline {
   if (decision && decision.difference != null) {
     const costly = decision.difference < 0;
     return {
-      kicker: `${costly ? "Costliest" : "Best"} decision · ${decisionLabel(decision)} · ${signed(decision.difference)} points of expected score`,
+      kicker: `${costly ? "Costliest" : "Best"} decision · ${decisionLabel(decision)} · ${signed(decision.difference, 1)} points of expected score`,
       text: decisionHeadline(decision),
       index: decision.index,
     };

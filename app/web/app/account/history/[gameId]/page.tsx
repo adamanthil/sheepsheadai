@@ -26,9 +26,9 @@ import {
   net,
   netTone,
   partnerLine,
-  signed,
   tone,
 } from "../../../../lib/review";
+import { signed } from "../../../../lib/format";
 import { pickScenarioHref } from "../../../../lib/pickScenario";
 import type { HandReview } from "../../../../lib/types";
 import DecisionDetail from "./DecisionDetail";
@@ -213,7 +213,7 @@ function Review({ gameId }: { gameId: string }) {
       <div className={styles.meta}>
         <span>{roleLine}</span>
         <span data-tone={hand.score < 0 ? "cost" : undefined}>
-          {result} {signed(hand.score, 0)}
+          {result} {signed(hand.score)}
         </span>
         <span>
           {hand.points_taken} {hand.points_scope} points
@@ -226,7 +226,7 @@ function Review({ gameId }: { gameId: string }) {
                 className={`${styles.mono} ${styles.net}`}
                 data-tone={netTone(handNet, summary.notable)}
               >
-                {signed(handNet)}
+                {signed(handNet, 1)}
               </strong>{" "}
               <span className={styles.muted}>
                 (cost {summary.cost.toFixed(1)}, gained{" "}
@@ -243,7 +243,7 @@ function Review({ gameId }: { gameId: string }) {
           <SectionHead
             className={styles.chartHead}
             title="Expected score through the hand"
-            aside={`Final score ${signed(hand.score, 0)}`}
+            aside={`Final score ${signed(hand.score)}`}
           />
           <ExpectedScoreChart
             decisions={decisions}
@@ -293,7 +293,7 @@ function Review({ gameId }: { gameId: string }) {
                       className={styles.rowDifference}
                       data-tone={tone(d.standing)}
                     >
-                      {d.difference != null ? signed(d.difference) : "—"}
+                      {d.difference != null ? signed(d.difference, 1) : "—"}
                       <span className={styles.caret} aria-hidden="true">
                         {open ? "▴" : "▾"}
                       </span>

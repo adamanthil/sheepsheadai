@@ -9,9 +9,9 @@ import {
   decisionMethod,
   decisionVerdict,
   type PartnerLine,
-  signed,
   tone,
 } from "../../../../lib/review";
+import { signed } from "../../../../lib/format";
 import type { DecisionReview, HandSeat } from "../../../../lib/types";
 import { BigFigure, BigFigures } from "../../components/BigFigures";
 import SuitText from "../../components/SuitText";
@@ -188,17 +188,21 @@ export default function DecisionDetail({
         <BigFigure label="Your choice" note="expected score">
           {signed(
             differs ? (decision.chosen_score ?? 0) : decision.expected_score,
+            1,
           )}
         </BigFigure>
         <BigFigure label="AI’s choice" note="expected score">
-          {signed(differs ? (decision.ai_score ?? 0) : decision.expected_score)}
+          {signed(
+            differs ? (decision.ai_score ?? 0) : decision.expected_score,
+            1,
+          )}
         </BigFigure>
         <BigFigure
           label="Difference"
           note={decisionVerdict(decision)}
           tone={tone(decision.standing)}
         >
-          {differs ? signed(decision.difference ?? 0) : "—"}
+          {differs ? signed(decision.difference ?? 0, 1) : "—"}
         </BigFigure>
       </BigFigures>
       <p className={styles.method}>{decisionMethod(decision)}</p>

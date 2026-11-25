@@ -14,7 +14,6 @@ import {
   historyHref,
   net,
   netTone,
-  signed as signedPoints,
   type HistoryView as View,
 } from "../../../lib/review";
 import type { HandReview } from "../../../lib/types";
@@ -24,7 +23,7 @@ import Segmented from "../components/Segmented";
 import HandStrip from "./HandStrip";
 import type { HandHistoryRow } from "../../../lib/types";
 import AccountShell from "../AccountShell";
-import { signed } from "../components/statsFormat";
+import { signed } from "../../../lib/format";
 import accountStyles from "../account.module.css";
 import styles from "./history.module.css";
 
@@ -320,14 +319,14 @@ function AiRow({ hand }: { hand: HandHistoryRow }) {
               className={`${styles.num} ${styles.net} ${notable ? styles.netNotable : ""}`}
               data-tone={netTone(handNet, notable)}
             >
-              {cost === 0 && gained === 0 ? "—" : signedPoints(handNet)}
+              {cost === 0 && gained === 0 ? "—" : signed(handNet, 1)}
             </td>
             <td className={styles.expandCell}>
               <button
                 type="button"
                 className={styles.expand}
                 aria-expanded={open}
-                aria-label={`Cost ${cost.toFixed(1)}, gained ${gained.toFixed(1)}, net ${signedPoints(handNet)} points of expected score. ${open ? "Hide" : "Show"} decisions`}
+                aria-label={`Cost ${cost.toFixed(1)}, gained ${gained.toFixed(1)}, net ${signed(handNet, 1)} points of expected score. ${open ? "Hide" : "Show"} decisions`}
                 onClick={(event) => {
                   // The row would toggle it straight back.
                   event.stopPropagation();

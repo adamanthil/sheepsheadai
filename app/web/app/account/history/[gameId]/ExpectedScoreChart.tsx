@@ -1,5 +1,6 @@
 import React from "react";
-import { decisionLabel, signed, tone } from "../../../../lib/review";
+import { decisionLabel, tone } from "../../../../lib/review";
+import { signed } from "../../../../lib/format";
 import type { DecisionReview } from "../../../../lib/types";
 import styles from "./handReview.module.css";
 
@@ -155,7 +156,7 @@ export default function ExpectedScoreChart({
                     top: top((g.value + g.actual) / 2),
                   }}
                 >
-                  {signed(g.d.difference ?? 0)}
+                  {signed(g.d.difference ?? 0, 1)}
                 </span>
               </React.Fragment>
             ))}
@@ -166,7 +167,7 @@ export default function ExpectedScoreChart({
                 className={`${styles.dot} ${d.index === selected ? styles.dotSelected : ""}`}
                 data-tone={tone(d.standing)}
                 style={{ left: left(i), top: top(d.expected_score) }}
-                aria-label={`${decisionLabel(d)}: expected score ${signed(d.expected_score)}`}
+                aria-label={`${decisionLabel(d)}: expected score ${signed(d.expected_score, 1)}`}
                 aria-pressed={d.index === selected}
                 onClick={() => onSelect(d.index)}
               />

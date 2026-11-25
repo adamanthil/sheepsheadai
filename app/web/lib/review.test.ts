@@ -12,7 +12,6 @@ import {
   netTone,
   partnerLine,
   shortAction,
-  signed,
   tone,
   totalTone,
 } from "./review";
@@ -73,15 +72,6 @@ function review(
     decisions,
   } as HandReview;
 }
-
-describe("signed", () => {
-  it("uses a real minus sign and never shows a signed zero", () => {
-    expect(signed(1.24)).toBe("+1.2");
-    expect(signed(-0.7)).toBe("−0.7");
-    expect(signed(0)).toBe("0.0");
-    expect(signed(-0.04)).toBe("0.0");
-  });
-});
 
 describe("actionCodes", () => {
   it("keeps card codes for colouring", () => {

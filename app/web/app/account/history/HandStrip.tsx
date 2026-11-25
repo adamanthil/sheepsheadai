@@ -6,9 +6,9 @@ import {
   decisionLabel,
   decisionNote,
   handHeadline,
-  signed,
   tone,
 } from "../../../lib/review";
+import { signed } from "../../../lib/format";
 import type { HandReview } from "../../../lib/types";
 import SuitText from "../components/SuitText";
 import styles from "./history.module.css";
@@ -95,7 +95,7 @@ export default function HandStrip({ review }: { review: HandReview }) {
                       className={styles.cellDifference}
                       data-tone={tone(d.standing)}
                     >
-                      {d.difference != null ? signed(d.difference) : "—"}
+                      {d.difference != null ? signed(d.difference, 1) : "—"}
                     </span>
                     <span
                       className={styles.cellNote}

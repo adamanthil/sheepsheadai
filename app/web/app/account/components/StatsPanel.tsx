@@ -1,5 +1,6 @@
 "use client";
 
+import { signed } from "../../../lib/format";
 import React, { useState } from "react";
 import { ds } from "../../../lib/ds";
 import type {
@@ -19,7 +20,7 @@ import {
   type Range,
 } from "./StatsCharts";
 import Segmented from "./Segmented";
-import { count, perHand, signed } from "./statsFormat";
+import { count, perHand } from "./statsFormat";
 import styles from "./StatsPanel.module.css";
 
 function Head({ title, aside }: { title: string; aside?: React.ReactNode }) {

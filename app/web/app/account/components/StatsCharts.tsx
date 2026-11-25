@@ -1,8 +1,9 @@
 "use client";
 
+import { signed } from "../../../lib/format";
 import React, { useId, useMemo, useState } from "react";
 import type { AccountRunningScore, AccountStats } from "../../../lib/types";
-import { count, pct, perHand, signed } from "./statsFormat";
+import { count, pct, perHand } from "./statsFormat";
 import Segmented from "./Segmented";
 import styles from "./StatsCharts.module.css";
 

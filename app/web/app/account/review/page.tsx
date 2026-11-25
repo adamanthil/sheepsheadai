@@ -14,10 +14,10 @@ import { PlayingCard, ds } from "../../../lib/ds";
 import {
   decisionLabel,
   differenceLines,
-  signed,
   tone,
   totalTone,
 } from "../../../lib/review";
+import { signed } from "../../../lib/format";
 import type {
   AccountReview,
   ReviewDifference,
@@ -207,7 +207,7 @@ function Totals() {
             note={`${signed(perHand, 2)} score per hand`}
             tone={totalTone(review.net)}
           >
-            {signed(review.net)}
+            {signed(review.net, 1)}
           </BigFigure>
         </BigFigures>
 
@@ -229,7 +229,7 @@ function Totals() {
               <span className={styles.kindCount}>
                 {kind.decisions} decisions
               </span>
-              <span className={styles.mono}>{signed(kind.net)}</span>
+              <span className={styles.mono}>{signed(kind.net, 1)}</span>
             </li>
           ))}
         </ul>
@@ -318,13 +318,13 @@ function DifferenceRow({ difference }: { difference: ReviewDifference }) {
       <Link
         href={`/account/history/${difference.game_id}?d=${difference.index}`}
         className={styles.difference}
-        aria-label={`${lines.yours}, ${signed(difference.difference)}. Review this decision`}
+        aria-label={`${lines.yours}, ${signed(difference.difference, 1)}. Review this decision`}
       >
         <span
           className={styles.differenceValue}
           data-tone={tone(difference.standing)}
         >
-          {signed(difference.difference)}
+          {signed(difference.difference, 1)}
         </span>
         <span className={styles.differenceText}>
           <span className={styles.differenceYours}>
@@ -378,7 +378,7 @@ function Picking({ review }: { review: AccountReview }) {
           label="Score on those picks"
           tone={scored < 0 ? "cost" : "gain"}
         >
-          {signed(scored, 0)}
+          {signed(scored)}
         </BigFigure>
       </BigFigures>
       {picks.length > 0 && (
@@ -422,7 +422,7 @@ function PickCard({ pick }: { pick: ReviewPick }) {
           className={styles.mono}
           data-tone={pick.score < 0 ? "cost" : "gain"}
         >
-          {signed(pick.score, 0)}
+          {signed(pick.score)}
         </span>
       </div>
       <div className={styles.pickCards}>
@@ -443,7 +443,8 @@ function PickCard({ pick }: { pick: ReviewPick }) {
         <span>
           Expected score{" "}
           <strong className={styles.mono}>
-            pick {signed(pick.pick_score)} · pass {signed(pick.pass_score)}
+            pick {signed(pick.pick_score, 1)} · pass{" "}
+            {signed(pick.pass_score, 1)}
           </strong>
         </span>
         <Link href={`/account/history/${pick.game_id}?d=0`} className={ds.link}>
