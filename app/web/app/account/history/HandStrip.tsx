@@ -72,7 +72,8 @@ export default function HandStrip({ review }: { review: HandReview }) {
                 {decisions.map((d, i) => (
                   <span
                     key={d.index}
-                    className={`${styles.stripDot} ${d.standing === "costly" ? styles.stripDotCost : d.standing === "better" ? styles.stripDotGain : ""}`}
+                    className={styles.stripDot}
+                    data-tone={tone(d.standing)}
                     style={{
                       left: `${((i + 0.5) / n) * 100}%`,
                       top: `${(y(d.expected_score) / 64) * 100}%`,
@@ -91,12 +92,14 @@ export default function HandStrip({ review }: { review: HandReview }) {
                       {actionCodes(d.action)}
                     </CardText>
                     <span
-                      className={`${styles.cellDifference} ${tone(d.difference) === "cost" ? styles.costText : tone(d.difference) === "gain" ? styles.gainText : ""}`}
+                      className={styles.cellDifference}
+                      data-tone={tone(d.standing)}
                     >
                       {d.difference != null ? signed(d.difference) : "—"}
                     </span>
                     <span
-                      className={`${styles.cellNote} ${d.standing === "costly" ? styles.costText : d.standing === "better" ? styles.gainText : ""}`}
+                      className={styles.cellNote}
+                      data-tone={tone(d.standing)}
                     >
                       {decisionNote(d)}
                     </span>

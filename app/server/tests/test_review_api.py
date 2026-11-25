@@ -216,6 +216,8 @@ async def test_review_totals_add_up_across_hands(db_app, agent):
     assert sum(k["net"] for k in body["by_kind"]) == pytest.approx(body["net"], abs=0.2)
     assert len(body["cost_most"]) == body["costly"]
     assert len(body["gained_most"]) == body["better"]
+    assert all(d["standing"] == "costly" for d in body["cost_most"])
+    assert all(d["standing"] == "better" for d in body["gained_most"])
     costs = [d["difference"] for d in body["cost_most"]]
     assert costs == sorted(costs) and all(c <= -1.0 for c in costs)
     gains = [d["difference"] for d in body["gained_most"]]

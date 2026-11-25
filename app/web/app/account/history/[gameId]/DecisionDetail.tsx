@@ -56,7 +56,6 @@ export default function DecisionDetail({
   );
   const trump = decision.high_trump;
   const differs = decision.difference != null;
-  const kind = tone(decision.difference);
   // A bury has dozens of legal pairs: list the ones the AI gives a real
   // chance, and always the player's own.
   const likely = decision.policy.filter(([action, probability], i) =>
@@ -140,7 +139,7 @@ export default function DecisionDetail({
                 >
                   {cardLabel(trump.card)}
                 </span>
-                <strong className={trump.held ? styles.gain : undefined}>
+                <strong data-tone={trump.held ? "gain" : undefined}>
                   {trump.held ? "in your hand" : "still out"}
                 </strong>
                 <span>· {trump.unseen} trump you have not seen</span>
@@ -205,15 +204,7 @@ export default function DecisionDetail({
         </div>
         <div>
           <dt>Difference</dt>
-          <dd
-            className={
-              kind === "cost"
-                ? styles.cost
-                : kind === "gain"
-                  ? styles.gain
-                  : undefined
-            }
-          >
+          <dd data-tone={tone(decision.standing)}>
             {differs ? signed(decision.difference ?? 0) : "—"}
           </dd>
           <dd className={styles.figureNote}>{decisionVerdict(decision)}</dd>

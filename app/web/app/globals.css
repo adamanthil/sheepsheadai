@@ -30,6 +30,7 @@
   --accent-soft: #5d7f6c;
   --accent-2: #b3331e; /* single red */
   --accent-2-soft: #d36c52;
+  --gain: #1d6b42; /* what a choice gained against the AI */
   --gold: #7b6a36;
   --card-paper: #ffffff;
   --card-edge: #d5d2c4;
@@ -100,4 +101,18 @@ body {
   50% {
     opacity: 0.45;
   }
+}
+
+/* A figure that says what a choice cost or gained against the AI is
+   marked data-tone="cost" or "gain" (lib/review.ts) and coloured here, in
+   one place. --tone is set too, for a rule that draws with the colour
+   rather than writing in it, or that has a colour of its own to fall back
+   on: `background: var(--tone, var(--ink))`. */
+[data-tone="cost"] {
+  --tone: var(--accent-2);
+  color: var(--tone);
+}
+[data-tone="gain"] {
+  --tone: var(--gain);
+  color: var(--tone);
 }

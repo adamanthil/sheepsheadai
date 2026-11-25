@@ -1630,6 +1630,11 @@ export interface components {
             kind: "pick" | "call" | "under" | "bury" | "play";
             /** Led */
             led: boolean;
+            /**
+             * Standing
+             * @enum {string}
+             */
+            standing: "forced" | "agreed" | "even" | "slight" | "costly" | "better";
             /** Table Name */
             table_name: string;
             /**

@@ -1,15 +1,12 @@
-/* What a choice cost reads in the red suit colour; what it gained in green. */
-.cost {
-  color: var(--accent-2);
-}
-.gain {
-  color: #1d6b42;
-}
 .red {
   color: var(--card-red);
 }
 .muted {
   color: var(--muted);
+}
+/* The hand's net against the AI: grey unless the hand is a notable one. */
+.net {
+  color: var(--tone, var(--muted));
 }
 .mono {
   font-family: var(--font-mono);
@@ -187,12 +184,9 @@
   stroke-dasharray: 2 4;
   stroke-linecap: round;
 }
-.gapCost {
-  stroke: var(--accent-2);
-  stroke-width: 1.5;
-}
-.gapGain {
-  stroke: #1d6b42;
+/* Solid, in the colour of what the choice cost or gained. */
+.gap {
+  stroke: var(--tone);
   stroke-width: 1.5;
 }
 .ring {
@@ -223,7 +217,7 @@
   transform: translate(-50%, -50%);
   border: none;
   border-radius: 50%;
-  background: var(--ink);
+  background: var(--tone, var(--ink));
   box-shadow: 0 0 0 2px var(--bg-page);
   cursor: pointer;
 }
@@ -232,12 +226,6 @@
   content: "";
   position: absolute;
   inset: -12px;
-}
-.dotCost {
-  background: var(--accent-2);
-}
-.dotGain {
-  background: #1d6b42;
 }
 .dotSelected {
   width: 13px;
@@ -323,15 +311,9 @@
 }
 .rowNote {
   font-size: 12px;
-  color: var(--muted);
+  color: var(--tone, var(--muted));
   margin-left: 8px;
   white-space: nowrap;
-}
-.rowNote.cost {
-  color: var(--accent-2);
-}
-.rowNote.gain {
-  color: #1d6b42;
 }
 .rowDifference {
   font-family: var(--font-mono);

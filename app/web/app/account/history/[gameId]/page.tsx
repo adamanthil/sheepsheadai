@@ -170,7 +170,6 @@ function Review({ gameId }: { gameId: string }) {
   const humans = review.seats.filter((s) => !s.is_ai);
   const ai = review.seats.length - humans.length;
   const handNet = summary ? net(summary.cost, summary.gained) : 0;
-  const netColour = netTone(handNet, summary?.notable ?? false);
 
   return (
     <>
@@ -212,7 +211,7 @@ function Review({ gameId }: { gameId: string }) {
       </h1>
       <div className={styles.meta}>
         <span>{roleLine}</span>
-        <span className={hand.score < 0 ? styles.cost : undefined}>
+        <span data-tone={hand.score < 0 ? "cost" : undefined}>
           {result} {signed(hand.score, 0)}
         </span>
         <span>
@@ -223,7 +222,8 @@ function Review({ gameId }: { gameId: string }) {
             <span>
               Net vs. AI{" "}
               <strong
-                className={`${styles.mono} ${netColour === "cost" ? styles.cost : netColour === "gain" ? styles.gain : styles.muted}`}
+                className={`${styles.mono} ${styles.net}`}
+                data-tone={netTone(handNet, summary.notable)}
               >
                 {signed(handNet)}
               </strong>{" "}
@@ -280,13 +280,15 @@ function Review({ gameId }: { gameId: string }) {
                         {actionCodes(d.action)}
                       </CardText>
                       <span
-                        className={`${styles.rowNote} ${d.standing === "costly" ? styles.cost : d.standing === "better" ? styles.gain : ""}`}
+                        className={styles.rowNote}
+                        data-tone={tone(d.standing)}
                       >
                         {decisionNote(d)}
                       </span>
                     </span>
                     <span
-                      className={`${styles.rowDifference} ${tone(d.difference) === "cost" ? styles.cost : tone(d.difference) === "gain" ? styles.gain : ""}`}
+                      className={styles.rowDifference}
+                      data-tone={tone(d.standing)}
                     >
                       {d.difference != null ? signed(d.difference) : "—"}
                       <span className={styles.caret} aria-hidden="true">

@@ -130,12 +130,6 @@
 
 /* ---- The AI comparison ----
    What a hand's choices cost (red) and gained (green) against the AI's. */
-.costText {
-  color: var(--accent-2);
-}
-.gainText {
-  color: #1d6b42;
-}
 .aiTable .barCell {
   width: 200px;
   padding-top: 0;
@@ -155,17 +149,11 @@
    colour. */
 .aiTable .net {
   font-size: 13px;
-  color: var(--muted);
+  color: var(--tone, var(--muted));
 }
 .aiTable .netNotable {
   font-size: 14px;
   font-weight: 700;
-}
-.aiTable .net.costText {
-  color: var(--accent-2);
-}
-.aiTable .net.gainText {
-  color: #1d6b42;
 }
 .aiTable .expandCell {
   width: 40px;
@@ -305,14 +293,8 @@
   height: 9px;
   margin: -5px 0 0 -5px;
   border-radius: 50%;
-  background: var(--ink);
+  background: var(--tone, var(--ink));
   box-shadow: 0 0 0 2px var(--bg-card);
-}
-.stripDotCost {
-  background: var(--accent-2);
-}
-.stripDotGain {
-  background: #1d6b42;
 }
 .stripCells {
   display: grid;
@@ -348,20 +330,12 @@
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 600;
-  color: var(--muted);
+  color: var(--tone, var(--muted));
 }
 .cellNote {
   font-size: 11px;
-  color: var(--muted);
+  color: var(--tone, var(--muted));
   white-space: nowrap;
-}
-.cellDifference.costText,
-.cellNote.costText {
-  color: var(--accent-2);
-}
-.cellDifference.gainText,
-.cellNote.gainText {
-  color: #1d6b42;
 }
 
 @media (max-width: 640px) {

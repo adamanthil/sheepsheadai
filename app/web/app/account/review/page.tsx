@@ -16,6 +16,7 @@ import {
   differenceLines,
   signed,
   tone,
+  totalTone,
 } from "../../../lib/review";
 import type {
   AccountReview,
@@ -51,11 +52,6 @@ const FIRST_SHOWN = 8;
 
 function percent(part: number, whole: number): string {
   return whole ? `${Math.round((part / whole) * 100)}%` : "—";
-}
-
-function toneClass(value: number): string {
-  const kind = tone(value);
-  return kind === "cost" ? styles.cost : kind === "gain" ? styles.gain : "";
 }
 
 /** Every reviewed hand, totalled: how often the player made the AI's
@@ -211,7 +207,7 @@ function Totals() {
           </div>
           <div>
             <dt>Net vs. AI</dt>
-            <dd className={toneClass(review.net)}>{signed(review.net)}</dd>
+            <dd data-tone={totalTone(review.net)}>{signed(review.net)}</dd>
             <dd className={styles.figureNote}>
               {signed(perHand, 2)} score per hand
             </dd>
@@ -345,7 +341,8 @@ function DifferenceRow({ difference }: { difference: ReviewDifference }) {
         aria-label={`${lines.yours}, ${signed(difference.difference)}. Review this decision`}
       >
         <span
-          className={`${styles.differenceValue} ${toneClass(difference.difference)}`}
+          className={styles.differenceValue}
+          data-tone={tone(difference.standing)}
         >
           {signed(difference.difference)}
         </span>
@@ -402,9 +399,7 @@ function Picking({ review }: { review: AccountReview }) {
         </div>
         <div>
           <dt>Score on those picks</dt>
-          <dd className={scored < 0 ? styles.cost : styles.gain}>
-            {signed(scored, 0)}
-          </dd>
+          <dd data-tone={scored < 0 ? "cost" : "gain"}>{signed(scored, 0)}</dd>
         </div>
       </dl>
       {picks.length > 0 && (
@@ -450,7 +445,8 @@ function PickCard({ pick }: { pick: ReviewPick }) {
           {DAY.format(new Date(pick.time_closed))} · {pick.table_name}
         </span>
         <span
-          className={`${styles.mono} ${pick.score < 0 ? styles.cost : styles.gain}`}
+          className={styles.mono}
+          data-tone={pick.score < 0 ? "cost" : "gain"}
         >
           {signed(pick.score, 0)}
         </span>

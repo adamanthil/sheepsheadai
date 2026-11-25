@@ -2869,6 +2869,18 @@
             "title": "Led",
             "type": "boolean"
           },
+          "standing": {
+            "enum": [
+              "forced",
+              "agreed",
+              "even",
+              "slight",
+              "costly",
+              "better"
+            ],
+            "title": "Standing",
+            "type": "string"
+          },
           "table_name": {
             "title": "Table Name",
             "type": "string"
@@ -2900,6 +2912,7 @@
           "ai_action",
           "ai_probability",
           "difference",
+          "standing",
           "time_closed",
           "table_name"
         ],

@@ -80,16 +80,16 @@ async def hand_seats(pool: asyncpg.Pool, game_id: UUID) -> List[asyncpg.Record]:
     )
 
 
-_DIFFERENCE_SQL = """
+_DIFFERENCE_SQL = f"""
 SELECT gp.game_id, d.index, d.kind, d.trick_index, d.table_cards, d.action,
-       d.model_action, d.policy, d.difference, g.time_closed,
-       t.name AS table_name
+       d.model_action, d.policy, d.difference, {STANDING_SQL} AS standing,
+       g.time_closed, t.name AS table_name
 FROM decision_review d
 JOIN game_player gp ON gp.game_player_id = d.game_player_id
 JOIN game g ON g.game_id = gp.game_id
 JOIN game_table t ON t.game_table_id = g.game_table_id
-WHERE gp.player_id = $1 AND {where}
-ORDER BY {order}, g.time_closed DESC
+WHERE gp.player_id = $1 AND {{where}}
+ORDER BY {{order}}, g.time_closed DESC
 LIMIT $2
 """
 
@@ -105,6 +105,7 @@ def _difference(row: asyncpg.Record) -> dict:
         "ai_action": row["model_action"],
         "ai_probability": decode(row["policy"])[0][1],
         "difference": row["difference"],
+        "standing": row["standing"],
         "time_closed": row["time_closed"].replace(tzinfo=UTC),
         "table_name": row["table_name"],
     }

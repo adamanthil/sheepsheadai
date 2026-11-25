@@ -7,13 +7,6 @@
 import { parseCard, suitSymbol } from "./ds/cardUtils";
 import type { DecisionReview, HandReview } from "./types";
 
-/** The bands for a difference in expected score (mirrors EVEN_BELOW and
- * FLAG_FROM in server/services/hand_review.py): under a quarter point is
- * "about even", a full point or more is flagged as a cost or a gain, and
- * what lies between is a small difference, shown without alarm. */
-export const EVEN_BELOW = 0.25;
-export const FLAG_FROM = 1.0;
-
 const MINUS = "−";
 
 /** "+1.2", "−0.7", "0.0": a difference in expected score. */
@@ -328,6 +321,8 @@ export function net(cost: number, gained: number): number {
   return Math.round((gained - cost) * 10) / 10;
 }
 
+/** How a figure is coloured. Put on an element as data-tone, which
+ * globals.css colours; "plain" leaves it as it was. */
 export type Tone = "cost" | "gain" | "plain";
 
 /** The colour of a hand's net: red or green by its sign for a notable
@@ -338,10 +333,21 @@ export function netTone(value: number, notable: boolean): Tone {
   return value < 0 ? "cost" : "gain";
 }
 
-/** Red at a full point lost or more, green at a full point gained. */
-export function tone(difference: number | null | undefined): Tone {
-  if (difference == null) return "plain";
-  if (difference <= -FLAG_FROM) return "cost";
-  if (difference >= FLAG_FROM) return "gain";
+/** The colour of a decision: red where it cost a full point against the
+ * AI's choice, green where it gained one. The server bands the decision
+ * (its standing); nothing here knows the thresholds. */
+export function tone(standing: DecisionReview["standing"]): Tone {
+  if (standing === "costly") return "cost";
+  if (standing === "better") return "gain";
+  return "plain";
+}
+
+/** A total over many hands is coloured once it is a point either way. A
+ * rule of its own, for sums: it says nothing about any one decision. */
+const TOTAL_TONE_FROM = 1;
+
+export function totalTone(total: number): Tone {
+  if (total <= -TOTAL_TONE_FROM) return "cost";
+  if (total >= TOTAL_TONE_FROM) return "gain";
   return "plain";
 }

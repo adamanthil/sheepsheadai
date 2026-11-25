@@ -18,7 +18,7 @@
 }
 .gained {
   left: 50%;
-  background: #1d6b42;
+  background: var(--gain);
 }
 .quiet .cost,
 .quiet .gained {

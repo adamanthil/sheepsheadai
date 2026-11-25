@@ -34,7 +34,7 @@ export default function ExpectedScoreChart({
   // Where the estimate would have stood after the AI's choice: the point
   // the hand really reached next, moved by the difference.
   const ghosts = decisions.flatMap((d, i) =>
-    d.difference != null && tone(d.difference) !== "plain"
+    d.difference != null && tone(d.standing) !== "plain"
       ? [{ i, d, value: actualAfter(i) - d.difference, actual: actualAfter(i) }]
       : [],
   );
@@ -127,11 +127,8 @@ export default function ExpectedScoreChart({
                     y2={y(g.value)}
                   />
                   <line
-                    className={
-                      tone(g.d.difference) === "cost"
-                        ? styles.gapCost
-                        : styles.gapGain
-                    }
+                    className={styles.gap}
+                    data-tone={tone(g.d.standing)}
                     x1={x(g.i + 1)}
                     y1={y(g.value)}
                     x2={x(g.i + 1)}
@@ -151,7 +148,8 @@ export default function ExpectedScoreChart({
                   style={{ left: left(g.i + 1), top: top(g.value) }}
                 />
                 <span
-                  className={`${styles.gapLabel} ${tone(g.d.difference) === "cost" ? styles.cost : styles.gain}`}
+                  className={styles.gapLabel}
+                  data-tone={tone(g.d.standing)}
                   style={{
                     left: left(g.i + 1),
                     top: top((g.value + g.actual) / 2),
@@ -165,7 +163,8 @@ export default function ExpectedScoreChart({
               <button
                 key={d.index}
                 type="button"
-                className={`${styles.dot} ${d.standing === "costly" ? styles.dotCost : d.standing === "better" ? styles.dotGain : ""} ${d.index === selected ? styles.dotSelected : ""}`}
+                className={`${styles.dot} ${d.index === selected ? styles.dotSelected : ""}`}
+                data-tone={tone(d.standing)}
                 style={{ left: left(i), top: top(d.expected_score) }}
                 aria-label={`${decisionLabel(d)}: expected score ${signed(d.expected_score)}`}
                 aria-pressed={d.index === selected}

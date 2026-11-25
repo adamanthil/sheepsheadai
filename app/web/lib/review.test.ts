@@ -14,6 +14,7 @@ import {
   shortAction,
   signed,
   tone,
+  totalTone,
 } from "./review";
 import type { DecisionReview, HandReview } from "./types";
 
@@ -292,11 +293,19 @@ describe("totals", () => {
     expect(netTone(0.5, false)).toBe("plain");
   });
 
-  it("colours only a full point or more", () => {
-    expect(tone(-1)).toBe("cost");
-    expect(tone(1)).toBe("gain");
-    expect(tone(-0.9)).toBe("plain");
-    expect(tone(null)).toBe("plain");
+  it("colours only a decision that cost or gained a full point", () => {
+    expect(tone("costly")).toBe("cost");
+    expect(tone("better")).toBe("gain");
+    expect(tone("slight")).toBe("plain");
+    expect(tone("even")).toBe("plain");
+    expect(tone("agreed")).toBe("plain");
+    expect(tone("forced")).toBe("plain");
+  });
+
+  it("colours a total from a point either way", () => {
+    expect(totalTone(-1)).toBe("cost");
+    expect(totalTone(3.2)).toBe("gain");
+    expect(totalTone(-0.9)).toBe("plain");
   });
 });
 

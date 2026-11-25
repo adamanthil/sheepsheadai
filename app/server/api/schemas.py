@@ -7,6 +7,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+from server.services.review_bands import Standing
+
 
 class RulesInput(BaseModel):
     """Full rules specification; unknown keys rejected."""
@@ -354,7 +356,7 @@ class DecisionReviewOut(BaseModel):
     policy: List[Tuple[str, float]]
     # even: under a quarter point either way; slight: a real difference
     # short of a full point; costly / better: a point or more.
-    standing: Literal["forced", "agreed", "even", "slight", "costly", "better"]
+    standing: Standing
     # The AI's expected score at the decision: from the seat's view, and
     # with every card known (None for a model without that estimate).
     expected_score: float
@@ -441,6 +443,8 @@ class ReviewDifference(BaseModel):
     # How likely the AI was to make its own choice.
     ai_probability: float
     difference: float
+    # costly or better: only a difference of a full point is listed.
+    standing: Standing
     time_closed: datetime
     table_name: str
 

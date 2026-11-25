@@ -214,8 +214,8 @@ function History() {
                 </th>
                 <th scope="col" className={styles.barCell}>
                   <span className={styles.barHead}>
-                    <span className={styles.costText}>Cost</span>
-                    <span className={styles.gainText}>Gained</span>
+                    <span data-tone="cost">Cost</span>
+                    <span data-tone="gain">Gained</span>
                   </span>
                 </th>
                 <th scope="col" className={styles.num}>
@@ -275,7 +275,6 @@ function AiRow({ hand }: { hand: HandHistoryRow }) {
   // near even. Those are drawn quietly, so the few where a decision moved
   // the hand a full point are the ones the eye finds.
   const notable = hand.review?.notable ?? false;
-  const netColour = netTone(handNet, notable);
   const lineTone = hand.counted_score < 0 ? styles.loss : "";
 
   const toggle = () => {
@@ -316,7 +315,8 @@ function AiRow({ hand }: { hand: HandHistoryRow }) {
               <CostGainBar cost={cost} gained={gained} quiet={!notable} />
             </td>
             <td
-              className={`${styles.num} ${styles.net} ${notable ? styles.netNotable : ""} ${netColour === "cost" ? styles.costText : netColour === "gain" ? styles.gainText : ""}`}
+              className={`${styles.num} ${styles.net} ${notable ? styles.netNotable : ""}`}
+              data-tone={netTone(handNet, notable)}
             >
               {cost === 0 && gained === 0 ? "—" : signedPoints(handNet)}
             </td>
