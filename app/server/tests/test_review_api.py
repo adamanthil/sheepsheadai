@@ -13,10 +13,11 @@ import httpx2
 import pytest
 
 from server.runtime import review_worker
-from server.services.hand_review import is_notable
 from server.services.high_trump import high_trump, played_before
 from server.services.persistence import reviews as reviews_db
+from server.services.persistence.review_reads import STANDING_SQL
 from server.services.persistence.sessions import create_session
+from server.services.review_bands import is_notable, standing
 from server.tests.test_hand_history import _play_hand
 from sheepshead.agent.ppo import PPOAgent
 from sheepshead.game import ACTIONS, PARTNER_BY_CALLED_ACE
@@ -222,6 +223,26 @@ async def test_review_totals_add_up_across_hands(db_app, agent):
     picks = body["picked_ai_passes"] + body["passed_ai_picks"]
     assert len(picks) == body["pick_decisions"] - body["pick_agreed"]
     assert all(len(p["hand"]) == 6 for p in picks)
+
+
+@needs_db
+async def test_stored_decisions_are_banded_as_the_engine_bands_them(db_app):
+    _, pool = db_app
+    differences = [None, 0.0, 0.2, -0.2, 0.3, -0.3, 0.9, -0.9, 1.0, -1.0, 2.5, -2.5]
+    cases = [(forced, d) for forced in (False, True) for d in differences]
+
+    rows = await pool.fetch(
+        f"""
+        SELECT {STANDING_SQL} AS standing
+        FROM unnest($1::boolean[], $2::real[])
+             WITH ORDINALITY AS d(is_forced, difference, n)
+        ORDER BY d.n
+        """,
+        [forced for forced, _ in cases],
+        [d for _, d in cases],
+    )
+
+    assert [r["standing"] for r in rows] == [standing(d, forced) for forced, d in cases]
 
 
 @needs_db

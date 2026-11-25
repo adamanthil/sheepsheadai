@@ -9,18 +9,22 @@ from uuid import UUID
 
 import asyncpg
 
-from server.services.hand_review import EVEN_BELOW, FLAG_FROM
 from server.services.persistence.stats import ROLE_SQL
+from server.services.review_bands import EVEN_BELOW, FLAG_FROM
 
 # Rows in each "largest differences" list of the review totals.
 REVIEW_LIST_SIZE = 30
 
-# A reviewed decision's standing against the AI's choice.
-_STANDING_SQL = f"""
+# A reviewed decision's standing against the AI's choice, as
+# review_bands.standing gives it (test_review_api holds the two together).
+# Every query that bands a decision is built from these.
+_COSTLY_SQL = f"d.difference <= -{FLAG_FROM}"
+_BETTER_SQL = f"d.difference >= {FLAG_FROM}"
+STANDING_SQL = f"""
 CASE WHEN d.is_forced THEN 'forced'
      WHEN d.difference IS NULL THEN 'agreed'
-     WHEN d.difference <= -{FLAG_FROM} THEN 'costly'
-     WHEN d.difference >= {FLAG_FROM} THEN 'better'
+     WHEN {_COSTLY_SQL} THEN 'costly'
+     WHEN {_BETTER_SQL} THEN 'better'
      WHEN abs(d.difference) < {EVEN_BELOW} THEN 'even'
      ELSE 'slight' END
 """
@@ -52,7 +56,7 @@ async def hand_review(
         return None
     decisions = await pool.fetch(
         f"""
-        SELECT d.*, {_STANDING_SQL} AS standing
+        SELECT d.*, {STANDING_SQL} AS standing
         FROM decision_review d
         WHERE d.game_player_id = $1
         ORDER BY d.index
@@ -172,10 +176,8 @@ async def account_review(pool: asyncpg.Pool, player_id: UUID) -> dict:
         SELECT CASE d.kind WHEN 'under' THEN 'call' ELSE d.kind END AS kind,
                count(*)::int AS decisions,
                count(*) FILTER (WHERE d.difference IS NULL)::int AS agreed,
-               count(*) FILTER (WHERE d.difference <= -{FLAG_FROM})::int
-                   AS costly,
-               count(*) FILTER (WHERE d.difference >= {FLAG_FROM})::int
-                   AS better,
+               count(*) FILTER (WHERE {_COSTLY_SQL})::int AS costly,
+               count(*) FILTER (WHERE {_BETTER_SQL})::int AS better,
                coalesce(sum(d.difference), 0)::float AS net
         FROM decision_review d
         JOIN game_player gp ON gp.game_player_id = d.game_player_id
@@ -186,16 +188,12 @@ async def account_review(pool: asyncpg.Pool, player_id: UUID) -> dict:
     )
     by_kind = {row["kind"]: row for row in kinds}
     cost_most = await pool.fetch(
-        _DIFFERENCE_SQL.format(
-            where=f"d.difference <= -{FLAG_FROM}", order="d.difference"
-        ),
+        _DIFFERENCE_SQL.format(where=_COSTLY_SQL, order="d.difference"),
         player_id,
         REVIEW_LIST_SIZE,
     )
     gained_most = await pool.fetch(
-        _DIFFERENCE_SQL.format(
-            where=f"d.difference >= {FLAG_FROM}", order="d.difference DESC"
-        ),
+        _DIFFERENCE_SQL.format(where=_BETTER_SQL, order="d.difference DESC"),
         player_id,
         REVIEW_LIST_SIZE,
     )

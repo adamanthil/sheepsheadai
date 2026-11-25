@@ -47,6 +47,7 @@ from typing import Collection, Dict, List, Optional, Sequence, Tuple
 import torch
 
 from server.services.ai_loader import inference_turn_in_thread
+from server.services.review_bands import FLAG_FROM, Standing, standing
 from sheepshead.agent import ppo
 from sheepshead.agent.observation import (
     last_trick_observation_for,
@@ -60,14 +61,6 @@ from sheepshead.rewards import RETURN_SCALE
 
 PICK = ACTION_IDS["PICK"]
 PASS = ACTION_IDS["PASS"]
-# Three bands for a difference in expected score, set from how often the
-# two choices really ended in different scores when production hands were
-# played out both ways (notebooks/Decision_Review_Design_202611.md, 11):
-# under EVEN_BELOW the final score almost never moves; from FLAG_FROM it
-# moves about four times in ten, nine in ten of those the predicted way;
-# in between it is a real but small difference.
-EVEN_BELOW = 0.25
-FLAG_FROM = 1.0
 
 
 class ReplayError(ValueError):
@@ -153,18 +146,8 @@ class DecisionReview:
         return round(self.chosen.score - self.model.score, 1)
 
     @property
-    def standing(self) -> str:
-        """forced | agreed | even | slight | costly | better."""
-        if self.forced:
-            return "forced"
-        difference = self.difference
-        if difference is None:
-            return "agreed"
-        if difference <= -FLAG_FROM:
-            return "costly"
-        if difference >= FLAG_FROM:
-            return "better"
-        return "even" if abs(difference) < EVEN_BELOW else "slight"
+    def standing(self) -> Standing:
+        return standing(self.difference, self.forced)
 
 
 @dataclass
@@ -192,15 +175,6 @@ class ReviewSummary:
     # Index of the decision that sums the hand up: the costliest, else the
     # best gain; None when no difference reaches FLAG_FROM.
     headline_index: Optional[int]
-
-
-def is_notable(cost: float, gained: float, costly: int, better: int) -> bool:
-    """Whether a reviewed hand is worth picking out of a list: one of its
-    decisions cost or gained a full point, and the hand's net came out a
-    full point the same way. A flagged decision that the hand's smaller
-    differences cancelled does not count."""
-    net = round(gained - cost, 1)
-    return (costly > 0 and net <= -FLAG_FROM) or (better > 0 and net >= FLAG_FROM)
 
 
 def summarize(decisions: Sequence[DecisionReview]) -> ReviewSummary:

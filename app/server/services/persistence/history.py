@@ -19,13 +19,13 @@ from uuid import UUID
 
 import asyncpg
 
-from server.services.hand_review import is_notable
 from server.services.persistence.stats import (
     ABANDONED_SQL,
     AI_ASSISTED_SQL,
     COUNTED_SCORE_SQL,
     ROLE_SQL,
 )
+from server.services.review_bands import is_notable
 
 PAGE_SIZE = 25
 

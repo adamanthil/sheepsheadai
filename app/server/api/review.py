@@ -18,7 +18,6 @@ from server.api.schemas import (
 )
 from server.config import get_settings
 from server.runtime import review_worker
-from server.services.hand_review import is_notable
 from server.services.high_trump import high_trump, played_before
 from server.services.persistence import accounts as accounts_db
 from server.services.persistence import history as history_db
@@ -26,6 +25,7 @@ from server.services.persistence import review_reads
 from server.services.persistence.hand_records import load_hands
 from server.services.persistence.pool import get_db_pool
 from server.services.persistence.review_reads import decode
+from server.services.review_bands import is_notable
 
 router = APIRouter()
 
