@@ -13,6 +13,7 @@ import {
   netTone,
   type HistoryView as View,
 } from "../../../lib/review";
+import { latestReviews } from "../../../lib/handHistory";
 import type { HandReview } from "../../../lib/types";
 import BetaTag from "../components/BetaTag";
 import CostGainBar from "../components/CostGainBar";
@@ -97,21 +98,24 @@ function History() {
 
   // Reviews arrive on their own: while a hand on show is still waiting,
   // look again now and then and take in whatever has been reviewed since.
-  const waiting = hands.some((hand) => hand.review?.status === "queued");
+  // The key is the hands waiting, so the looking stops once none are and
+  // starts over when older hands are shown.
+  const waiting = hands
+    .filter((hand) => hand.review?.status === "queued")
+    .map((hand) => hand.game_id)
+    .join(",");
   useEffect(() => {
     if (!waiting) return;
     const timer = window.setInterval(() => {
-      fetchHands(null).then(
-        (page) => {
-          const fresh = new Map(page.hands.map((h) => [h.game_id, h.review]));
+      latestReviews(waiting.split(",")).then(
+        (fresh) =>
           setHands((prev) =>
             prev.map((h) =>
               fresh.has(h.game_id)
                 ? { ...h, review: fresh.get(h.game_id) ?? null }
                 : h,
             ),
-          );
-        },
+          ),
         // A missed look is harmless; the next one will do.
         () => undefined,
       );
