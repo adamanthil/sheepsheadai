@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import type { Rules, TableSummary } from "../../../lib/types";
 import { apiFetch } from "../../../lib/api";
+import { reportCaught } from "../../../lib/reportCaught";
 import { useTableSocket } from "../../../lib/hooks/useTableSocket";
 import { useBusy } from "../../../lib/hooks/useBusy";
 import { useChatDraft } from "../../../lib/hooks/useChatDraft";
@@ -151,20 +152,38 @@ export default function WaitingRoom() {
     if (params?.id) router.prefetch(`/table/${params.id}`);
   }, [params?.id, router]);
 
+  /** POST a table request: the response when it succeeded, null (with the
+   * error shown) when the server refused or never answered. */
+  async function postTable(
+    path: string,
+    body: object,
+    failed: string,
+  ): Promise<Response | null> {
+    try {
+      const res = await apiFetch(`/api/tables/${params?.id}/${path}`, {
+        method: "POST",
+        body: JSON.stringify({ client_id: clientId, ...body }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        setError(j?.detail || failed);
+        return null;
+      }
+      return res;
+    } catch (err) {
+      reportCaught(err, `${path} post`);
+      setError(`${failed}: network error`);
+      return null;
+    }
+  }
+
   const seating = useBusy();
   const [seatPressed, setSeatPressed] = useState<number | null>(null);
   function chooseSeat(seat: number) {
     setSeatPressed(seat);
     void seating.run(async () => {
-      const res = await apiFetch(`/api/tables/${params?.id}/seat`, {
-        method: "POST",
-        body: JSON.stringify({ client_id: clientId, seat }),
-      });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        setError(j?.detail || "Seat selection failed");
-        return false;
-      }
+      const res = await postTable("seat", { seat }, "Seat selection failed");
+      if (!res) return false;
       setTable(await res.json());
       return true;
     });
@@ -233,15 +252,7 @@ export default function WaitingRoom() {
   function startGame() {
     void starting.run(
       async () => {
-        const res = await apiFetch(`/api/tables/${params?.id}/start`, {
-          method: "POST",
-          body: JSON.stringify({ client_id: clientId }),
-        });
-        if (!res.ok) {
-          const j = await res.json().catch(() => ({}));
-          setError(j?.detail || "Start failed");
-          return false;
-        }
+        if (!(await postTable("start", {}, "Start failed"))) return false;
         router.push(`/table/${params?.id}`);
         return true;
       },
@@ -254,18 +265,7 @@ export default function WaitingRoom() {
   function closeTable() {
     if (!params?.id || !clientId) return;
     void closing.run(
-      async () => {
-        const res = await apiFetch(`/api/tables/${params?.id}/close`, {
-          method: "POST",
-          body: JSON.stringify({ client_id: clientId }),
-        });
-        if (!res.ok) {
-          const j = await res.json().catch(() => ({}));
-          setError(j?.detail || "Close failed");
-          return false;
-        }
-        return true;
-      },
+      async () => (await postTable("close", {}, "Close failed")) !== null,
       { hold: true },
     );
   }
