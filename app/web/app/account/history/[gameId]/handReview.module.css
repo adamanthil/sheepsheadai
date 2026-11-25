@@ -413,7 +413,9 @@
   gap: 6px;
   margin-bottom: 12px;
 }
-.cardChosen {
+/* Two classes, to outrank the card's own border and shadow whichever
+   stylesheet happens to load last. */
+.cards .cardChosen {
   border-color: var(--ink);
   box-shadow: 0 0 0 1px var(--ink);
 }
