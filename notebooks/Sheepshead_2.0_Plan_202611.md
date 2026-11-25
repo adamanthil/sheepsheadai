@@ -7,7 +7,8 @@ search to terminal rollouts. On 11-22 the operator settled every open decision
 (§5): both oracle gates, the release criterion, the tripwires and the leaster
 cert rule. The acting-mode twin, dropped on 11-22, was reopened on 11-24 and read
 on 11-25: policy sampling matched committee acting in one step
-(`Acting_Mode_Twin_202611.md`). Whether 2.0 drops committee acting is open.
+(`Acting_Mode_Twin_202611.md`). On 11-25 the operator decided that 2.0's corpus
+samples the policy at every node (§5).
 
 ## Open before launch
 
@@ -41,7 +42,7 @@ phases.
 | Bootstrap | Seat is visible from episode 1; the bury head learns on its own |
 | Oracle pretraining | Fits the history oracle (and a recurrent control for the gate) |
 | League | History oracle is the GAE baseline; online gate over the first 200k episodes |
-| Policy iteration, corpus and distill | Leasters are searched; retention covers bidding heads only |
+| Policy iteration, corpus and distill | Leasters are searched; retention covers bidding heads only; the corpus samples the policy at every node (no committee acting) |
 | Policy iteration, bidding PPO | Bury trains alongside pick and partner |
 
 Release version and architecture name are independent, as they are for 1.0, so
@@ -321,8 +322,8 @@ see them, so improving them further is not a goal of this run.
 
 **Build order.** Rename the architecture; card-location table and its tests (D3);
 oracle network (D4–D5); registry and load guard (D6–D7); plumbing (D8); bury head
-(§3); leaster search with terminal routing (§4); gate tooling and final
-references (below). Build from `main`.
+(§3); leaster search with terminal routing (§4); corpus acting mode (below); gate
+tooling and final references (below). Build from `main`.
 
 **Before launch.**
 
@@ -333,23 +334,32 @@ references (below). Build from `main`.
 | Distill trains the oracle | One distill epoch on the history oracle (D8) | Oracle weights change |
 | References present | Every path in `FinalConfig.references` at launch | All exist; a missing file is otherwise skipped with only a log line, at the end of the run |
 
-**Acting-mode twin: dropped (operator, 11-22).** The proposal was to test whether the
-corpus could sample the policy at continuation instead of playing the committee's argmax
-on resolved rows. The only prior estimate (−0.0055 ± 0.0021 play-only for sampling,
-`CE_Teacher_Design_202608.md` §20.13 addendum 16) predicted it would fail its own bar.
-2.0 keeps committee acting as in 1.0.
+**Corpus acting mode: policy sampling at every node (operator, 11-25).** 1.0's corpus
+played the committee's argmax at resolved searched nodes and sampled the policy elsewhere.
+2.0 samples the policy at every node: `committee_act_frac` is 0.0 in the 2.0 program
+config (`program_config.py`; the default is 1.0 today). Search, targets and row selection
+are unchanged; only the move that continues the game differs. Once 2.0 no longer needs to
+reproduce a 1.0 corpus, the committee-acting branch in `distill_corpus.py` can be removed.
 
-**Reopened (operator, 11-24).** That estimate compared two students that both failed to
-improve under the one-epoch schedule, so it measured damage, not learning. A quarter-size
-twin at θ₀ under the final schedule was run (`Acting_Mode_Twin_202611.md`).
+Evidence (`Acting_Mode_Twin_202611.md`): a quarter-size twin at θ₀ on the same deals read
+policy-sampled minus committee-acted at +0.0006 ± 0.0011 on 64,000 deals per mode, against
+a seed floor of +0.0008 ± 0.0010; the trick-0 called-suit lead tied (99.80% against
+99.79%). The earlier −0.0055 ± 0.0021 for sampling (`CE_Teacher_Design_202608.md` §20.13
+addendum 16), on which the twin was dropped on 11-22, compared two students that both
+failed to improve under the one-epoch schedule.
 
-**Read (11-25).** Policy-sampled minus committee-acted is +0.0006 ± 0.0011 on 64,000 deals
-per mode, against a seed floor of +0.0008 ± 0.0010; the trick-0 called-suit lead ties
-(99.80% against 99.79%). The JD defender trump lead was seed-sensitive at this corpus size
-and does not separate the arms. The read is one step from θ₀; an effect that only appears
-in later iterations is not covered. The twin's recommendation is `--committee-act-frac 0.0`
-for 2.0 with the per-iteration cert as the guard. The operator has not decided; the text
-above still describes committee acting.
+Not covered by the twin, and so watched in the run:
+
+- **Compounding.** The twin is one step from θ₀. Committee acting was meant to put the
+  next iteration's search on improved lines, and an effect of that kind appears only in
+  later iterations. Each iteration's play-only cert is compared with 1.0's at the same
+  iteration. 1.0's play-only reads from `runs/202609_recall_rc/pi/iter{k}/cert.json`:
+  +0.0198, +0.0100, +0.0056, +0.0046, +0.0006, +0.0013 for iterations 1–6 (SE 0.002–0.003).
+  A lineage that stops compounding where 1.0 did not is the signal. The iteration-1
+  tripwire below is unchanged.
+- **Trick-0 defender trump lead in JD.** It was seed-sensitive in the twin (3.3% and 6.2%
+  for the two committee seeds, 7.2% policy-sampled, θ₀ 5.4%) and did not separate the
+  arms. It is read at each iteration's cert along with the trick-0 called-suit lead.
 
 **Gate tooling (to build).** `stop_after` only accepts `iter{k}.{stage}`, so the offline
 gate needs a pause point after oracle pretraining.
@@ -738,3 +748,6 @@ read at the WRONG nodes (§7.1 there) has not been run.
 - **2026-11-25.** Acting-mode twin read: no measurable one-step cost to policy sampling at
   every node (+0.0006 ± 0.0011). Dropping committee acting from 2.0 is recommended and
   awaits the operator.
+- **2026-11-25.** Operator decision: 2.0's corpus samples the policy at every node
+  (`committee_act_frac` 0.0). Per-iteration cert and trick-0 convention reads are the
+  guard (§5).
