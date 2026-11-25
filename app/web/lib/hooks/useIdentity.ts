@@ -3,7 +3,7 @@ import type { TableSummary } from "../types";
 import { apiFetch } from "../api";
 import { useAccount } from "../account";
 import { reportCaught } from "../reportCaught";
-import { STORAGE_KEYS } from "../storage";
+import { STORAGE_KEYS, localStore } from "../storage";
 
 const SHIRE_TOWNS = [
   "Bywater",
@@ -74,9 +74,8 @@ export function useIdentity(tables: TableSummary[]): UseIdentityReturn {
   useEffect(() => {
     if (typeof window === "undefined") return;
     let cancelled = false;
-    const storedId = window.localStorage.getItem(STORAGE_KEYS.playerId);
-    const storedName =
-      window.localStorage.getItem(STORAGE_KEYS.displayName) ?? "";
+    const storedId = localStore.getItem(STORAGE_KEYS.playerId);
+    const storedName = localStore.getItem(STORAGE_KEYS.displayName) ?? "";
     if (storedName) {
       setDisplayNameInput(storedName);
     }
@@ -90,14 +89,14 @@ export function useIdentity(tables: TableSummary[]): UseIdentityReturn {
         const res = await apiFetch(`/api/players/${storedId}`);
         if (cancelled) return;
         if (res.status === 404) {
-          window.localStorage.removeItem(STORAGE_KEYS.playerId);
+          localStore.removeItem(STORAGE_KEYS.playerId);
           setPlayerId(null);
           return;
         }
         if (!res.ok) return;
         const data = await res.json();
         if (data.name) {
-          window.localStorage.setItem(STORAGE_KEYS.displayName, data.name);
+          localStore.setItem(STORAGE_KEYS.displayName, data.name);
           setDisplayNameInput((prev) => prev || data.name);
         }
       } catch (err) {
@@ -128,14 +127,14 @@ export function useIdentity(tables: TableSummary[]): UseIdentityReturn {
 
   const persistTypedName = async (id: string | null, typedName: string) => {
     if (typeof window === "undefined" || !id || !typedName) return;
-    const previous = window.localStorage.getItem(STORAGE_KEYS.displayName);
+    const previous = localStore.getItem(STORAGE_KEYS.displayName);
     if (previous === typedName) return;
     try {
       await apiFetch(`/api/players/${id}`, {
         method: "PATCH",
         body: JSON.stringify({ name: typedName }),
       });
-      window.localStorage.setItem(STORAGE_KEYS.displayName, typedName);
+      localStore.setItem(STORAGE_KEYS.displayName, typedName);
     } catch (err) {
       // best-effort; live display name still works via display_name field
       reportCaught(err, "display name save");
@@ -149,7 +148,7 @@ export function useIdentity(tables: TableSummary[]): UseIdentityReturn {
     if (typeof window === "undefined") return playerId;
     let resultId = playerId;
     if (joined.player_id && joined.player_id !== playerId) {
-      window.localStorage.setItem(STORAGE_KEYS.playerId, joined.player_id);
+      localStore.setItem(STORAGE_KEYS.playerId, joined.player_id);
       setPlayerId(joined.player_id);
       resultId = joined.player_id;
     }

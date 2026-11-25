@@ -1,5 +1,5 @@
 import { apiFetch, storeSessionToken } from "./api";
-import { STORAGE_KEYS } from "./storage";
+import { STORAGE_KEYS, localStore } from "./storage";
 import type { UseIdentityReturn } from "./hooks/useIdentity";
 
 // Why the server refused to open a table, in the player's terms.
@@ -67,7 +67,7 @@ export async function createAndJoinTable({
 
   const joined = await res2.json();
   storeSessionToken(joined.session_token);
-  window.localStorage.setItem(STORAGE_KEYS.clientId(t.id), joined.client_id);
+  localStore.setItem(STORAGE_KEYS.clientId(t.id), joined.client_id);
   await persistIdentityFromJoin(joined, typedName);
   return t.id;
 }

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
-import { STORAGE_KEYS } from "../../../lib/storage";
+import { STORAGE_KEYS, localStore } from "../../../lib/storage";
 import { useCountdown } from "../../../lib/hooks/useCountdown";
 import { useChatDraft } from "../../../lib/hooks/useChatDraft";
 import { useChatMutes } from "../../../lib/hooks/useChatMutes";
@@ -91,9 +91,7 @@ export default function TablePage() {
 
   useEffect(() => {
     if (typeof window === "undefined" || !params?.id) return;
-    const stored = window.localStorage.getItem(
-      STORAGE_KEYS.clientId(params.id),
-    );
+    const stored = localStore.getItem(STORAGE_KEYS.clientId(params.id));
     if (stored) setClientId(stored);
     else router.replace("/");
   }, [params?.id, router]);

@@ -7,7 +7,7 @@ import { tableRoute } from "../lib/tableRoute";
 import { apiFetch, storeSessionToken } from "../lib/api";
 import { HttpStatusError } from "../lib/apiError";
 import { reportCaught } from "../lib/reportCaught";
-import { STORAGE_KEYS } from "../lib/storage";
+import { STORAGE_KEYS, localStore } from "../lib/storage";
 import { createAndJoinTable } from "../lib/createTable";
 import { AccountSeal, PlayingCard, ds } from "../lib/ds";
 import { allPassModeLabel, partnerModeLabel } from "../lib/rules";
@@ -170,9 +170,7 @@ export default function HomePage() {
     try {
       // If we have a stored client id for this table, reuse it
       if (typeof window !== "undefined") {
-        const existing = window.localStorage.getItem(
-          STORAGE_KEYS.clientId(tableId),
-        );
+        const existing = localStore.getItem(STORAGE_KEYS.clientId(tableId));
         if (existing) {
           await persistTypedName(playerId, displayNameInput.trim());
           router.push(route);
@@ -197,10 +195,7 @@ export default function HomePage() {
       const data = await res.json();
       storeSessionToken(data.session_token);
       if (typeof window !== "undefined") {
-        window.localStorage.setItem(
-          STORAGE_KEYS.clientId(tableId),
-          data.client_id,
-        );
+        localStore.setItem(STORAGE_KEYS.clientId(tableId), data.client_id);
       }
       const typedName = displayNameInput.trim();
       await persistIdentityFromJoin(data, typedName);

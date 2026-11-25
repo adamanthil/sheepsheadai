@@ -3,7 +3,7 @@ import type { ChatMessage, TableStateMsg, TableView } from "../types";
 import { apiFetch, wsSubprotocols, wsUrl } from "../api";
 import { HttpStatusError } from "../apiError";
 import { reportCaught } from "../reportCaught";
-import { STORAGE_KEYS } from "../storage";
+import { STORAGE_KEYS, localStore } from "../storage";
 import { parseWsMessage } from "../wsMessages";
 import { diffCallouts } from "../callouts";
 import { applyPendingMove, isPredicted, type PendingMove } from "../optimistic";
@@ -174,7 +174,7 @@ export function useTableSocket(
           // The table closed while we were away, or with the server's
           // restart: forget it so the lobby doesn't offer to resume it,
           // and leave its dead page for the lobby, saying why.
-          window.localStorage.removeItem(STORAGE_KEYS.clientId(tableId));
+          localStore.removeItem(STORAGE_KEYS.clientId(tableId));
           window.location.replace(
             restarting ? "/?notice=restart" : "/?notice=gone",
           );
@@ -197,7 +197,7 @@ export function useTableSocket(
       // and a rejoin is a fresh join (the server forgot this connection).
       const departed = (how: Departure) => {
         disposed = true;
-        window.localStorage.removeItem(STORAGE_KEYS.clientId(tableId));
+        localStore.removeItem(STORAGE_KEYS.clientId(tableId));
         socket.close();
         setDeparture(how);
       };
@@ -301,14 +301,14 @@ export function useTableSocket(
         } else if (data.type === "kicked") {
           // Forget this table's connection so the lobby's Join doesn't try
           // to resume it, and say why on the home page.
-          window.localStorage.removeItem(STORAGE_KEYS.clientId(tableId));
+          localStore.removeItem(STORAGE_KEYS.clientId(tableId));
           socket.close();
           window.location.href = "/?notice=removed";
         } else if (data.type === "left") {
           // This player left (from this tab or another): every tab goes
           // home, and a rejoin is a fresh join.
           disposed = true;
-          window.localStorage.removeItem(STORAGE_KEYS.clientId(tableId));
+          localStore.removeItem(STORAGE_KEYS.clientId(tableId));
           socket.close();
           window.location.replace("/");
         } else if (data.type === "left_after_hand") {
@@ -455,7 +455,7 @@ export function useTableSocket(
   const leaveTable = useCallback(async () => {
     const ok = await post("leave", {}, "Leave failed");
     if (ok && tableId) {
-      window.localStorage.removeItem(STORAGE_KEYS.clientId(tableId));
+      localStore.removeItem(STORAGE_KEYS.clientId(tableId));
     }
     return ok;
   }, [post, tableId]);

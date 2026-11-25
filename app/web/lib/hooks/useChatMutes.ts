@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ChatMessage } from "../types";
 import type { Typist } from "../typing";
-import { STORAGE_KEYS } from "../storage";
+import { STORAGE_KEYS, localStore } from "../storage";
 
 export interface ChatMutes {
   /** Muted authors at this table: client id -> display name. */
@@ -23,7 +23,7 @@ export function useChatMutes(tableId: string | undefined): ChatMutes {
   useEffect(() => {
     if (!tableId) return;
     try {
-      const raw = window.localStorage.getItem(STORAGE_KEYS.chatMutes(tableId));
+      const raw = localStore.getItem(STORAGE_KEYS.chatMutes(tableId));
       setMuted(raw ? (JSON.parse(raw) as Record<string, string>) : {});
     } catch {
       setMuted({});
@@ -35,7 +35,7 @@ export function useChatMutes(tableId: string | undefined): ChatMutes {
       setMuted(next);
       if (!tableId) return;
       try {
-        window.localStorage.setItem(
+        localStore.setItem(
           STORAGE_KEYS.chatMutes(tableId),
           JSON.stringify(next),
         );

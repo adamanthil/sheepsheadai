@@ -8,7 +8,7 @@ import { useCallback, useEffect, useState } from "react";
 import { apiFetch, getSessionToken } from "./api";
 import { ApiFailure } from "./apiError";
 import { reportCaught } from "./reportCaught";
-import { STORAGE_KEYS } from "./storage";
+import { STORAGE_KEYS, localStore } from "./storage";
 import type { AccountMe, AccountSession, HandHistory } from "./types";
 
 /** A failed account call, carrying the server's `detail` code. */
@@ -70,22 +70,20 @@ const post = <T>(path: string, body?: unknown) =>
  * belong to the previous player (the socket would refuse them), so they
  * are dropped when the player changes; rejoining a table is one click. */
 export function switchIdentity(session: AccountSession) {
-  const ls = window.localStorage;
   if (session.session_token) {
-    ls.setItem(STORAGE_KEYS.sessionToken, session.session_token);
+    localStore.setItem(STORAGE_KEYS.sessionToken, session.session_token);
   }
-  if (ls.getItem(STORAGE_KEYS.playerId) !== session.player_id) {
+  if (localStore.getItem(STORAGE_KEYS.playerId) !== session.player_id) {
     forgetTableSeats();
-    ls.setItem(STORAGE_KEYS.playerId, session.player_id);
+    localStore.setItem(STORAGE_KEYS.playerId, session.player_id);
   }
-  if (session.name) ls.setItem(STORAGE_KEYS.displayName, session.name);
+  if (session.name) localStore.setItem(STORAGE_KEYS.displayName, session.name);
 }
 
 function forgetTableSeats() {
-  const ls = window.localStorage;
   const prefix = STORAGE_KEYS.clientId("");
-  for (const key of Object.keys(ls)) {
-    if (key.startsWith(prefix)) ls.removeItem(key);
+  for (const key of localStore.keys()) {
+    if (key.startsWith(prefix)) localStore.removeItem(key);
   }
 }
 
@@ -103,9 +101,8 @@ export async function logout() {
   } catch {
     // Already invalid server-side; forgetting it locally is what matters.
   }
-  const ls = window.localStorage;
-  ls.removeItem(STORAGE_KEYS.sessionToken);
-  ls.removeItem(STORAGE_KEYS.playerId);
+  localStore.removeItem(STORAGE_KEYS.sessionToken);
+  localStore.removeItem(STORAGE_KEYS.playerId);
   forgetTableSeats();
 }
 

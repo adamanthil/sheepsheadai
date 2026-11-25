@@ -10,7 +10,7 @@ import { useChatDraft } from "../../../lib/hooks/useChatDraft";
 import { useChatMutes } from "../../../lib/hooks/useChatMutes";
 import { useTypingSignal } from "../../../lib/hooks/useTypingSignal";
 import { useChatUnread } from "../../../lib/hooks/useChatUnread";
-import { STORAGE_KEYS } from "../../../lib/storage";
+import { STORAGE_KEYS, localStore } from "../../../lib/storage";
 import { tableRoute } from "../../../lib/tableRoute";
 import styles from "./page.module.css";
 import { ChatPanel } from "../../components/chat";
@@ -35,9 +35,7 @@ export default function WaitingRoom() {
   // Hydrate client_id from localStorage (Phase 2: no more ?client_id in URLs).
   useEffect(() => {
     if (typeof window === "undefined" || !params?.id) return;
-    const stored = window.localStorage.getItem(
-      STORAGE_KEYS.clientId(params.id),
-    );
+    const stored = localStore.getItem(STORAGE_KEYS.clientId(params.id));
     if (stored) {
       setClientId(stored);
     } else {

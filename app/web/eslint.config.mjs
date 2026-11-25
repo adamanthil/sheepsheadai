@@ -24,6 +24,30 @@ export default [
     files: SOURCES,
   },
   {
+    // Some in-app browsers have no web storage (null, or a SecurityError on
+    // access), and touching it directly crashes the page for them. The
+    // stores in lib/storage.ts fall back to memory.
+    files: ["app/**/*.{ts,tsx}", "lib/**/*.{ts,tsx}"],
+    ignores: ["lib/storage.ts", "**/*.test.ts"],
+    rules: {
+      "no-restricted-properties": [
+        "error",
+        ...["localStorage", "sessionStorage"].map((property) => ({
+          object: "window",
+          property,
+          message: "Use localStore/sessionStore from lib/storage.ts.",
+        })),
+      ],
+      "no-restricted-globals": [
+        "error",
+        ...["localStorage", "sessionStorage"].map((name) => ({
+          name,
+          message: "Use localStore/sessionStore from lib/storage.ts.",
+        })),
+      ],
+    },
+  },
+  {
     // CSS-module class names are a build detail: their format changed under
     // the specs once already and broke four of them silently. Find elements
     // by role and accessible name (adding them to the component if missing),

@@ -1,16 +1,16 @@
 import { API_BASE } from "./apiBase";
-import { STORAGE_KEYS } from "./storage";
+import { STORAGE_KEYS, localStore } from "./storage";
 
 export function getSessionToken(): string | null {
   if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(STORAGE_KEYS.sessionToken);
+  return localStore.getItem(STORAGE_KEYS.sessionToken);
 }
 
 /** Store the token returned by a join response (present only when the
  * server minted a fresh identity). */
 export function storeSessionToken(token: string | null | undefined) {
   if (typeof window === "undefined" || !token) return;
-  window.localStorage.setItem(STORAGE_KEYS.sessionToken, token);
+  localStore.setItem(STORAGE_KEYS.sessionToken, token);
 }
 
 /** fetch against the API with the session token attached. Sets a JSON
