@@ -30,7 +30,7 @@ CASE WHEN d.is_forced THEN 'forced'
 """
 
 
-def decode(value: Any) -> Any:
+def _decode(value: Any) -> Any:
     """A JSONB column as asyncpg hands it back (text unless a codec is set)."""
     return json.loads(value) if isinstance(value, str) else value
 
@@ -39,11 +39,14 @@ async def hand_review(
     pool: asyncpg.Pool, player_id: UUID, game_id: UUID
 ) -> Optional[Dict[str, Any]]:
     """The stored review of ``player_id``'s seat in ``game_id``: its queue
-    row (with the model's label) and its decisions. None if the player was
-    not in the hand or it was never queued."""
+    row (with the model's label) and its decisions, each with its standing
+    and its JSON columns decoded. None if the player was not in the hand or
+    it was never queued."""
     row = await pool.fetchrow(
         """
-        SELECT hr.*, gp.position, m.label AS ai_model
+        SELECT hr.game_player_id, hr.status, hr.decisions, hr.agreed, hr.even,
+               hr.slight, hr.costly, hr.better, hr.cost, hr.gained,
+               hr.headline_index, m.label AS ai_model
         FROM hand_review hr
         JOIN game_player gp ON gp.game_player_id = hr.game_player_id
         LEFT JOIN ai_model m ON m.ai_model_id = hr.ai_model_id
@@ -56,14 +59,27 @@ async def hand_review(
         return None
     decisions = await pool.fetch(
         f"""
-        SELECT d.*, {STANDING_SQL} AS standing
+        SELECT d.index, d.kind, d.trick_index, d.hand, d.table_cards,
+               d.action, d.model_action, d.policy, d.expected_score,
+               d.oracle_score, d.chosen_score, d.model_score, d.difference,
+               {STANDING_SQL} AS standing
         FROM decision_review d
         WHERE d.game_player_id = $1
         ORDER BY d.index
         """,
         row["game_player_id"],
     )
-    return {"row": row, "decisions": decisions}
+    return {
+        "row": row,
+        "decisions": [
+            dict(d)
+            | {
+                "table_cards": _decode(d["table_cards"]),
+                "policy": _decode(d["policy"]),
+            }
+            for d in decisions
+        ],
+    }
 
 
 async def hand_seats(pool: asyncpg.Pool, game_id: UUID) -> List[asyncpg.Record]:
@@ -116,10 +132,10 @@ def _difference(row: asyncpg.Record) -> dict:
         "index": row["index"],
         "kind": row["kind"],
         "trick": row["trick_index"],
-        "led": row["kind"] == "play" and not decode(row["table_cards"]),
+        "led": row["kind"] == "play" and not _decode(row["table_cards"]),
         "action": row["action"],
         "ai_action": row["model_action"],
-        "ai_probability": decode(row["policy"])[0][1],
+        "ai_probability": _decode(row["policy"])[0][1],
         "difference": row["difference"],
         "standing": row["standing"],
         "time_closed": row["time_closed"].replace(tzinfo=UTC),
@@ -185,7 +201,7 @@ async def _picks(pool: asyncpg.Pool, player_id: UUID, picked: bool) -> dict:
     )
     out = []
     for row in rows:
-        chances = {action: p for action, p in decode(row["policy"])}
+        chances = {action: p for action, p in _decode(row["policy"])}
         chosen, model = row["chosen_score"], row["model_score"]
         out.append(
             {
