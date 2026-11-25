@@ -9,7 +9,14 @@ import { apiFetch, getSessionToken } from "./api";
 import { ApiFailure } from "./apiError";
 import { reportCaught } from "./reportCaught";
 import { STORAGE_KEYS } from "./storage";
-import type { AccountMe, AccountSession, HandHistory } from "./types";
+import type {
+  AccountMe,
+  AccountReview,
+  AccountSession,
+  HandHistory,
+  HandReview,
+  ReviewQueue,
+} from "./types";
 
 /** A failed account call, carrying the server's `detail` code. */
 export class AccountError extends ApiFailure {
@@ -136,6 +143,18 @@ export const fetchHands = (before?: string | null) =>
       ? `/api/account/hands?before=${encodeURIComponent(before)}`
       : "/api/account/hands",
   );
+
+/** One of the account's hands, decision by decision, against the AI. */
+export const fetchHandReview = (gameId: string) =>
+  call<HandReview>(`/api/account/hands/${encodeURIComponent(gameId)}/review`);
+
+/** The account's reviewed hands, totalled. */
+export const fetchAccountReview = () =>
+  call<AccountReview>("/api/account/review");
+
+/** The AI review queue; administrators only. */
+export const fetchReviewQueue = () =>
+  call<ReviewQueue>("/api/admin/review-queue");
 
 export async function usernameAvailable(username: string): Promise<boolean> {
   const data = await call<{ available: boolean }>(
