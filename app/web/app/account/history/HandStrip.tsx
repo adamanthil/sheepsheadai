@@ -12,6 +12,7 @@ import { signed } from "../../../lib/format";
 import { handReviewHref } from "../../../lib/reviewLinks";
 import type { HandReview } from "../../../lib/types";
 import SuitText from "../components/SuitText";
+import { axisReach, columnX } from "./scoreChart";
 import styles from "./history.module.css";
 
 /** Under an opened history row: the hand's headline, the AI's expected
@@ -21,12 +22,10 @@ export default function HandStrip({ review }: { review: HandReview }) {
   const { decisions } = review;
   const headline = handHeadline(review);
   const n = decisions.length;
-  const reach = Math.ceil(
-    Math.max(4, ...decisions.map((d) => Math.abs(d.expected_score))),
-  );
+  const reach = axisReach(decisions.map((d) => d.expected_score));
   const y = (value: number) => 32 - (value / reach) * 28;
   const points = decisions
-    .map((d, i) => `${50 + 100 * i},${y(d.expected_score).toFixed(1)}`)
+    .map((d, i) => `${columnX(i)},${y(d.expected_score).toFixed(1)}`)
     .join(" ");
 
   return (

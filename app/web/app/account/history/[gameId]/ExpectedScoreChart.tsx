@@ -2,6 +2,7 @@ import React from "react";
 import { decisionLabel, tone } from "../../../../lib/review";
 import { signed } from "../../../../lib/format";
 import type { DecisionReview } from "../../../../lib/types";
+import { axisReach, columnX } from "../scoreChart";
 import styles from "./handReview.module.css";
 
 /** The AI's expected score before each of the player's decisions, ending
@@ -27,7 +28,7 @@ export default function ExpectedScoreChart({
   const n = decisions.length;
   // One column per decision plus one for the end of the hand; the SVG's
   // units are a hundred per column and a hundred each side of zero.
-  const x = (i: number) => 50 + 100 * i;
+  const x = columnX;
   const left = (i: number) => `${((i + 0.5) / (n + 1)) * 100}%`;
 
   const actualAfter = (i: number) =>
@@ -40,14 +41,12 @@ export default function ExpectedScoreChart({
       : [],
   );
 
-  const reach = Math.max(
-    4,
-    Math.abs(finalScore),
-    ...decisions.map((d) => Math.abs(d.expected_score)),
-    ...decisions.map((d) => Math.abs(d.oracle_score ?? 0)),
-    ...ghosts.map((g) => Math.abs(g.value)),
-  );
-  const domain = Math.ceil(reach);
+  const domain = axisReach([
+    finalScore,
+    ...decisions.map((d) => d.expected_score),
+    ...decisions.map((d) => d.oracle_score ?? 0),
+    ...ghosts.map((g) => g.value),
+  ]);
   const y = (value: number) => 100 - (value / domain) * 90;
   const top = (value: number) => `${y(value) / 2}%`;
 
