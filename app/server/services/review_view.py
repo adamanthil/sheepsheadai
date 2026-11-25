@@ -19,7 +19,7 @@ from server.services.high_trump import high_trump, played_before
 from server.services.persistence import history as history_db
 from server.services.persistence import review_reads
 from server.services.persistence.hand_records import load_hands
-from server.services.review_bands import is_notable
+from server.services.review_bands import hand_net, is_notable
 from sheepshead.game import PARTNER_BY_CALLED_ACE
 
 _SUMMARY_FIGURES = (
@@ -81,6 +81,7 @@ def _decision(stored: Dict[str, Any], record: HandRecord, seat: int) -> dict:
 
 def _summary(row: asyncpg.Record) -> dict:
     summary = {key: row[key] for key in _SUMMARY_FIGURES}
+    summary["net"] = hand_net(row["cost"], row["gained"])
     summary["notable"] = is_notable(
         row["cost"], row["gained"], row["costly"], row["better"]
     )

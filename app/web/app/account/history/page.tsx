@@ -9,7 +9,6 @@ import {
 } from "../../../lib/account";
 import {
   historyHref,
-  net,
   netTone,
   type HistoryView as View,
 } from "../../../lib/review";
@@ -249,7 +248,7 @@ function AiRow({ hand }: { hand: HandHistoryRow }) {
   const reviewed = status === "reviewed";
   const cost = hand.review?.cost ?? 0;
   const gained = hand.review?.gained ?? 0;
-  const handNet = net(cost, gained);
+  const handNet = hand.review?.net ?? 0;
   // Most hands differ from the AI's line a little each way and come out
   // near even. Those are drawn quietly, so the few where a decision moved
   // the hand a full point are the ones the eye finds.

@@ -24,7 +24,6 @@ import {
   decisionNote,
   handHeadline,
   historyHref,
-  net,
   netTone,
   partnerLine,
   tone,
@@ -156,7 +155,6 @@ function Review({ gameId }: { gameId: string }) {
   });
   const humans = review.seats.filter((s) => !s.is_ai);
   const ai = review.seats.length - humans.length;
-  const handNet = summary ? net(summary.cost, summary.gained) : 0;
 
   return (
     <>
@@ -210,9 +208,9 @@ function Review({ gameId }: { gameId: string }) {
               Net vs. AI{" "}
               <strong
                 className={`${styles.mono} ${styles.net}`}
-                data-tone={netTone(handNet, summary.notable)}
+                data-tone={netTone(summary.net, summary.notable)}
               >
-                {signed(handNet, 1)}
+                {signed(summary.net, 1)}
               </strong>{" "}
               <span className={styles.muted}>
                 (cost {summary.cost.toFixed(1)}, gained{" "}

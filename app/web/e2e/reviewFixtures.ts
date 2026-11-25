@@ -42,7 +42,13 @@ const row: HandHistoryRow = {
   ai_assisted: false,
   abandoned: false,
   opponents: { humans: 0, ai: 4 },
-  review: { status: "reviewed", cost: 1.2, gained: 1.4, notable: false },
+  review: {
+    status: "reviewed",
+    cost: 1.2,
+    gained: 1.4,
+    net: 0.2,
+    notable: false,
+  },
 };
 
 export const hands: HandHistory = { hands: [row], next_cursor: null };
@@ -72,6 +78,7 @@ export const handReview: HandReview = {
     better: 1,
     cost: 1.2,
     gained: 1.4,
+    net: 0.2,
     headline_index: 2,
     notable: false,
   },

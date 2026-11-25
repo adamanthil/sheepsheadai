@@ -308,11 +308,6 @@ export function historyHref(view: HistoryView): string {
   return view === "ai" ? "/account/history?view=ai" : "/account/history";
 }
 
-/** A hand's net against the AI from its two totals. */
-export function net(cost: number, gained: number): number {
-  return Math.round((gained - cost) * 10) / 10;
-}
-
 /** How a figure is coloured. Put on an element as data-tone, which
  * globals.css colours; "plain" leaves it as it was. */
 export type Tone = "cost" | "gain" | "plain";

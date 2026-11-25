@@ -8,7 +8,6 @@ import {
   decisionNote,
   differenceLines,
   handHeadline,
-  net,
   netTone,
   partnerLine,
   shortAction,
@@ -52,7 +51,7 @@ function review(
   status: "queued" | "reviewed" | "skipped" | "failed" = "reviewed",
 ): HandReview {
   return {
-    hand: { review: { status, cost: 0, gained: 0, notable: false } },
+    hand: { review: { status, cost: 0, gained: 0, net: 0, notable: false } },
     summary:
       status === "reviewed"
         ? {
@@ -64,6 +63,7 @@ function review(
             better: 0,
             cost: 0,
             gained: 0,
+            net: 0,
             headline_index: null,
             notable: false,
             ...summary,
@@ -263,17 +263,13 @@ describe("totals", () => {
         better: 1,
         cost: 2.7,
         gained: 0.9,
+        net: -1.8,
         headline_index: 6,
         notable: false,
       }),
     ).toBe(
       "8 decisions: 4 agreed, 1 about even, 1 small difference, 2 cost you, 1 gained",
     );
-  });
-
-  it("nets cost against gain to one decimal", () => {
-    expect(net(2.7, 0.9)).toBe(-1.8);
-    expect(net(0.1, 0.1)).toBe(0);
   });
 
   it("colours a net only for a notable hand", () => {

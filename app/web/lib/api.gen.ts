@@ -1377,6 +1377,8 @@ export interface components {
             cost: number | null;
             /** Gained */
             gained: number | null;
+            /** Net */
+            net: number | null;
             /** Notable */
             notable: boolean;
             /**
@@ -1432,6 +1434,8 @@ export interface components {
             gained: number;
             /** Headline Index */
             headline_index: number | null;
+            /** Net */
+            net: number;
             /** Notable */
             notable: boolean;
             /** Slight */

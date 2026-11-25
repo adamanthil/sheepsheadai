@@ -5,7 +5,7 @@ import type { HandHistory, HandHistoryRow } from "./types";
 function hand(id: string, status: "queued" | "reviewed"): HandHistoryRow {
   return {
     game_id: id,
-    review: { status, cost: null, gained: null, notable: false },
+    review: { status, cost: null, gained: null, net: null, notable: false },
   } as HandHistoryRow;
 }
 

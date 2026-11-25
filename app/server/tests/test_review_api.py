@@ -93,6 +93,7 @@ async def test_history_rows_say_where_the_review_stands(db_app, agent):
         "status": "queued",
         "cost": None,
         "gained": None,
+        "net": None,
         "notable": False,
     }
     review = done["hands"][0]["review"]
@@ -103,6 +104,7 @@ async def test_history_rows_say_where_the_review_stands(db_app, agent):
         players[1],
     )
     assert review["notable"] == is_notable(*stored)
+    assert review["net"] == pytest.approx(review["gained"] - review["cost"], abs=0.05)
     assert review["cost"] >= 0 and review["gained"] >= 0
 
 

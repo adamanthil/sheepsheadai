@@ -323,9 +323,10 @@ DecisionKind = Literal["pick", "call", "under", "bury", "play"]
 class HandReviewBrief(BaseModel):
     status: ReviewStatus
     # Expected score the player's choices cost and gained against the AI's,
-    # both >= 0 (gained - cost is the hand's net); None until reviewed.
+    # both >= 0, and the hand's net (gained - cost); None until reviewed.
     cost: Optional[float]
     gained: Optional[float]
+    net: Optional[float]
     # One of the hand's decisions cost or gained a full point and its net
     # came out a full point the same way: the hand stands out in a list.
     notable: bool
@@ -391,6 +392,8 @@ class HandReviewSummary(BaseModel):
     better: int
     cost: float
     gained: float
+    # gained - cost.
+    net: float
     # index of the decision that sums the hand up, if any reaches a full
     # point: the costliest, else the best gain.
     headline_index: Optional[int]

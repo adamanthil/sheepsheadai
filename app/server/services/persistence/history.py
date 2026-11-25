@@ -25,7 +25,7 @@ from server.services.persistence.stats import (
     COUNTED_SCORE_SQL,
     ROLE_SQL,
 )
-from server.services.review_bands import is_notable
+from server.services.review_bands import hand_net, is_notable
 
 PAGE_SIZE = 25
 
@@ -154,6 +154,9 @@ def _review(row: asyncpg.Record) -> Optional[dict]:
         "status": status,
         "cost": row["review_cost"] if reviewed else None,
         "gained": row["review_gained"] if reviewed else None,
+        "net": (
+            hand_net(row["review_cost"], row["review_gained"]) if reviewed else None
+        ),
         "notable": reviewed
         and is_notable(
             row["review_cost"],

@@ -41,10 +41,16 @@ def standing(difference: Optional[float], forced: bool) -> Standing:
     return "even" if abs(difference) < EVEN_BELOW else "slight"
 
 
+def hand_net(cost: float, gained: float) -> float:
+    """A hand's net against the AI from what its choices cost and gained,
+    to the one decimal it is shown at."""
+    return round(gained - cost, 1)
+
+
 def is_notable(cost: float, gained: float, costly: int, better: int) -> bool:
     """Whether a reviewed hand is worth picking out of a list: one of its
     decisions cost or gained a full point, and the hand's net came out a
     full point the same way. A flagged decision that the hand's smaller
     differences cancelled does not count."""
-    net = round(gained - cost, 1)
+    net = hand_net(cost, gained)
     return (costly > 0 and net <= -FLAG_FROM) or (better > 0 and net >= FLAG_FROM)

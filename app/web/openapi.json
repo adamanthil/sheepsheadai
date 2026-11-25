@@ -2112,6 +2112,17 @@
             ],
             "title": "Gained"
           },
+          "net": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Net"
+          },
           "notable": {
             "title": "Notable",
             "type": "boolean"
@@ -2131,6 +2142,7 @@
           "status",
           "cost",
           "gained",
+          "net",
           "notable"
         ],
         "title": "HandReviewBrief",
@@ -2309,6 +2321,10 @@
             ],
             "title": "Headline Index"
           },
+          "net": {
+            "title": "Net",
+            "type": "number"
+          },
           "notable": {
             "title": "Notable",
             "type": "boolean"
@@ -2327,6 +2343,7 @@
           "better",
           "cost",
           "gained",
+          "net",
           "headline_index",
           "notable"
         ],
