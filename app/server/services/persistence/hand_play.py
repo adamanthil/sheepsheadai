@@ -12,6 +12,7 @@ from uuid import UUID
 
 import asyncpg
 
+from server.services.persistence import reviews as reviews_db
 from sheepshead.game import DECK_IDS, UNDER_TOKEN
 
 if TYPE_CHECKING:
@@ -162,6 +163,8 @@ async def persist_finalize_game(
                         table.ai_actions_excused.get(seat, 0),
                         gp_id,
                     )
+                # Registered players' seats go to the AI review queue.
+                await reviews_db.enqueue_game(conn, UUID(game_id))
         # Clear so the next hand starts fresh.
         table.current_game_id = None
         table.game_player_ids = {}

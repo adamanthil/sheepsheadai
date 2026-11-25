@@ -49,6 +49,7 @@ from server.services.email import send_email
 from server.services.passwords import hash_password, needs_rehash, verify_password
 from server.services.persistence import accounts as accounts_db
 from server.services.persistence import players as players_db
+from server.services.persistence import reviews as reviews_db
 from server.services.persistence import sessions as sessions_db
 from server.services.persistence.accounts import Account
 from server.services.persistence.pool import get_db_pool
@@ -143,6 +144,8 @@ async def register(request: Request, req: RegisterRequest):
         raise HTTPException(status_code=409, detail="username_taken") from e
     except accounts_db.EmailTaken as e:
         raise HTTPException(status_code=409, detail="email_taken") from e
+    # The hands this player already played as a guest are theirs to review.
+    await reviews_db.enqueue_player(pool, player_id)
     session_token = (
         await sessions_db.create_session(pool, player_id) if identity is None else None
     )

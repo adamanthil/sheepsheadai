@@ -27,6 +27,7 @@ from server.config import get_settings
 from server.error_reporting import init_error_reporting
 from server.realtime import websocket as websocket_router
 from server.runtime import lifecycle
+from server.runtime.review_worker import run_review_worker
 from server.runtime.tasks import spawn
 from server.services.ai_loader import load_agent
 from server.services.ai_sampling import SamplingSpec
@@ -196,6 +197,15 @@ def create_app() -> FastAPI:
             spawn(lifecycle.run_idle_sweeper(), "idle-sweeper"),
             spawn(run_identity_purge(pool), "identity-purge"),
         ]
+        if settings.ai_review_enabled:
+            background.append(
+                spawn(
+                    run_review_worker(
+                        pool, settings.sheepshead_model_path, ai_model_id
+                    ),
+                    "review-worker",
+                )
+            )
         try:
             yield
         finally:
