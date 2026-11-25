@@ -17,63 +17,6 @@
 .viewToggle {
   margin-bottom: 24px;
 }
-.sectionHead {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 4px 12px;
-  border-top: 3px double var(--ink);
-  padding-top: 8px;
-  margin-bottom: 18px;
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-.subHead {
-  font-family: var(--font-ui);
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--muted);
-  margin: 28px 0 6px;
-}
-.footnote {
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--muted);
-  margin: 12px 0 0;
-}
-
-.figures {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 20px 24px;
-  margin: 0;
-}
-.figures dt {
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-.figures dd {
-  margin: 0;
-  font-family: var(--font-display);
-  font-size: 44px;
-  line-height: 1.1;
-}
-.figures .figureNote {
-  font-family: var(--font-ui);
-  font-size: 13px;
-  line-height: 1.4;
-  color: var(--ink-soft);
-  margin-top: 2px;
-}
-
 .kinds {
   list-style: none;
   padding: 0;
@@ -113,7 +56,7 @@
   gap: 10px 16px;
   margin-bottom: 8px;
 }
-.figures + .controls {
+.underFigures {
   margin-top: 24px;
 }
 .more {

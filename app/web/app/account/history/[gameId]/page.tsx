@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import PageShell from "../../../components/PageShell";
 import BetaTag from "../../components/BetaTag";
+import SectionHead from "../../components/SectionHead";
 import SuitText from "../../components/SuitText";
 import accountStyles from "../../account.module.css";
 import {
@@ -239,10 +240,11 @@ function Review({ gameId }: { gameId: string }) {
 
       {summary && decisions.length > 0 && (
         <>
-          <div className={styles.sectionHead}>
-            <span>Expected score through the hand</span>
-            <span>Final score {signed(hand.score, 0)}</span>
-          </div>
+          <SectionHead
+            className={styles.chartHead}
+            title="Expected score through the hand"
+            aside={`Final score ${signed(hand.score, 0)}`}
+          />
           <ExpectedScoreChart
             decisions={decisions}
             finalScore={hand.score}
@@ -258,10 +260,11 @@ function Review({ gameId }: { gameId: string }) {
             className={styles.decisions}
             style={{ ["--rows" as string]: decisions.length }}
           >
-            <div className={`${styles.sectionHead} ${styles.listHead}`}>
-              <span>Your decisions</span>
-              <span>vs. AI</span>
-            </div>
+            <SectionHead
+              className={styles.listHead}
+              title="Your decisions"
+              aside="vs. AI"
+            />
             {decisions.map((d) => {
               const on = d.index === selected;
               const open = on && !shut;

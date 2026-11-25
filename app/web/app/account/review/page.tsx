@@ -23,6 +23,8 @@ import type {
   ReviewDifference,
   ReviewPick,
 } from "../../../lib/types";
+import { BigFigure, BigFigures } from "../components/BigFigures";
+import SectionHead from "../components/SectionHead";
 import Segmented from "../components/Segmented";
 import SuitText from "../components/SuitText";
 import styles from "./review.module.css";
@@ -172,45 +174,44 @@ function Totals() {
       {toggle}
 
       <section aria-label="You and the AI">
-        <div className={styles.sectionHead}>
-          <span>You and the AI</span>
-          <span>
-            {review.hands_reviewed} hands reviewed
-            {review.hands_waiting > 0 && ` · ${review.hands_waiting} waiting`}
-          </span>
-        </div>
-        <dl className={styles.figures}>
-          <div>
-            <dt>Agreed</dt>
-            <dd>{percent(review.agreed, review.decisions)}</dd>
-            <dd className={styles.figureNote}>
-              of {review.decisions} decisions with a choice
-            </dd>
-          </div>
-          <div>
-            <dt>AI chose better</dt>
-            <dd>{review.costly}</dd>
-            <dd className={styles.figureNote}>
-              {review.costly === 1 ? "time" : "times"}, by 1+ score
-            </dd>
-          </div>
-          <div>
-            <dt>You chose better</dt>
-            <dd>{review.better}</dd>
-            <dd className={styles.figureNote}>
-              {review.better === 1 ? "time" : "times"}, by 1+ score
-            </dd>
-          </div>
-          <div>
-            <dt>Net vs. AI</dt>
-            <dd data-tone={totalTone(review.net)}>{signed(review.net)}</dd>
-            <dd className={styles.figureNote}>
-              {signed(perHand, 2)} score per hand
-            </dd>
-          </div>
-        </dl>
+        <SectionHead
+          title="You and the AI"
+          aside={
+            <>
+              {review.hands_reviewed} hands reviewed
+              {review.hands_waiting > 0 && ` · ${review.hands_waiting} waiting`}
+            </>
+          }
+        />
+        <BigFigures>
+          <BigFigure
+            label="Agreed"
+            note={`of ${review.decisions} decisions with a choice`}
+          >
+            {percent(review.agreed, review.decisions)}
+          </BigFigure>
+          <BigFigure
+            label="AI chose better"
+            note={`${review.costly === 1 ? "time" : "times"}, by 1+ score`}
+          >
+            {review.costly}
+          </BigFigure>
+          <BigFigure
+            label="You chose better"
+            note={`${review.better === 1 ? "time" : "times"}, by 1+ score`}
+          >
+            {review.better}
+          </BigFigure>
+          <BigFigure
+            label="Net vs. AI"
+            note={`${signed(perHand, 2)} score per hand`}
+            tone={totalTone(review.net)}
+          >
+            {signed(review.net)}
+          </BigFigure>
+        </BigFigures>
 
-        <h2 className={styles.subHead}>Agreed, by kind of decision</h2>
+        <h2 className={accountStyles.subHead}>Agreed, by kind of decision</h2>
         <ul className={styles.kinds}>
           {review.by_kind.map((kind) => (
             <li key={kind.kind}>
@@ -232,7 +233,7 @@ function Totals() {
             </li>
           ))}
         </ul>
-        <p className={styles.footnote}>
+        <p className={accountStyles.footnote}>
           The last column is your net expected score against the AI’s choices
           for that kind of decision.
         </p>
@@ -259,10 +260,10 @@ function Differences({ review }: { review: AccountReview }) {
 
   return (
     <section aria-label="Largest differences" className={styles.section}>
-      <div className={styles.sectionHead}>
-        <span>Largest differences</span>
-        <span>Points of expected score</span>
-      </div>
+      <SectionHead
+        title="Largest differences"
+        aside="Points of expected score"
+      />
       <div className={styles.controls}>
         <Segmented
           label="Which way"
@@ -298,7 +299,7 @@ function Differences({ review }: { review: AccountReview }) {
           Show {shown.length - FIRST_SHOWN} more
         </button>
       )}
-      <p className={styles.footnote}>
+      <p className={accountStyles.footnote}>
         A difference is the AI’s expected score after your choice, less its
         expected score after its own, in game points. Each is played forward to
         your next decision with the cards as dealt; a pick is averaged over
@@ -359,31 +360,30 @@ function Picking({ review }: { review: AccountReview }) {
 
   return (
     <section aria-label="Picking">
-      <div className={styles.sectionHead}>
-        <span>Picking</span>
-        <span>{review.pick_decisions} pick decisions</span>
-      </div>
-      <dl className={styles.figures}>
-        <div>
-          <dt>Agreed</dt>
-          <dd>{percent(review.pick_agreed, review.pick_decisions)}</dd>
-        </div>
-        <div>
-          <dt>You picked, it passes</dt>
-          <dd>{review.picked_ai_passes.length}</dd>
-        </div>
-        <div>
-          <dt>You passed, it picks</dt>
-          <dd>{review.passed_ai_picks.length}</dd>
-        </div>
-        <div>
-          <dt>Score on those picks</dt>
-          <dd data-tone={scored < 0 ? "cost" : "gain"}>{signed(scored, 0)}</dd>
-        </div>
-      </dl>
+      <SectionHead
+        title="Picking"
+        aside={`${review.pick_decisions} pick decisions`}
+      />
+      <BigFigures>
+        <BigFigure label="Agreed">
+          {percent(review.pick_agreed, review.pick_decisions)}
+        </BigFigure>
+        <BigFigure label="You picked, it passes">
+          {review.picked_ai_passes.length}
+        </BigFigure>
+        <BigFigure label="You passed, it picks">
+          {review.passed_ai_picks.length}
+        </BigFigure>
+        <BigFigure
+          label="Score on those picks"
+          tone={scored < 0 ? "cost" : "gain"}
+        >
+          {signed(scored, 0)}
+        </BigFigure>
+      </BigFigures>
       {picks.length > 0 && (
         <>
-          <div className={styles.controls}>
+          <div className={`${styles.controls} ${styles.underFigures}`}>
             <Segmented
               label="Which picks"
               options={[

@@ -13,6 +13,7 @@ import {
   tone,
 } from "../../../../lib/review";
 import type { DecisionReview, HandSeat } from "../../../../lib/types";
+import { BigFigure, BigFigures } from "../../components/BigFigures";
 import SuitText from "../../components/SuitText";
 import TrickRow from "./TrickRow";
 import styles from "./handReview.module.css";
@@ -183,33 +184,23 @@ export default function DecisionDetail({
         )}
       </ul>
 
-      <dl className={styles.figures}>
-        <div>
-          <dt>Your choice</dt>
-          <dd>
-            {signed(
-              differs ? (decision.chosen_score ?? 0) : decision.expected_score,
-            )}
-          </dd>
-          <dd className={styles.figureNote}>expected score</dd>
-        </div>
-        <div>
-          <dt>AI’s choice</dt>
-          <dd>
-            {signed(
-              differs ? (decision.ai_score ?? 0) : decision.expected_score,
-            )}
-          </dd>
-          <dd className={styles.figureNote}>expected score</dd>
-        </div>
-        <div>
-          <dt>Difference</dt>
-          <dd data-tone={tone(decision.standing)}>
-            {differs ? signed(decision.difference ?? 0) : "—"}
-          </dd>
-          <dd className={styles.figureNote}>{decisionVerdict(decision)}</dd>
-        </div>
-      </dl>
+      <BigFigures compact>
+        <BigFigure label="Your choice" note="expected score">
+          {signed(
+            differs ? (decision.chosen_score ?? 0) : decision.expected_score,
+          )}
+        </BigFigure>
+        <BigFigure label="AI’s choice" note="expected score">
+          {signed(differs ? (decision.ai_score ?? 0) : decision.expected_score)}
+        </BigFigure>
+        <BigFigure
+          label="Difference"
+          note={decisionVerdict(decision)}
+          tone={tone(decision.standing)}
+        >
+          {differs ? signed(decision.difference ?? 0) : "—"}
+        </BigFigure>
+      </BigFigures>
       <p className={styles.method}>{decisionMethod(decision)}</p>
 
       <div className={styles.detailActions}>

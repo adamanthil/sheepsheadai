@@ -10,6 +10,8 @@ import {
   useAccount,
 } from "../../../lib/account";
 import type { ReviewQueue } from "../../../lib/types";
+import { BigFigure, BigFigures } from "../components/BigFigures";
+import SectionHead from "../components/SectionHead";
 import styles from "./admin.module.css";
 
 const WHEN = new Intl.DateTimeFormat(undefined, {
@@ -96,41 +98,38 @@ function Queue() {
   return (
     <section aria-label="AI review queue">
       {error && <p className={accountStyles.error}>{error}</p>}
-      <div className={styles.sectionHead}>
-        <span>AI review queue</span>
-        <span
-          className={queue.paused ? styles.paused : undefined}
-          role="status"
-        >
-          {state}
-        </span>
-      </div>
-      <dl className={styles.figures}>
-        <div>
-          <dt>Waiting</dt>
-          <dd>{queue.waiting}</dd>
-          <dd className={styles.figureNote}>hands in the queue</dd>
-        </div>
-        <div>
-          <dt>Oldest waiting</dt>
-          <dd>{queue.oldest_queued ? age(queue.oldest_queued, now) : "—"}</dd>
-          <dd className={styles.figureNote}>
-            {queue.oldest_queued
+      <SectionHead
+        title="AI review queue"
+        aside={
+          <span
+            className={queue.paused ? styles.paused : undefined}
+            role="status"
+          >
+            {state}
+          </span>
+        }
+      />
+      <BigFigures minWidth={170}>
+        <BigFigure label="Waiting" note="hands in the queue">
+          {queue.waiting}
+        </BigFigure>
+        <BigFigure
+          label="Oldest waiting"
+          note={
+            queue.oldest_queued
               ? `queued ${WHEN.format(new Date(queue.oldest_queued))}`
-              : "nothing waiting"}
-          </dd>
-        </div>
-        <div>
-          <dt>Reviewed, last 24 h</dt>
-          <dd>{queue.reviewed_24h}</dd>
-          <dd className={styles.figureNote}>hands</dd>
-        </div>
-        <div>
-          <dt>Average time</dt>
-          <dd>{seconds(queue.average_ms_24h)}</dd>
-          <dd className={styles.figureNote}>per hand, last 24 h</dd>
-        </div>
-      </dl>
+              : "nothing waiting"
+          }
+        >
+          {queue.oldest_queued ? age(queue.oldest_queued, now) : "—"}
+        </BigFigure>
+        <BigFigure label="Reviewed, last 24 h" note="hands">
+          {queue.reviewed_24h}
+        </BigFigure>
+        <BigFigure label="Average time" note="per hand, last 24 h">
+          {seconds(queue.average_ms_24h)}
+        </BigFigure>
+      </BigFigures>
       <dl className={styles.rows}>
         <div>
           <dt>Reviewed in total</dt>
@@ -169,7 +168,7 @@ function Queue() {
       </dl>
       {queue.failures.length > 0 && (
         <>
-          <h2 className={styles.subHead}>Failed hands</h2>
+          <h2 className={accountStyles.subHead}>Failed hands</h2>
           <ul className={styles.failures}>
             {queue.failures.map((f) => (
               <li key={`${f.game_id}-${f.seat}`}>
@@ -182,7 +181,7 @@ function Queue() {
           </ul>
         </>
       )}
-      <p className={styles.footnote}>
+      <p className={accountStyles.footnote}>
         The queue runs while at most one table is in play. This page refreshes
         every {REFRESH_SECONDS} seconds.
       </p>

@@ -154,3 +154,22 @@
   color: var(--ink);
   overflow-wrap: anywhere;
 }
+
+/* ---- Shared by the AI review and admin pages ---- */
+/* A small-caps head over a list within a section. */
+.subHead {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 28px 0 6px;
+}
+/* The small print under a section: how its figures were arrived at. */
+.footnote {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+  margin: 12px 0 0;
+}
