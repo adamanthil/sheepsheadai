@@ -91,4 +91,30 @@ evidence of equal compounding. One start point and one corpus size.
 
 ## 5. Results
 
-Pending.
+### 5.1 Schedule choice (control arm only, 2026-11-24 21:40)
+
+Cert against θ₀ (4 × 1,000 probe games, 8,000 duplicate deals per mode),
+on the committee-acted 2,000 games, label-only target at η 0.014
+(target KL p50 0.0436 for both, same corpus):
+
+| arm | epochs (trunk + head) | play-only vs θ₀ | full h2h vs θ₀ | play logit spread |
+|---|---|---|---|---|
+| C_e10 | 6 + 4 | +0.0058 ± 0.0028 | +0.0066 ± 0.0031 | 3.27 |
+| C_e40 | 24 + 16 | +0.0100 ± 0.0031 | +0.0111 ± 0.0033 | 3.49 |
+
+The gap is +0.0042, larger than either read's SE, so the rule selects
+**24 + 16** for both arms. The two certs are not independent draws
+(same deals), and no paired SE was computed; treated as two
+independent reads the gap is 1.0 combined SE. The choice follows the
+rule as written and is not strong evidence that the longer schedule is
+better. C_e40 lands on the predicted +0.010 and clears the +0.005 floor
+of §4. Both "fail" the cert only on the inherited spread bar of 3.6
+(θ₀ itself reads 3.22; see `Pooling_Ablation_202611.md` §7.3).
+
+The S corpus was at 1,150 of 2,000 games when this was decided; no S
+row had been read.
+
+### 5.2 Comparison
+
+Pending (C_e40 seed 1 started 21:43; S_e40 follows when the S corpus
+completes).
