@@ -59,7 +59,7 @@ export default function HandHistoryPage() {
     <AccountShell
       title={account ? `@${account.username}` : "Your account"}
       tab="history"
-      signedIn={!!account}
+      account={account}
       wide
     >
       {body}

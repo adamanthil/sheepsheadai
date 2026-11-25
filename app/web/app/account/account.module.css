@@ -21,6 +21,9 @@
   gap: 24px;
   border-bottom: 1px solid var(--rule);
   margin-bottom: 24px;
+  /* On a phone the row scrolls sideways rather than wrapping its labels. */
+  overflow-x: auto;
+  white-space: nowrap;
 }
 .tab {
   font-family: var(--font-ui);

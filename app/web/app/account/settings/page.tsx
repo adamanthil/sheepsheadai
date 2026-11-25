@@ -31,7 +31,7 @@ export default function SettingsPage() {
     <AccountShell
       title={account ? `@${account.username}` : "Your account"}
       tab="settings"
-      signedIn={!!account}
+      account={account}
     >
       {account ? (
         <div className={styles.sections}>
