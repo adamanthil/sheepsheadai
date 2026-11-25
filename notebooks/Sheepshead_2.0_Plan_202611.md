@@ -5,8 +5,9 @@ where marked. Of the 2.0 changes, only the observation contract in §1 is built;
 it is on `main` with the 1.1 release. The 11-20 review (§7) changed leaster
 search to terminal rollouts. On 11-22 the operator settled every open decision
 (§5): both oracle gates, the release criterion, the tripwires and the leaster
-cert rule. The acting-mode twin, dropped on 11-22, was reopened on 11-24 and is
-running (`Acting_Mode_Twin_202611.md`).
+cert rule. The acting-mode twin, dropped on 11-22, was reopened on 11-24 and read
+on 11-25: policy sampling matched committee acting in one step
+(`Acting_Mode_Twin_202611.md`). Whether 2.0 drops committee acting is open.
 
 ## Open before launch
 
@@ -340,8 +341,15 @@ on resolved rows. The only prior estimate (−0.0055 ± 0.0021 play-only for sam
 
 **Reopened (operator, 11-24).** That estimate compared two students that both failed to
 improve under the one-epoch schedule, so it measured damage, not learning. A quarter-size
-twin at θ₀ under the final schedule is running (`Acting_Mode_Twin_202611.md`). Committee
-acting stays the 2.0 default until it reads.
+twin at θ₀ under the final schedule was run (`Acting_Mode_Twin_202611.md`).
+
+**Read (11-25).** Policy-sampled minus committee-acted is +0.0006 ± 0.0011 on 64,000 deals
+per mode, against a seed floor of +0.0008 ± 0.0010; the trick-0 called-suit lead ties
+(99.80% against 99.79%). The JD defender trump lead was seed-sensitive at this corpus size
+and does not separate the arms. The read is one step from θ₀; an effect that only appears
+in later iterations is not covered. The twin's recommendation is `--committee-act-frac 0.0`
+for 2.0 with the per-iteration cert as the guard. The operator has not decided; the text
+above still describes committee acting.
 
 **Gate tooling (to build).** `stop_after` only accepts `iter{k}.{stage}`, so the offline
 gate needs a pause point after oracle pretraining.
@@ -727,3 +735,6 @@ read at the WRONG nodes (§7.1 there) has not been run.
   (`Pooling_Ablation_202611.md`) found the Fay–Herriot blend adds nothing measurable over
   dose-matched label-only distillation at iterations 1 and 4; whether 2.0 drops the
   advantage model is an open operator decision.
+- **2026-11-25.** Acting-mode twin read: no measurable one-step cost to policy sampling at
+  every node (+0.0006 ± 0.0011). Dropping committee acting from 2.0 is recommended and
+  awaits the operator.

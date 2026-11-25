@@ -1,6 +1,6 @@
 # Acting-Mode Twin: Committee Acting vs Policy Sampling in the Corpus — November 2026
 
-**Status (2026-11-24): pre-registered and RUNNING. Results (§5) PENDING.**
+**Status (2026-11-25): COMPLETE. Policy sampling matched committee acting in one step (S − C = +0.0006 ± 0.0011, seed floor +0.0008 ± 0.0010); results in §5.**
 
 The corpus generator plays θ_k's own stochastic self-play, except at
 "resolved" searched nodes, where it plays the argmax of the legacy
@@ -114,7 +114,88 @@ of §4. Both "fail" the cert only on the inherited spread bar of 3.6
 The S corpus was at 1,150 of 2,000 games when this was decided; no S
 row had been read.
 
-### 5.2 Comparison
+### 5.2 Comparison (2026-11-25)
 
-Pending (C_e40 seed 1 started 21:43; S_e40 follows when the S corpus
-completes).
+The S corpus finished at 04:59 (2,000 games, 34,436 searched nodes,
+16,374 of them resolved; with `--committee-act-frac 0.0` none was
+acted on). All arms: label-only target at η 0.014, 24 + 16 epochs,
+last-epoch candidate.
+
+**Corpus and target.**
+
+| arm | corpus | target rows | target KL p50 | held-out target KL |
+|---|---|---|---|---|
+| C_e40 | committee-acted | 34,387 | 0.0436 | 0.128 |
+| C_e40_s1 | committee-acted, seed 1 | 34,387 | 0.0436 | 0.137 |
+| S_e40 | policy-sampled | 34,348 | 0.0436 | 0.122 |
+
+Row counts and dose are equal to within 0.1%, so no η adjustment was
+needed.
+
+**Strength.** Cert reads against θ₀ are 8,000 duplicate deals per
+mode; the direct reads against C_e40 are 64,000 fresh deals per mode
+(seed 20261122).
+
+| arm | play-only vs θ₀ | bidding-only vs θ₀ | full vs θ₀ | direct vs C_e40 (called / JD) |
+|---|---|---|---|---|
+| C_e40 | +0.0100 ± 0.0031 | +0.0008 ± 0.0013 | +0.0111 ± 0.0033 | — |
+| C_e40_s1 | +0.0133 ± 0.0030 | −0.0002 ± 0.0011 | +0.0137 ± 0.0032 | +0.0008 ± 0.0010 (+0.0022 / −0.0006) |
+| S_e40 | +0.0139 ± 0.0030 | −0.0010 ± 0.0009 | +0.0129 ± 0.0031 | +0.0006 ± 0.0011 (+0.0013 / −0.0001) |
+
+**Trick-0 conventions** (seeded probes, 100,000 games per mode; θ₀
+reads 98.83% / 5.37% / 0.74%):
+
+| arm | called-suit lead | defender trump lead, JD | defender trump lead, called ace |
+|---|---|---|---|
+| C_e40 | 99.79% ± 0.03 | 3.32% ± 0.08 | 0.10% ± 0.01 |
+| C_e40_s1 | 99.35% ± 0.05 | 6.15% ± 0.11 | 0.59% ± 0.03 |
+| S_e40 | 99.80% ± 0.03 | 7.21% ± 0.12 | 0.30% ± 0.02 |
+
+Cert play logit spread: 3.49 / 3.46 / 3.42 (θ₀ 3.22).
+
+### 5.3 Reading
+
+- **Strength: the first reading of §4 applies.** S − C is +0.0006 ±
+  0.0011, inside ±0.002, and indistinguishable from the control's own
+  seed spread (+0.0008 ± 0.0010). The 95% interval is −0.0016 to
+  +0.0028, so a one-step cost of committee-free acting larger than
+  about 0.002 is excluded. The play-only reads against θ₀ agree
+  (+0.0139 for S against +0.0100 and +0.0133 for the two C seeds).
+- **Called-suit lead at trick 0** is installed by all three arms
+  (99.35–99.80%, from θ₀'s 98.83%); S ties the better C seed.
+- **JD defender trump lead is not settled at this corpus size.** The
+  two C seeds read 3.32% and 6.15% on identical data, a 2.8-point
+  spread, and S reads 7.21%. Two of the three arms are above θ₀'s
+  5.37%. S is 1.1 points above the worse C seed, which is smaller than
+  the seed spread, so the probe cannot attribute it to acting mode.
+  The full-corpus recipe arms read 3.5% and 4.8% across seeds
+  (`Pooling_Ablation_202611.md` §7.2), so this node is seed-sensitive
+  even at 8,000 games, and more so at 2,000 with four times the
+  passes.
+- **Predictions.** C against θ₀ +0.010 predicted, +0.0100 and +0.0133
+  observed. S − C −0.001 predicted, +0.0006 observed (inside the
+  ±0.003 band). Seed spread inside ±0.002 predicted, +0.0008 observed.
+
+### 5.4 Conclusion and limits
+
+In one step from θ₀, sampling the policy at every node produces a
+student as strong as acting on the committee readout at resolved
+nodes, on the same 2,000 deals with the same search. The earlier
++0.0055 read for committee acting (§1) is not reproduced.
+
+Not covered:
+
+- **Later iterations.** The acting mode changes which states the
+  corpus visits, and the argument for committee acting is that it
+  puts the next iteration's search on improved lines. One step from
+  θ₀ cannot show a difference that only appears when the two lineages
+  diverge. A two-step chain per arm would test it.
+- **Full corpus size and the recipe schedule.** This ran at 2,000
+  games and 24 + 16 epochs, label-only. Nothing here suggests the
+  acting mode interacts with corpus size, but it was not measured.
+- **JD trump-lead at trick 0**, per above.
+
+Recommendation: drop committee acting from the 2.0 corpus generator
+(`--committee-act-frac 0.0`) and keep the iteration-over-iteration
+cert as the guard: a policy-sampled lineage that stops compounding
+where 1.0 did not would show there.
