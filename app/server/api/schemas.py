@@ -464,6 +464,29 @@ class ReviewPick(BaseModel):
     score: int
 
 
+class ReviewDifferenceLists(BaseModel):
+    """The largest differences one way, largest first: among every kind of
+    decision, and among each kind. At most REVIEW_LIST_SIZE in each list,
+    however many there are (the counts are in AccountReviewResponse and
+    its by_kind)."""
+
+    all: List[ReviewDifference]
+    pick: List[ReviewDifference]
+    call: List[ReviewDifference]
+    bury: List[ReviewDifference]
+    play: List[ReviewDifference]
+
+
+class ReviewPicks(BaseModel):
+    """Pick decisions where the player and the AI went different ways."""
+
+    count: int
+    # What those hands scored for the player, all of them together.
+    score: int
+    # The most recent, at most REVIEW_LIST_SIZE.
+    picks: List[ReviewPick]
+
+
 class AccountReviewResponse(BaseModel):
     hands_reviewed: int
     hands_waiting: int
@@ -475,13 +498,12 @@ class AccountReviewResponse(BaseModel):
     better: int
     net: float
     by_kind: List[ReviewKindRow]
-    # Largest first, at most REVIEW_LIST_SIZE each.
-    cost_most: List[ReviewDifference]
-    gained_most: List[ReviewDifference]
+    cost_most: ReviewDifferenceLists
+    gained_most: ReviewDifferenceLists
     pick_decisions: int
     pick_agreed: int
-    picked_ai_passes: List[ReviewPick]
-    passed_ai_picks: List[ReviewPick]
+    picked_ai_passes: ReviewPicks
+    passed_ai_picks: ReviewPicks
 
 
 class ReviewQueueFailure(BaseModel):

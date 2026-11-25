@@ -14,6 +14,7 @@ import pytest
 
 from server.runtime import review_worker
 from server.services.high_trump import high_trump, played_before
+from server.services.persistence import review_reads
 from server.services.persistence import reviews as reviews_db
 from server.services.persistence.review_reads import STANDING_SQL
 from server.services.persistence.sessions import create_session
@@ -64,6 +65,11 @@ async def _work_queue(pool, agent, player_id: uuid.UUID) -> None:
     for row in rows:
         job = reviews_db.QueuedSeat(row["game_player_id"], row["game_id"], row[2])
         await review_worker.review_queued_seat(pool, agent, model_id, job)
+
+
+def _review_kind(decision: dict) -> str:
+    """The kind a decision is totalled under: an under card with the call."""
+    return "call" if decision["kind"] == "under" else decision["kind"]
 
 
 def _client(app) -> httpx2.AsyncClient:
@@ -214,17 +220,65 @@ async def test_review_totals_add_up_across_hands(db_app, agent):
     )
     assert sum(k["decisions"] for k in body["by_kind"]) == body["decisions"]
     assert sum(k["net"] for k in body["by_kind"]) == pytest.approx(body["net"], abs=0.2)
-    assert len(body["cost_most"]) == body["costly"]
-    assert len(body["gained_most"]) == body["better"]
-    assert all(d["standing"] == "costly" for d in body["cost_most"])
-    assert all(d["standing"] == "better" for d in body["gained_most"])
-    costs = [d["difference"] for d in body["cost_most"]]
+    cost_most, gained_most = body["cost_most"], body["gained_most"]
+    assert len(cost_most["all"]) == body["costly"]
+    assert len(gained_most["all"]) == body["better"]
+    assert all(d["standing"] == "costly" for d in cost_most["all"])
+    assert all(d["standing"] == "better" for d in gained_most["all"])
+    costs = [d["difference"] for d in cost_most["all"]]
     assert costs == sorted(costs) and all(c <= -1.0 for c in costs)
-    gains = [d["difference"] for d in body["gained_most"]]
+    gains = [d["difference"] for d in gained_most["all"]]
     assert gains == sorted(gains, reverse=True) and all(g >= 1.0 for g in gains)
-    picks = body["picked_ai_passes"] + body["passed_ai_picks"]
-    assert len(picks) == body["pick_decisions"] - body["pick_agreed"]
-    assert all(len(p["hand"]) == 6 for p in picks)
+    # Each kind's own list, and its count, cover the same decisions.
+    for kind in body["by_kind"]:
+        listed = cost_most[kind["kind"]]
+        assert len(listed) == kind["costly"]
+        assert all(_review_kind(d) == kind["kind"] for d in listed)
+        assert len(gained_most[kind["kind"]]) == kind["better"]
+    picked, passed = body["picked_ai_passes"], body["passed_ai_picks"]
+    assert picked["count"] + passed["count"] == (
+        body["pick_decisions"] - body["pick_agreed"]
+    )
+    assert (len(picked["picks"]), len(passed["picks"])) == (
+        picked["count"],
+        passed["count"],
+    )
+    assert picked["score"] == sum(p["score"] for p in picked["picks"])
+    assert all(len(p["hand"]) == 6 for p in picked["picks"] + passed["picks"])
+
+
+@needs_db
+async def test_review_lists_are_capped_but_their_counts_are_not(
+    db_app, agent, monkeypatch
+):
+    app, pool = db_app
+    _, players = await _play_hand(pool, 0, PARTNER_BY_CALLED_ACE)
+    for seed in (1, 6, 7, 8):
+        await _play_hand(
+            pool, seed, PARTNER_BY_CALLED_ACE, seat_players={1: players[1]}
+        )
+    auth = await _verified(pool, players[1])
+    await _work_queue(pool, agent, players[1])
+
+    async with _client(app) as client:
+        whole = (await client.get("/api/account/review", headers=auth)).json()
+        monkeypatch.setattr(review_reads, "REVIEW_LIST_SIZE", 1)
+        capped = (await client.get("/api/account/review", headers=auth)).json()
+
+    # An untrained model disagrees with the script all over the place.
+    assert whole["costly"] > 1 and whole["picked_ai_passes"]["count"] != 1
+    for key in ("costly", "better", "by_kind", "pick_decisions", "pick_agreed"):
+        assert capped[key] == whole[key]
+    for way in ("cost_most", "gained_most"):
+        for name, listed in whole[way].items():
+            # The one kept is the largest, of everything and of each kind.
+            assert capped[way][name] == listed[:1]
+    for way in ("picked_ai_passes", "passed_ai_picks"):
+        assert capped[way]["picks"] == whole[way]["picks"][:1]
+        assert (capped[way]["count"], capped[way]["score"]) == (
+            whole[way]["count"],
+            whole[way]["score"],
+        )
 
 
 @needs_db

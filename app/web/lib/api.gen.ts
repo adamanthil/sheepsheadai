@@ -703,30 +703,26 @@ export interface components {
             better: number;
             /** By Kind */
             by_kind: components["schemas"]["ReviewKindRow"][];
-            /** Cost Most */
-            cost_most: components["schemas"]["ReviewDifference"][];
+            cost_most: components["schemas"]["ReviewDifferenceLists"];
             /** Costly */
             costly: number;
             /** Decisions */
             decisions: number;
             /** Even */
             even: number;
-            /** Gained Most */
-            gained_most: components["schemas"]["ReviewDifference"][];
+            gained_most: components["schemas"]["ReviewDifferenceLists"];
             /** Hands Reviewed */
             hands_reviewed: number;
             /** Hands Waiting */
             hands_waiting: number;
             /** Net */
             net: number;
-            /** Passed Ai Picks */
-            passed_ai_picks: components["schemas"]["ReviewPick"][];
+            passed_ai_picks: components["schemas"]["ReviewPicks"];
             /** Pick Agreed */
             pick_agreed: number;
             /** Pick Decisions */
             pick_decisions: number;
-            /** Picked Ai Passes */
-            picked_ai_passes: components["schemas"]["ReviewPick"][];
+            picked_ai_passes: components["schemas"]["ReviewPicks"];
             /** Slight */
             slight: number;
         };
@@ -1645,6 +1641,25 @@ export interface components {
             /** Trick */
             trick: number | null;
         };
+        /**
+         * ReviewDifferenceLists
+         * @description The largest differences one way, largest first: among every kind of
+         *     decision, and among each kind. At most REVIEW_LIST_SIZE in each list,
+         *     however many there are (the counts are in AccountReviewResponse and
+         *     its by_kind).
+         */
+        ReviewDifferenceLists: {
+            /** All */
+            all: components["schemas"]["ReviewDifference"][];
+            /** Bury */
+            bury: components["schemas"]["ReviewDifference"][];
+            /** Call */
+            call: components["schemas"]["ReviewDifference"][];
+            /** Pick */
+            pick: components["schemas"]["ReviewDifference"][];
+            /** Play */
+            play: components["schemas"]["ReviewDifference"][];
+        };
         /** ReviewKindRow */
         ReviewKindRow: {
             /** Agreed */
@@ -1691,6 +1706,18 @@ export interface components {
              * Format: date-time
              */
             time_closed: string;
+        };
+        /**
+         * ReviewPicks
+         * @description Pick decisions where the player and the AI went different ways.
+         */
+        ReviewPicks: {
+            /** Count */
+            count: number;
+            /** Picks */
+            picks: components["schemas"]["ReviewPick"][];
+            /** Score */
+            score: number;
         };
         /** ReviewQueueFailure */
         ReviewQueueFailure: {

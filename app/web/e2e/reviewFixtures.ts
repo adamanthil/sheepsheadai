@@ -4,6 +4,7 @@ import type {
   HandHistory,
   HandHistoryRow,
   HandReview,
+  ReviewDifference,
   ReviewQueue,
 } from "../lib/types";
 
@@ -167,6 +168,38 @@ export const handReview: HandReview = {
   older_game_id: null,
 };
 
+const costliest: ReviewDifference = {
+  game_id: GAME_ID,
+  index: 2,
+  kind: "play",
+  trick: 0,
+  led: true,
+  action: "PLAY QC",
+  ai_action: "PLAY JD",
+  ai_probability: 0.99,
+  difference: -1.2,
+  standing: "costly",
+  time_closed: row.time_closed,
+  table_name: row.table_name,
+};
+
+const best: ReviewDifference = {
+  game_id: GAME_ID,
+  index: 3,
+  kind: "play",
+  trick: 1,
+  led: false,
+  action: "PLAY AD",
+  ai_action: "PLAY QD",
+  ai_probability: 0.8,
+  difference: 1.4,
+  standing: "better",
+  time_closed: row.time_closed,
+  table_name: row.table_name,
+};
+
+const noDifferences = { all: [], pick: [], call: [], bury: [], play: [] };
+
 export const totals: AccountReview = {
   hands_reviewed: 1,
   hands_waiting: 0,
@@ -182,42 +215,12 @@ export const totals: AccountReview = {
     { kind: "call", decisions: 1, agreed: 1, costly: 0, better: 0, net: 0 },
     { kind: "play", decisions: 2, agreed: 0, costly: 1, better: 1, net: 0.2 },
   ],
-  cost_most: [
-    {
-      game_id: GAME_ID,
-      index: 2,
-      kind: "play",
-      trick: 0,
-      led: true,
-      action: "PLAY QC",
-      ai_action: "PLAY JD",
-      ai_probability: 0.99,
-      difference: -1.2,
-      standing: "costly",
-      time_closed: row.time_closed,
-      table_name: row.table_name,
-    },
-  ],
-  gained_most: [
-    {
-      game_id: GAME_ID,
-      index: 3,
-      kind: "play",
-      trick: 1,
-      led: false,
-      action: "PLAY AD",
-      ai_action: "PLAY QD",
-      ai_probability: 0.8,
-      difference: 1.4,
-      standing: "better",
-      time_closed: row.time_closed,
-      table_name: row.table_name,
-    },
-  ],
+  cost_most: { ...noDifferences, all: [costliest], play: [costliest] },
+  gained_most: { ...noDifferences, all: [best], play: [best] },
   pick_decisions: 1,
   pick_agreed: 1,
-  picked_ai_passes: [],
-  passed_ai_picks: [],
+  picked_ai_passes: { count: 0, score: 0, picks: [] },
+  passed_ai_picks: { count: 0, score: 0, picks: [] },
 };
 
 export const queue: ReviewQueue = {

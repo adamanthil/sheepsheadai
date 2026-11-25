@@ -12,7 +12,7 @@ import asyncpg
 from server.services.persistence.stats import ROLE_SQL
 from server.services.review_bands import EVEN_BELOW, FLAG_FROM
 
-# Rows in each "largest differences" list of the review totals.
+# Rows in each list of the review totals.
 REVIEW_LIST_SIZE = 30
 
 # A reviewed decision's standing against the AI's choice, as
@@ -80,17 +80,33 @@ async def hand_seats(pool: asyncpg.Pool, game_id: UUID) -> List[asyncpg.Record]:
     )
 
 
+# The kinds the review totals are broken down by: an under card is part of
+# the partner call.
+REVIEW_KINDS = ("pick", "call", "bury", "play")
+_KIND_SQL = "CASE d.kind WHEN 'under' THEN 'call' ELSE d.kind END"
+
+# The largest differences one way ({where}, largest first by {order}): the
+# first $2 overall and the first $2 of each kind, so that a list narrowed
+# to a kind is as long as a list of everything.
 _DIFFERENCE_SQL = f"""
-SELECT gp.game_id, d.index, d.kind, d.trick_index, d.table_cards, d.action,
-       d.model_action, d.policy, d.difference, {STANDING_SQL} AS standing,
-       g.time_closed, t.name AS table_name
-FROM decision_review d
-JOIN game_player gp ON gp.game_player_id = d.game_player_id
-JOIN game g ON g.game_id = gp.game_id
-JOIN game_table t ON t.game_table_id = g.game_table_id
-WHERE gp.player_id = $1 AND {{where}}
-ORDER BY {{order}}, g.time_closed DESC
-LIMIT $2
+SELECT * FROM (
+    SELECT gp.game_id, d.index, d.kind, d.trick_index, d.table_cards,
+           d.action, d.model_action, d.policy, d.difference,
+           {STANDING_SQL} AS standing, g.time_closed, t.name AS table_name,
+           {_KIND_SQL} AS review_kind,
+           row_number() OVER (ORDER BY {{order}}, g.time_closed DESC)
+               AS place,
+           row_number() OVER (PARTITION BY {_KIND_SQL}
+                              ORDER BY {{order}}, g.time_closed DESC)
+               AS place_in_kind
+    FROM decision_review d
+    JOIN game_player gp ON gp.game_player_id = d.game_player_id
+    JOIN game g ON g.game_id = gp.game_id
+    JOIN game_table t ON t.game_table_id = g.game_table_id
+    WHERE gp.player_id = $1 AND {{where}}
+) ranked
+WHERE place <= $2 OR place_in_kind <= $2
+ORDER BY place
 """
 
 
@@ -111,8 +127,43 @@ def _difference(row: asyncpg.Record) -> dict:
     }
 
 
-async def _picks(pool: asyncpg.Pool, player_id: UUID, picked: bool) -> List[dict]:
-    """Pick decisions where the player and the AI went different ways."""
+async def _differences(
+    pool: asyncpg.Pool, player_id: UUID, where: str, order: str
+) -> dict:
+    """The largest differences one way, overall and by kind of decision."""
+    rows = await pool.fetch(
+        _DIFFERENCE_SQL.format(where=where, order=order),
+        player_id,
+        REVIEW_LIST_SIZE,
+    )
+    lists: Dict[str, List[dict]] = {
+        "all": [_difference(r) for r in rows if r["place"] <= REVIEW_LIST_SIZE]
+    }
+    for kind in REVIEW_KINDS:
+        lists[kind] = [
+            _difference(r)
+            for r in rows
+            if r["review_kind"] == kind and r["place_in_kind"] <= REVIEW_LIST_SIZE
+        ]
+    return lists
+
+
+async def _picks(pool: asyncpg.Pool, player_id: UUID, picked: bool) -> dict:
+    """Pick decisions where the player and the AI went different ways: how
+    many there were, what those hands scored, and the most recent."""
+    action = "PICK" if picked else "PASS"
+    totals = await pool.fetchrow(
+        """
+        SELECT count(*)::int AS count, coalesce(sum(gp.score), 0)::int AS score
+        FROM decision_review d
+        JOIN game_player gp ON gp.game_player_id = d.game_player_id
+        WHERE gp.player_id = $1 AND d.kind = 'pick'
+          AND d.action <> d.model_action
+          AND d.action = $2
+        """,
+        player_id,
+        action,
+    )
     rows = await pool.fetch(
         """
         SELECT gp.game_id, gp.position, gp.score, d.hand, d.policy,
@@ -129,7 +180,7 @@ async def _picks(pool: asyncpg.Pool, player_id: UUID, picked: bool) -> List[dict
         LIMIT $3
         """,
         player_id,
-        "PICK" if picked else "PASS",
+        action,
         REVIEW_LIST_SIZE,
     )
     out = []
@@ -150,7 +201,7 @@ async def _picks(pool: asyncpg.Pool, player_id: UUID, picked: bool) -> List[dict
                 "score": row["score"],
             }
         )
-    return out
+    return {"count": totals["count"], "score": totals["score"], "picks": out}
 
 
 async def account_review(pool: asyncpg.Pool, player_id: UUID) -> dict:
@@ -174,7 +225,7 @@ async def account_review(pool: asyncpg.Pool, player_id: UUID) -> dict:
     )
     kinds = await pool.fetch(
         f"""
-        SELECT CASE d.kind WHEN 'under' THEN 'call' ELSE d.kind END AS kind,
+        SELECT {_KIND_SQL} AS kind,
                count(*)::int AS decisions,
                count(*) FILTER (WHERE d.difference IS NULL)::int AS agreed,
                count(*) FILTER (WHERE {_COSTLY_SQL})::int AS costly,
@@ -188,16 +239,6 @@ async def account_review(pool: asyncpg.Pool, player_id: UUID) -> dict:
         player_id,
     )
     by_kind = {row["kind"]: row for row in kinds}
-    cost_most = await pool.fetch(
-        _DIFFERENCE_SQL.format(where=_COSTLY_SQL, order="d.difference"),
-        player_id,
-        REVIEW_LIST_SIZE,
-    )
-    gained_most = await pool.fetch(
-        _DIFFERENCE_SQL.format(where=_BETTER_SQL, order="d.difference DESC"),
-        player_id,
-        REVIEW_LIST_SIZE,
-    )
     pick = by_kind.get("pick")
     return {
         "hands_reviewed": totals["reviewed"],
@@ -218,11 +259,13 @@ async def account_review(pool: asyncpg.Pool, player_id: UUID) -> dict:
                 "better": by_kind[kind]["better"],
                 "net": round(by_kind[kind]["net"], 1),
             }
-            for kind in ("pick", "call", "bury", "play")
+            for kind in REVIEW_KINDS
             if kind in by_kind
         ],
-        "cost_most": [_difference(r) for r in cost_most],
-        "gained_most": [_difference(r) for r in gained_most],
+        "cost_most": await _differences(pool, player_id, _COSTLY_SQL, "d.difference"),
+        "gained_most": await _differences(
+            pool, player_id, _BETTER_SQL, "d.difference DESC"
+        ),
         "pick_decisions": pick["decisions"] if pick else 0,
         "pick_agreed": pick["agreed"] if pick else 0,
         "picked_ai_passes": await _picks(pool, player_id, picked=True),

@@ -220,15 +220,17 @@ function Differences({ review }: { review: AccountReview }) {
   const [which, setWhich] = useState<"cost" | "gained">("cost");
   const [filter, setFilter] = useState<KindFilter>("all");
   const [all, setAll] = useState(false);
-  const list = which === "cost" ? review.cost_most : review.gained_most;
+  // The server keeps a list for each kind, so narrowing to one shows that
+  // kind's largest rather than what is left of everything's.
+  const shown = (which === "cost" ? review.cost_most : review.gained_most)[
+    filter
+  ];
   // The two counts follow the kind chosen, as the list under them does.
   const ofKind = review.by_kind.find((kind) => kind.kind === filter);
   const costly = filter === "all" ? review.costly : (ofKind?.costly ?? 0);
   const better = filter === "all" ? review.better : (ofKind?.better ?? 0);
-  const shown = list.filter(
-    (d) =>
-      filter === "all" || (d.kind === "under" ? "call" : d.kind) === filter,
-  );
+  // A long history has more differences than the server lists.
+  const cut = (which === "cost" ? costly : better) > shown.length;
 
   return (
     <section aria-label="Largest differences" className={styles.section}>
@@ -278,6 +280,7 @@ function Differences({ review }: { review: AccountReview }) {
         every possible blind. Only differences of a full point or more are
         listed: {review.slight} smaller ones and {review.even} that were about
         even are left off.
+        {cut && ` The list stops at the ${shown.length} largest.`}
       </p>
     </section>
   );
@@ -324,11 +327,8 @@ function DifferenceRow({ difference }: { difference: ReviewDifference }) {
 
 function Picking({ review }: { review: AccountReview }) {
   const [which, setWhich] = useState<"picked" | "passed">("picked");
-  if (review.pick_decisions === 0) return null;
-  const list =
-    which === "picked" ? review.picked_ai_passes : review.passed_ai_picks;
-  const picks = [...review.picked_ai_passes, ...review.passed_ai_picks];
-  const scored = review.picked_ai_passes.reduce((sum, p) => sum + p.score, 0);
+  const { picked_ai_passes: picked, passed_ai_picks: passed } = review;
+  const shown = which === "picked" ? picked : passed;
 
   return (
     <section aria-label="Picking">
@@ -340,20 +340,16 @@ function Picking({ review }: { review: AccountReview }) {
         <BigFigure label="Agreed">
           {percent(review.pick_agreed, review.pick_decisions)}
         </BigFigure>
-        <BigFigure label="You picked, it passes">
-          {review.picked_ai_passes.length}
-        </BigFigure>
-        <BigFigure label="You passed, it picks">
-          {review.passed_ai_picks.length}
-        </BigFigure>
+        <BigFigure label="You picked, it passes">{picked.count}</BigFigure>
+        <BigFigure label="You passed, it picks">{passed.count}</BigFigure>
         <BigFigure
           label="Score on those picks"
-          tone={scored < 0 ? "cost" : "gain"}
+          tone={picked.score < 0 ? "cost" : "gain"}
         >
-          {signed(scored)}
+          {signed(picked.score)}
         </BigFigure>
       </BigFigures>
-      {picks.length > 0 && (
+      {picked.count + passed.count > 0 && (
         <>
           <div className={`${styles.controls} ${styles.underFigures}`}>
             <Segmented
@@ -361,11 +357,11 @@ function Picking({ review }: { review: AccountReview }) {
               options={[
                 {
                   value: "picked",
-                  label: `Picked, AI passes · ${review.picked_ai_passes.length}`,
+                  label: `Picked, AI passes · ${picked.count}`,
                 },
                 {
                   value: "passed",
-                  label: `Passed, AI picks · ${review.passed_ai_picks.length}`,
+                  label: `Passed, AI picks · ${passed.count}`,
                 },
               ]}
               value={which}
@@ -373,10 +369,15 @@ function Picking({ review }: { review: AccountReview }) {
             />
           </div>
           <ul className={styles.picks}>
-            {list.map((pick) => (
+            {shown.picks.map((pick) => (
               <PickCard key={pick.game_id} pick={pick} />
             ))}
           </ul>
+          {shown.count > shown.picks.length && (
+            <p className={accountStyles.footnote}>
+              The {shown.picks.length} most recent are shown.
+            </p>
+          )}
         </>
       )}
     </section>

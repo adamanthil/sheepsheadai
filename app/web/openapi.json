@@ -83,11 +83,7 @@
             "type": "array"
           },
           "cost_most": {
-            "items": {
-              "$ref": "#/components/schemas/ReviewDifference"
-            },
-            "title": "Cost Most",
-            "type": "array"
+            "$ref": "#/components/schemas/ReviewDifferenceLists"
           },
           "costly": {
             "title": "Costly",
@@ -102,11 +98,7 @@
             "type": "integer"
           },
           "gained_most": {
-            "items": {
-              "$ref": "#/components/schemas/ReviewDifference"
-            },
-            "title": "Gained Most",
-            "type": "array"
+            "$ref": "#/components/schemas/ReviewDifferenceLists"
           },
           "hands_reviewed": {
             "title": "Hands Reviewed",
@@ -121,11 +113,7 @@
             "type": "number"
           },
           "passed_ai_picks": {
-            "items": {
-              "$ref": "#/components/schemas/ReviewPick"
-            },
-            "title": "Passed Ai Picks",
-            "type": "array"
+            "$ref": "#/components/schemas/ReviewPicks"
           },
           "pick_agreed": {
             "title": "Pick Agreed",
@@ -136,11 +124,7 @@
             "type": "integer"
           },
           "picked_ai_passes": {
-            "items": {
-              "$ref": "#/components/schemas/ReviewPick"
-            },
-            "title": "Picked Ai Passes",
-            "type": "array"
+            "$ref": "#/components/schemas/ReviewPicks"
           },
           "slight": {
             "title": "Slight",
@@ -2919,6 +2903,55 @@
         "title": "ReviewDifference",
         "type": "object"
       },
+      "ReviewDifferenceLists": {
+        "description": "The largest differences one way, largest first: among every kind of\ndecision, and among each kind. At most REVIEW_LIST_SIZE in each list,\nhowever many there are (the counts are in AccountReviewResponse and\nits by_kind).",
+        "properties": {
+          "all": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewDifference"
+            },
+            "title": "All",
+            "type": "array"
+          },
+          "bury": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewDifference"
+            },
+            "title": "Bury",
+            "type": "array"
+          },
+          "call": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewDifference"
+            },
+            "title": "Call",
+            "type": "array"
+          },
+          "pick": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewDifference"
+            },
+            "title": "Pick",
+            "type": "array"
+          },
+          "play": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewDifference"
+            },
+            "title": "Play",
+            "type": "array"
+          }
+        },
+        "required": [
+          "all",
+          "pick",
+          "call",
+          "bury",
+          "play"
+        ],
+        "title": "ReviewDifferenceLists",
+        "type": "object"
+      },
       "ReviewKindRow": {
         "properties": {
           "agreed": {
@@ -3024,6 +3057,33 @@
           "score"
         ],
         "title": "ReviewPick",
+        "type": "object"
+      },
+      "ReviewPicks": {
+        "description": "Pick decisions where the player and the AI went different ways.",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "picks": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewPick"
+            },
+            "title": "Picks",
+            "type": "array"
+          },
+          "score": {
+            "title": "Score",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count",
+          "score",
+          "picks"
+        ],
+        "title": "ReviewPicks",
         "type": "object"
       },
       "ReviewQueueFailure": {
