@@ -1,14 +1,11 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { ds } from "../../../lib/ds";
 import {
   accountErrorMessage,
   fetchHandReview,
   fetchHands,
-  useAccount,
 } from "../../../lib/account";
 import {
   historyHref,
@@ -23,6 +20,8 @@ import Segmented from "../components/Segmented";
 import HandStrip from "./HandStrip";
 import type { HandHistoryRow } from "../../../lib/types";
 import AccountShell from "../AccountShell";
+import VerifiedOnly from "../components/VerifiedOnly";
+import { useRequiredAccount } from "../useRequiredAccount";
 import { signed } from "../../../lib/format";
 import accountStyles from "../account.module.css";
 import styles from "./history.module.css";
@@ -43,38 +42,13 @@ const WHEN = new Intl.DateTimeFormat(undefined, {
 
 /** Every finished hand the account played, newest first, a page at a time. */
 export default function HandHistoryPage() {
-  const router = useRouter();
-  const { me } = useAccount();
-  const account = me?.account ?? null;
-
-  useEffect(() => {
-    if (me !== undefined && !account) router.replace("/account");
-  }, [me, account, router]);
-
-  let body: React.ReactNode;
-  if (!account) {
-    body = <p className={accountStyles.note}>Loading…</p>;
-  } else if (!account.email_verified) {
-    body = (
-      <p className={accountStyles.note}>
-        Confirm your email to see your hand history.{" "}
-        <Link href="/account" className={ds.link}>
-          Back to your account
-        </Link>
-      </p>
-    );
-  } else {
-    body = <History />;
-  }
+  const { account } = useRequiredAccount();
 
   return (
-    <AccountShell
-      title={account ? `@${account.username}` : "Your account"}
-      tab="history"
-      account={account}
-      wide
-    >
-      {body}
+    <AccountShell tab="history" account={account} wide>
+      <VerifiedOnly account={account} to="see your hand history">
+        <History />
+      </VerifiedOnly>
     </AccountShell>
   );
 }

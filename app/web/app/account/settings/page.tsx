@@ -1,16 +1,15 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import React, { useState } from "react";
 import { ds } from "../../../lib/ds";
 import {
   AccountError,
   accountErrorMessage,
   changePassword,
-  useAccount,
 } from "../../../lib/account";
 import type { AccountPublic } from "../../../lib/types";
 import AccountShell from "../AccountShell";
+import { useRequiredAccount } from "../useRequiredAccount";
 import Field from "../components/Field";
 import ResendVerification from "../components/ResendVerification";
 import SignOut from "../components/SignOut";
@@ -19,20 +18,10 @@ import styles from "../account.module.css";
 /** Account details, password change, and sign out. Open to unconfirmed
  * accounts too; signed-out visitors go back to the sign-in page. */
 export default function SettingsPage() {
-  const router = useRouter();
-  const { me, refresh } = useAccount();
-  const account = me?.account ?? null;
-
-  useEffect(() => {
-    if (me !== undefined && !account) router.replace("/account");
-  }, [me, account, router]);
+  const { account, refresh } = useRequiredAccount();
 
   return (
-    <AccountShell
-      title={account ? `@${account.username}` : "Your account"}
-      tab="settings"
-      account={account}
-    >
+    <AccountShell tab="settings" account={account}>
       {account ? (
         <div className={styles.sections}>
           <Details account={account} />

@@ -2,17 +2,18 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import PageShell from "../../../components/PageShell";
 import BetaTag from "../../components/BetaTag";
 import SectionHead from "../../components/SectionHead";
+import VerifiedOnly from "../../components/VerifiedOnly";
+import { useRequiredAccount } from "../../useRequiredAccount";
 import SuitText from "../../components/SuitText";
 import accountStyles from "../../account.module.css";
 import {
   AccountError,
   accountErrorMessage,
   fetchHandReview,
-  useAccount,
 } from "../../../../lib/account";
 import { CardText, ds } from "../../../../lib/ds";
 import {
@@ -51,33 +52,18 @@ const ROLE = {
 
 /** One hand, decision by decision, against the AI. */
 export default function HandReviewPage() {
-  const router = useRouter();
   const { gameId } = useParams<{ gameId: string }>();
-  const { me } = useAccount();
-  const account = me?.account ?? null;
+  const { account } = useRequiredAccount();
 
-  useEffect(() => {
-    if (me !== undefined && !account) router.replace("/account");
-  }, [me, account, router]);
-
-  let body: React.ReactNode;
-  if (!account) {
-    body = <p className={accountStyles.note}>Loading…</p>;
-  } else if (!account.email_verified) {
-    body = (
-      <p className={accountStyles.note}>
-        Confirm your email to review your hands.{" "}
-        <Link href="/account" className={ds.link}>
-          Back to your account
-        </Link>
-      </p>
-    );
-  } else {
-    // Keyed by hand, so moving to another one starts from its own headline.
-    body = <Review key={gameId} gameId={gameId} />;
-  }
-
-  return <PageShell wide>{body}</PageShell>;
+  return (
+    <PageShell wide>
+      <VerifiedOnly account={account} to="review your hands">
+        {/* Keyed by hand, so moving to another one starts from its own
+            headline. */}
+        <Review key={gameId} gameId={gameId} />
+      </VerifiedOnly>
+    </PageShell>
+  );
 }
 
 /** The decision a link asked for (?d=<index>), if any. */

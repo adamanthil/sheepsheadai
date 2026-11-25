@@ -1,14 +1,10 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import AccountShell from "../AccountShell";
+import { useRequiredAccount } from "../useRequiredAccount";
 import accountStyles from "../account.module.css";
-import {
-  accountErrorMessage,
-  fetchReviewQueue,
-  useAccount,
-} from "../../../lib/account";
+import { accountErrorMessage, fetchReviewQueue } from "../../../lib/account";
 import type { ReviewQueue } from "../../../lib/types";
 import { BigFigure, BigFigures } from "../components/BigFigures";
 import SectionHead from "../components/SectionHead";
@@ -39,23 +35,11 @@ function age(since: string, now: number): string {
 
 /** The admin area. For now, the state of the AI review queue. */
 export default function AdminPage() {
-  const router = useRouter();
-  const { me } = useAccount();
-  const account = me?.account ?? null;
-  const allowed = !!account?.is_admin;
-
-  useEffect(() => {
-    if (me !== undefined && !allowed) router.replace("/account");
-  }, [me, allowed, router]);
+  const { account } = useRequiredAccount((a) => a.is_admin);
 
   return (
-    <AccountShell
-      title={account ? `@${account.username}` : "Your account"}
-      tab="admin"
-      account={account}
-      wide
-    >
-      {allowed ? <Queue /> : <p className={accountStyles.note}>Loading…</p>}
+    <AccountShell tab="admin" account={account} wide>
+      {account ? <Queue /> : <p className={accountStyles.note}>Loading…</p>}
     </AccountShell>
   );
 }

@@ -36,12 +36,7 @@ export default function AccountPage() {
   const verified = !!account?.email_verified;
 
   return (
-    <AccountShell
-      title={account ? `@${account.username}` : "Your account"}
-      tab="overview"
-      account={account}
-      wide={verified}
-    >
+    <AccountShell tab="overview" account={account} wide={verified}>
       {body}
     </AccountShell>
   );

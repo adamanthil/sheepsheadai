@@ -2,14 +2,11 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import AccountShell from "../AccountShell";
+import VerifiedOnly from "../components/VerifiedOnly";
+import { useRequiredAccount } from "../useRequiredAccount";
 import accountStyles from "../account.module.css";
-import {
-  accountErrorMessage,
-  fetchAccountReview,
-  useAccount,
-} from "../../../lib/account";
+import { accountErrorMessage, fetchAccountReview } from "../../../lib/account";
 import { PlayingCard, ds } from "../../../lib/ds";
 import {
   decisionLabel,
@@ -60,38 +57,13 @@ function percent(part: number, whole: number): string {
 /** Every reviewed hand, totalled: how often the player made the AI's
  * choice, where they differ most, and their picking. */
 export default function AccountReviewPage() {
-  const router = useRouter();
-  const { me } = useAccount();
-  const account = me?.account ?? null;
-
-  useEffect(() => {
-    if (me !== undefined && !account) router.replace("/account");
-  }, [me, account, router]);
-
-  let body: React.ReactNode;
-  if (!account) {
-    body = <p className={accountStyles.note}>Loading…</p>;
-  } else if (!account.email_verified) {
-    body = (
-      <p className={accountStyles.note}>
-        Confirm your email to see your AI review.{" "}
-        <Link href="/account" className={ds.link}>
-          Back to your account
-        </Link>
-      </p>
-    );
-  } else {
-    body = <Totals />;
-  }
+  const { account } = useRequiredAccount();
 
   return (
-    <AccountShell
-      title={account ? `@${account.username}` : "Your account"}
-      tab="review"
-      account={account}
-      wide
-    >
-      {body}
+    <AccountShell tab="review" account={account} wide>
+      <VerifiedOnly account={account} to="see your AI review">
+        <Totals />
+      </VerifiedOnly>
     </AccountShell>
   );
 }

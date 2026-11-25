@@ -22,16 +22,15 @@ const TABS: {
   { key: "admin", label: "Admin", href: "/account/admin", adminOnly: true },
 ];
 
-/** The account area: the page shell plus, for a signed-in account, the
- * tabs between its pages. Administrators get one more. */
+/** The account area: the page shell, titled with the account's name,
+ * plus, for a signed-in account, the tabs between its pages.
+ * Administrators get one more. */
 export default function AccountShell({
-  title,
   tab,
   account,
   wide = false,
   children,
 }: {
-  title: string;
   tab: AccountTab;
   /** The signed-in account, or null for a guest (no tabs). */
   account: AccountPublic | null;
@@ -39,7 +38,10 @@ export default function AccountShell({
   children: React.ReactNode;
 }) {
   return (
-    <PageShell title={title} wide={wide}>
+    <PageShell
+      title={account ? `@${account.username}` : "Your account"}
+      wide={wide}
+    >
       {account && (
         <nav className={styles.tabs} aria-label="Account">
           {TABS.filter((t) => !t.adminOnly || account.is_admin).map((t) => (
