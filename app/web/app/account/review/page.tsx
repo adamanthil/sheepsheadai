@@ -97,8 +97,25 @@ export default function AccountReviewPage() {
   );
 }
 
+type View = "decisions" | "picking";
+
+/** The view a link asked for (?view=picking); decisions otherwise. */
+function linkedView(): View {
+  const asked = new URLSearchParams(window.location.search).get("view");
+  return asked === "picking" ? "picking" : "decisions";
+}
+
 function Totals() {
   const [review, setReview] = useState<AccountReview | null>(null);
+  const [view, setView] = useState<View>(linkedView);
+  const show = (next: View) => {
+    setView(next);
+    window.history.replaceState(
+      null,
+      "",
+      next === "picking" ? "/account/review?view=picking" : "/account/review",
+    );
+  };
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -130,9 +147,37 @@ function Totals() {
   }
 
   const perHand = review.net / review.hands_reviewed;
+  const toggle = review.pick_decisions > 0 && (
+    <div className={styles.viewToggle} role="group" aria-label="Review of">
+      <button
+        type="button"
+        aria-pressed={view === "decisions"}
+        onClick={() => show("decisions")}
+      >
+        Overview
+      </button>
+      <button
+        type="button"
+        aria-pressed={view === "picking"}
+        onClick={() => show("picking")}
+      >
+        Picking
+      </button>
+    </div>
+  );
+  if (view === "picking" && review.pick_decisions > 0) {
+    return (
+      <>
+        {lede}
+        {toggle}
+        <Picking review={review} />
+      </>
+    );
+  }
   return (
     <>
       {lede}
+      {toggle}
 
       <section aria-label="You and the AI">
         <div className={styles.sectionHead}>
@@ -196,7 +241,6 @@ function Totals() {
       </section>
 
       <Differences review={review} />
-      <Picking review={review} />
     </>
   );
 }
@@ -332,7 +376,7 @@ function Picking({ review }: { review: AccountReview }) {
   const scored = review.picked_ai_passes.reduce((sum, p) => sum + p.score, 0);
 
   return (
-    <section aria-label="Picking" className={styles.section}>
+    <section aria-label="Picking">
       <div className={styles.sectionHead}>
         <span>Picking</span>
         <span>{review.pick_decisions} pick decisions</span>

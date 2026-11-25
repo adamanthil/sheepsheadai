@@ -19,6 +19,36 @@
 .section {
   margin-top: 56px;
 }
+/* Between the page's two views; the same control as hand history's. */
+.viewToggle {
+  display: inline-flex;
+  border: 1px solid var(--rule-strong);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+.viewToggle button {
+  min-height: 36px;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.viewToggle button + button {
+  border-left: 1px solid var(--rule-strong);
+}
+.viewToggle button[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--bg-page);
+}
+.viewToggle button:focus-visible {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: -2px;
+}
 .sectionHead {
   display: flex;
   flex-wrap: wrap;

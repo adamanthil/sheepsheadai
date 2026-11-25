@@ -144,6 +144,24 @@ test("the AI review tab counts differences for the kind chosen", async ({
   await page.waitForURL(`**/account/history/${GAME_ID}?d=2`);
 });
 
+test("picking has its own view of the AI review", async ({ page }) => {
+  await signIn(page);
+  await page.goto("/account/review");
+  const differences = page.getByRole("region", { name: "Largest differences" });
+  const picking = page.getByRole("region", { name: "Picking" });
+  await expect(differences).toBeVisible();
+  await expect(picking).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Picking" }).click();
+  await page.waitForURL("**/account/review?view=picking");
+  await expect(picking).toBeVisible();
+  await expect(differences).toHaveCount(0);
+
+  // The address opens the same view.
+  await page.reload();
+  await expect(picking).toBeVisible();
+});
+
 test("only an administrator is offered the review queue", async ({ page }) => {
   await signIn(page);
   await page.goto("/account/history");
