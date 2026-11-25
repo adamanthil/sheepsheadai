@@ -4,13 +4,14 @@ import SiteNav from "./SiteNav";
 import styles from "./PageShell.module.css";
 
 /** Single-column shell for the account, leaderboard and about pages: the
- * site strip, the masthead band, and a display-face title. */
+ * site strip, the masthead band, and a display-face title. A page that
+ * writes its own heading leaves the title out. */
 export default function PageShell({
   title,
   children,
   wide = false,
 }: {
-  title: string;
+  title?: string;
   children: React.ReactNode;
   wide?: boolean;
 }) {
@@ -19,7 +20,7 @@ export default function PageShell({
       <SiteNav />
       <div className={`${styles.inner} ${wide ? styles.wide : ""}`}>
         <MastheadBand compact />
-        <h1 className={styles.title}>{title}</h1>
+        {title && <h1 className={styles.title}>{title}</h1>}
         {children}
       </div>
     </div>
