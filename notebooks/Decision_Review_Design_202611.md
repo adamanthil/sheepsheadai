@@ -1,6 +1,9 @@
 # Decision Review — Design (November 2026)
 
-**Status (2026-11-24): DESIGN SETTLED, NOT BUILT.** The three screens
+**Status (2026-11-24): BUILT** on branch `decision-review` (see "As
+built" at the end). What follows is the design as it was settled.
+
+**Status before the build (2026-11-24): DESIGN SETTLED, NOT BUILT.** The three screens
 are prototyped with real production data in `design/decision-review/`.
 The review engine (`app/server/services/hand_review.py`) and an offline
 report script (`app/scripts/review_hands.py`) exist and were used to
@@ -68,10 +71,12 @@ in the background. Nothing a player does triggers inference.
   comparable across pick and pass: its sign matched the policy on 39%
   of pick disagreements against 88% for expected score.
 
-* **D6 — Half a point is the threshold.** A difference under half a
-  point of score (game points, not card points) is "about even". The
-  threshold is applied to the cost as displayed, rounded to one
-  decimal, so a shown −0.5 is never labelled even.
+* **D6 (superseded by section 11: three bands at 0.25 and 1.0, which is
+  what was built).** As first settled: **half a point is the
+  threshold.** A difference under half a point of score (game points,
+  not card points) is "about even". The threshold is applied to the cost
+  as displayed, rounded to one decimal, so a shown −0.5 is never
+  labelled even.
 
 * **D7 — A doublers redeal scores zero.** When all five pass at a
   doublers table the hand is redealt at doubled stakes; the passing
@@ -362,3 +367,103 @@ review-tab aggregates; (0) `is_admin`; (4) history toggle, bar column and strip;
 * `design/decision-review/` — the three prototypes,
   `prototype-runtime.js` (a small standalone renderer so they open
   from disk), the admin sketch, and desktop and phone screenshots.
+
+## 10. As built
+
+Where the build differs from, or settles, the design above.
+
+* **Storage.** `hand_review` is the queue and the per-seat summary;
+  `decision_review` holds the decisions (migration 000010). Card codes
+  are stored as text and the policy as JSON. `decision_review.difference`
+  is a generated column, so every query agrees on the rounding.
+  `account.is_admin` is migration 000009.
+* **Nothing more is stored than section 7 lists**, less the hand and
+  table snapshot, which is two columns (`hand`, `table_cards`), and the
+  three pick readouts, which reduce to the two expected scores already
+  kept (`chosen_score`, `model_score`).
+* **The high trump is derived when the hand page loads**
+  (`services/high_trump.py`), from the recorded tricks and each stored
+  decision's hand.
+* **Differences are not multiplied by the stake** on doubled hands
+  (first open question): they are in the AI's expected score, which
+  knows nothing of the doublers multiplier.
+* **AI-made calls and buries are still not flagged individually**; a
+  hand with one is marked `skipped`.
+* **The worker** (`runtime/review_worker.py`) checks for more than one
+  table in play before each hand, and takes the inference gate for each
+  forward pass. A record the engine cannot follow fails at once; any
+  other failure is retried once. The reason is stored and shown on the
+  admin page. `AI_REVIEW_ENABLED=false` switches it off.
+* **History refreshes itself.** While a hand on show is waiting, the
+  page looks again every 20 seconds.
+* **A decision's option list is capped**: the choices the AI gives a
+  real chance, the player's own, and a count of the rest. A bury has 28
+  legal pairs.
+* **Links name a decision.** `/account/history/<game>?d=<index>` opens
+  the hand page on that decision; the AI review tab's lists use it.
+* **Measured on this machine while it was heavily loaded** (load
+  average over 200): 1.1 s a hand on average and 7.4 s for the slowest,
+  against 0.2 s when idle. The production box is still untimed.
+* **Operator actions** (make an administrator, re-review, switch the
+  worker off) are in `docs/deploy.md`.
+
+## 11. Where the bands sit (measured 2026-11-24)
+
+D6 set one threshold, half a point, by judgement. It was then tested
+against what hands really did, and replaced by three bands.
+
+**The test.** On a production snapshot of 1,629 hands, every decision
+where a player and the AI differed (2,837 of them) was played out to the
+end of the hand both ways, on the actual deal, with the AI playing every
+seat from that point. That gives a real final score for each choice, to
+set beside the review's predicted difference.
+
+Card play (2,454 decisions):
+
+| Predicted difference | n | Final score changed | As predicted | Other way | Mean predicted | Mean real |
+|---|---|---|---|---|---|---|
+| under 0.10 | 831 | 6% | 3% | 3% | 0.04 | −0.01 |
+| 0.10 to 0.25 | 519 | 13% | 8% | 5% | 0.17 | 0.01 |
+| 0.25 to 0.50 | 410 | 25% | 18% | 7% | 0.36 | 0.26 |
+| 0.50 to 0.75 | 218 | 26% | 21% | 5% | 0.62 | 0.58 |
+| 0.75 to 1.00 | 139 | 37% | 27% | 11% | 0.86 | 0.54 |
+| 1.00 to 1.50 | 153 | 42% | 38% | 5% | 1.24 | 1.06 |
+| 1.50 to 2.50 | 127 | 39% | 35% | 4% | 1.95 | 1.04 |
+| 2.50 and up | 57 | 53% | 47% | 5% | 3.89 | 2.35 |
+
+("Mean real" counts the real difference as positive when it went the
+way the review predicted.)
+
+* **Under a quarter point really is even**: the score moves about one
+  time in ten and as often against the prediction as with it.
+* **From a quarter point to a point the difference is real but small**:
+  the score moves a quarter to a third of the time, three or four to
+  one the predicted way, and the mean real difference matches the
+  predicted one.
+* **There is a step at one point**: the score moves about four times in
+  ten and wrong-way results halve. When it moves it goes the predicted
+  way 90% of the time, against 84% at half a point.
+* "More likely than not to change the final score" is never reached on
+  one deal short of 2.5 points, because scores move in whole points.
+* Above about 1.5 the review overstates the size (real about half to
+  two-thirds of predicted); the direction stays reliable.
+* Pick, call and bury (383 decisions) are much noisier and too few above
+  one point to set bands of their own; they use the same ones.
+
+**The bands** (`EVEN_BELOW`, `FLAG_FROM` in `services/hand_review.py`):
+
+| Difference | Standing | Shown as |
+|---|---|---|
+| under 0.25 | even | "about even", no colour |
+| 0.25 to under 1.0 | slight | the number and the AI's choice, no colour; "a small difference" |
+| 1.0 and up | costly / better | red or green; eligible for the headline; drawn on the chart |
+
+On that snapshot the share of hands whose headline names a decision
+falls from about a third (23% costly, 11% gain only) to about a sixth
+(12% and 6%). A hand with nothing over a point says so: "Three different
+choices, none worth a full point." The cost and gained totals and the
+net still count every difference.
+
+The collection and analysis scripts were one-off and are not in the
+repository.
+
