@@ -23,12 +23,12 @@ import {
   decisionLabel,
   decisionNote,
   handHeadline,
-  historyHref,
   netTone,
   partnerLine,
   tone,
 } from "../../../../lib/review";
 import { shortDateTime, signed } from "../../../../lib/format";
+import { handReviewHref, historyHref } from "../../../../lib/reviewLinks";
 import { ROLE_LABEL } from "../../../../lib/roles";
 import { pickScenarioHref } from "../../../../lib/pickScenario";
 import type { HandReview } from "../../../../lib/types";
@@ -152,7 +152,7 @@ function Review({ gameId }: { gameId: string }) {
         <span className={styles.neighbours}>
           {review.newer_game_id && (
             <Link
-              href={`/account/history/${review.newer_game_id}`}
+              href={handReviewHref(review.newer_game_id)}
               className={ds.link}
             >
               ← Newer hand
@@ -160,7 +160,7 @@ function Review({ gameId }: { gameId: string }) {
           )}
           {review.older_game_id && (
             <Link
-              href={`/account/history/${review.older_game_id}`}
+              href={handReviewHref(review.older_game_id)}
               className={ds.link}
             >
               Older hand →

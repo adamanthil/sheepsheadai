@@ -7,12 +7,9 @@ import {
   fetchHandReview,
   fetchHands,
 } from "../../../lib/account";
-import {
-  historyHref,
-  netTone,
-  type HistoryView as View,
-} from "../../../lib/review";
+import { netTone } from "../../../lib/review";
 import { latestReviews } from "../../../lib/handHistory";
+import { HISTORY_VIEWS, historyHref } from "../../../lib/reviewLinks";
 import type { HandReview } from "../../../lib/types";
 import BetaTag from "../components/BetaTag";
 import CostGainBar from "../components/CostGainBar";
@@ -21,6 +18,7 @@ import HandStrip from "./HandStrip";
 import type { HandHistoryRow } from "../../../lib/types";
 import AccountShell from "../AccountShell";
 import VerifiedOnly from "../components/VerifiedOnly";
+import { useLinkedView } from "../useLinkedView";
 import { useRequiredAccount } from "../useRequiredAccount";
 import { shortDateTime, signed } from "../../../lib/format";
 import { ROLE_LABEL } from "../../../lib/roles";
@@ -40,12 +38,6 @@ export default function HandHistoryPage() {
   );
 }
 
-/** The view a link asked for (?view=ai); results otherwise. */
-function linkedView(): View {
-  const asked = new URLSearchParams(window.location.search).get("view");
-  return asked === "ai" ? "ai" : "results";
-}
-
 // Seconds between looks for reviews that were still waiting.
 const POLL_SECONDS = 20;
 
@@ -55,13 +47,7 @@ function History() {
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [view, setView] = useState<View>(linkedView);
-  // The address follows the view, so a link (or the way back from a
-  // hand's review) can open the AI comparison.
-  const show = (next: View) => {
-    setView(next);
-    window.history.replaceState(null, "", historyHref(next));
-  };
+  const [view, show] = useLinkedView(HISTORY_VIEWS, historyHref);
 
   const load = useCallback(async (before: string | null) => {
     setBusy(true);

@@ -9,6 +9,7 @@ import {
   tone,
 } from "../../../lib/review";
 import { signed } from "../../../lib/format";
+import { handReviewHref } from "../../../lib/reviewLinks";
 import type { HandReview } from "../../../lib/types";
 import SuitText from "../components/SuitText";
 import styles from "./history.module.css";
@@ -40,7 +41,7 @@ export default function HandStrip({ review }: { review: HandReview }) {
           </div>
         </div>
         <Link
-          href={`/account/history/${review.hand.game_id}`}
+          href={handReviewHref(review.hand.game_id)}
           className={`${ds.link} ${styles.stripLink}`}
         >
           Open full review →

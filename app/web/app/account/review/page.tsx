@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import AccountShell from "../AccountShell";
 import VerifiedOnly from "../components/VerifiedOnly";
+import { useLinkedView } from "../useLinkedView";
 import { useRequiredAccount } from "../useRequiredAccount";
 import accountStyles from "../account.module.css";
 import { accountErrorMessage, fetchAccountReview } from "../../../lib/account";
@@ -15,6 +16,11 @@ import {
   totalTone,
 } from "../../../lib/review";
 import { shortDate, signed } from "../../../lib/format";
+import {
+  REVIEW_VIEWS,
+  handReviewHref,
+  reviewHref,
+} from "../../../lib/reviewLinks";
 import type {
   AccountReview,
   ReviewDifference,
@@ -63,25 +69,9 @@ export default function AccountReviewPage() {
   );
 }
 
-type View = "decisions" | "picking";
-
-/** The view a link asked for (?view=picking); decisions otherwise. */
-function linkedView(): View {
-  const asked = new URLSearchParams(window.location.search).get("view");
-  return asked === "picking" ? "picking" : "decisions";
-}
-
 function Totals() {
   const [review, setReview] = useState<AccountReview | null>(null);
-  const [view, setView] = useState<View>(linkedView);
-  const show = (next: View) => {
-    setView(next);
-    window.history.replaceState(
-      null,
-      "",
-      next === "picking" ? "/account/review?view=picking" : "/account/review",
-    );
-  };
+  const [view, show] = useLinkedView(REVIEW_VIEWS, reviewHref);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -286,7 +276,7 @@ function DifferenceRow({ difference }: { difference: ReviewDifference }) {
   return (
     <li>
       <Link
-        href={`/account/history/${difference.game_id}?d=${difference.index}`}
+        href={handReviewHref(difference.game_id, difference.index)}
         className={styles.difference}
         aria-label={`${lines.yours}, ${signed(difference.difference, 1)}. Review this decision`}
       >
@@ -414,7 +404,7 @@ function PickCard({ pick }: { pick: ReviewPick }) {
             {signed(pick.pass_score, 1)}
           </strong>
         </span>
-        <Link href={`/account/history/${pick.game_id}?d=0`} className={ds.link}>
+        <Link href={handReviewHref(pick.game_id, 0)} className={ds.link}>
           Review hand →
         </Link>
       </div>

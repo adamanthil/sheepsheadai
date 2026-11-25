@@ -299,14 +299,6 @@ export function decisionCounts(
   return parts.length ? `${total}: ${parts.join(", ")}` : total;
 }
 
-/** The two tables of the hand history page. */
-export type HistoryView = "results" | "ai";
-
-/** The hand history page opened on ``view``. */
-export function historyHref(view: HistoryView): string {
-  return view === "ai" ? "/account/history?view=ai" : "/account/history";
-}
-
 /** How a figure is coloured. Put on an element as data-tone, which
  * globals.css colours; "plain" leaves it as it was. */
 export type Tone = "cost" | "gain" | "plain";
