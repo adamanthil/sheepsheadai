@@ -365,6 +365,10 @@ review-tab aggregates; (0) `is_admin`; (4) history toggle, bar column and strip;
 
 * `app/server/services/hand_review.py` — replay and review, no
   database access.
+* `app/server/services/review_bands.py` — the bands, a decision's
+  standing and a hand's notability; the one definition of each.
+* `app/server/services/review_view.py` — a stored review joined to its
+  recorded hand, as the hand page is served it.
 * `app/scripts/review_hands.py` — read-only report over a database:
   `uv run python app/scripts/review_hands.py`.
 * `design/decision-review/` — the three prototypes,
@@ -461,7 +465,7 @@ way the review predicted.)
 * Pick, call and bury (383 decisions) are much noisier and too few above
   one point to set bands of their own; they use the same ones.
 
-**The bands** (`EVEN_BELOW`, `FLAG_FROM` in `services/hand_review.py`):
+**The bands** (`EVEN_BELOW`, `FLAG_FROM` in `services/review_bands.py`):
 
 | Difference | Standing | Shown as |
 |---|---|---|
