@@ -116,8 +116,10 @@ real: 160 hands of one production player, reviewed with
 ### 3.1 Hand history (`hand-history.html`)
 
 * **A toggle at the top: Results | AI comparison (beta).** Results is
-  listed first; AI comparison is the default, for discoverability. Results is the table
-  as it is today, unchanged (table, stakes, points, opponents, notes).
+  listed first and is the default (the design opened on AI comparison,
+  for discoverability; the build went back to Results). Results is the
+  table as it is today, unchanged (table, stakes, points, opponents,
+  notes).
 * **AI comparison columns:** Date, Role, Score, a Cost/Gained bar, Net.
   Table name and points are dropped here to give the bar room.
 * **The bar.** From a centre line, a red bar grows left by the total

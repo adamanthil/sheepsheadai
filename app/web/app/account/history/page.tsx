@@ -84,8 +84,7 @@ function History() {
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // The AI comparison opens first, so that it is found.
-  const [view, setView] = useState<View>("ai");
+  const [view, setView] = useState<View>("results");
 
   const load = useCallback(async (before: string | null) => {
     setBusy(true);
