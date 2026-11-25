@@ -2,27 +2,20 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import { ds } from "../../../lib/ds";
-import {
-  accountErrorMessage,
-  fetchHandReview,
-  fetchHands,
-} from "../../../lib/account";
-import { netTone } from "../../../lib/review";
+import { accountErrorMessage, fetchHands } from "../../../lib/account";
+import { shortDateTime, signed } from "../../../lib/format";
 import { latestReviews } from "../../../lib/handHistory";
 import { HISTORY_VIEWS, historyHref } from "../../../lib/reviewLinks";
-import type { HandReview } from "../../../lib/types";
-import BetaTag from "../components/BetaTag";
-import CostGainBar from "../components/CostGainBar";
-import Segmented from "../components/Segmented";
-import HandStrip from "./HandStrip";
 import type { HandHistoryRow } from "../../../lib/types";
 import AccountShell from "../AccountShell";
+import BetaTag from "../components/BetaTag";
+import Segmented from "../components/Segmented";
 import VerifiedOnly from "../components/VerifiedOnly";
 import { useLinkedView } from "../useLinkedView";
 import { useRequiredAccount } from "../useRequiredAccount";
-import { shortDateTime, signed } from "../../../lib/format";
-import { ROLE_LABEL } from "../../../lib/roles";
 import accountStyles from "../account.module.css";
+import AiRow from "./AiRow";
+import HandRole from "./HandRole";
 import styles from "./history.module.css";
 
 /** Every finished hand the account played, newest first, a page at a time. */
@@ -206,114 +199,6 @@ function History() {
   );
 }
 
-const WHY_NOT: Record<string, string> = {
-  skipped: "The AI made some of your decisions in this hand",
-  failed: "This hand could not be reviewed",
-};
-
-/** A hand in the AI comparison: what its choices cost and gained against
- * the AI's, and the net. Opens to a strip of its decisions. */
-function AiRow({ hand }: { hand: HandHistoryRow }) {
-  const [open, setOpen] = useState(false);
-  const [review, setReview] = useState<HandReview | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const status = hand.review?.status ?? null;
-  const reviewed = status === "reviewed";
-  const cost = hand.review?.cost ?? 0;
-  const gained = hand.review?.gained ?? 0;
-  const handNet = hand.review?.net ?? 0;
-  // Most hands differ from the AI's line a little each way and come out
-  // near even. Those are drawn quietly, so the few where a decision moved
-  // the hand a full point are the ones the eye finds.
-  const notable = hand.review?.notable ?? false;
-  const lineTone = hand.counted_score < 0 ? styles.loss : "";
-
-  const toggle = () => {
-    setOpen(!open);
-    if (!open && !review) {
-      setError(null);
-      fetchHandReview(hand.game_id).then(setReview, (err) =>
-        setError(accountErrorMessage(err)),
-      );
-    }
-  };
-  const role = (
-    <>
-      {ROLE_LABEL[hand.role]}
-      {hand.alone && hand.role === "picker" && (
-        <span className={styles.muted}> · alone</span>
-      )}
-    </>
-  );
-
-  return (
-    <>
-      {/* The whole row opens it; the button is the same control for the
-          keyboard and for screen readers. */}
-      <tr
-        className={`${lineTone} ${open ? styles.openRow : ""} ${reviewed ? styles.opens : ""}`}
-        onClick={reviewed ? toggle : undefined}
-      >
-        <td className={styles.when}>
-          {shortDateTime(hand.time_closed)}
-          <span className={`${styles.roleUnder} ${styles.tone}`}>{role}</span>
-        </td>
-        <td className={`${styles.tone} ${styles.roleCell}`}>{role}</td>
-        <td className={`${styles.num} ${styles.tone}`}>{signed(hand.score)}</td>
-        {reviewed ? (
-          <>
-            <td className={styles.barCell}>
-              <CostGainBar cost={cost} gained={gained} quiet={!notable} />
-            </td>
-            <td
-              className={`${styles.num} ${styles.net} ${notable ? styles.netNotable : ""}`}
-              data-tone={netTone(handNet, notable)}
-            >
-              {cost === 0 && gained === 0 ? "—" : signed(handNet, 1)}
-            </td>
-            <td className={styles.expandCell}>
-              <button
-                type="button"
-                className={styles.expand}
-                aria-expanded={open}
-                aria-label={`Cost ${cost.toFixed(1)}, gained ${gained.toFixed(1)}, net ${signed(handNet, 1)} points of expected score. ${open ? "Hide" : "Show"} decisions`}
-                onClick={(event) => {
-                  // The row would toggle it straight back.
-                  event.stopPropagation();
-                  toggle();
-                }}
-              >
-                <span className={open ? styles.caretOpen : undefined}>▾</span>
-              </button>
-            </td>
-          </>
-        ) : (
-          <td colSpan={3} className={styles.pending}>
-            {status === "queued" ? (
-              <span role="status">Waiting for review</span>
-            ) : (
-              <span title={status ? WHY_NOT[status] : "Not reviewed"}>—</span>
-            )}
-          </td>
-        )}
-      </tr>
-      {open && (
-        <tr className={styles.stripRow}>
-          <td colSpan={6}>
-            {review ? (
-              <HandStrip review={review} />
-            ) : (
-              <p className={error ? accountStyles.error : accountStyles.note}>
-                {error ?? "Loading…"}
-              </p>
-            )}
-          </td>
-        </tr>
-      )}
-    </>
-  );
-}
-
 function Row({ hand }: { hand: HandHistoryRow }) {
   const zeroed = hand.counted_score !== hand.score;
   const { humans, ai } = hand.opponents;
@@ -326,10 +211,7 @@ function Row({ hand }: { hand: HandHistoryRow }) {
         </span>
       </td>
       <td className={styles.tone}>
-        {ROLE_LABEL[hand.role]}
-        {hand.alone && hand.role === "picker" && (
-          <span className={styles.muted}> · alone</span>
-        )}
+        <HandRole hand={hand} />
       </td>
       <td className={`${styles.num} ${styles.tone}`}>
         {zeroed ? (

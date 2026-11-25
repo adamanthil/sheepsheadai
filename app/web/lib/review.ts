@@ -6,7 +6,7 @@
  * "the AI". */
 import { isCardCode, parseCard, suitSymbol } from "./ds/cardUtils";
 import { signed } from "./format";
-import type { DecisionReview, HandReview } from "./types";
+import type { DecisionReview, HandHistoryRow, HandReview } from "./types";
 
 /** "J♣" for "JC". */
 export function cardLabel(code: string): string {
@@ -231,6 +231,16 @@ function count(n: number, one: string, many: string): string {
   return `${words[n] ?? n} ${n === 1 ? one : many}`;
 }
 
+/** Why a hand has no review to show, in a sentence. */
+export function unreviewedReason(
+  status: NonNullable<HandHistoryRow["review"]>["status"] | null | undefined,
+): string {
+  if (status === "queued") return "This hand is waiting for its review.";
+  if (status === "skipped")
+    return "The AI made some of your decisions in this hand, so it is not reviewed.";
+  return "This hand could not be reviewed.";
+}
+
 /** A reviewed hand in one line. It names a single decision where one
  * stands out (the costliest, else the best gain) and otherwise says
  * plainly that nothing did. */
@@ -238,13 +248,7 @@ export function handHeadline(review: HandReview): Headline {
   const status = review.hand.review?.status;
   const summary = review.summary;
   if (status !== "reviewed" || !summary) {
-    const text =
-      status === "queued"
-        ? "This hand is waiting for its review."
-        : status === "skipped"
-          ? "The AI made some of your decisions in this hand, so it is not reviewed."
-          : "This hand could not be reviewed.";
-    return { kicker: null, text, index: null };
+    return { kicker: null, text: unreviewedReason(status), index: null };
   }
   const decision = review.decisions.find(
     (d) => d.index === summary.headline_index,
