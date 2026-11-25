@@ -2183,6 +2183,10 @@
             ],
             "title": "Called Card"
           },
+          "called_under": {
+            "title": "Called Under",
+            "type": "boolean"
+          },
           "dealt_hand": {
             "items": {
               "type": "string"
@@ -2254,6 +2258,7 @@
           "hand",
           "seat",
           "called_card",
+          "called_under",
           "dealt_hand",
           "blind",
           "partner_mode",

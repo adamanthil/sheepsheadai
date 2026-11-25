@@ -8,6 +8,7 @@ import {
   decisionKicker,
   decisionMethod,
   decisionVerdict,
+  type PartnerLine,
   signed,
   tone,
 } from "../../../../lib/review";
@@ -30,6 +31,7 @@ export default function DecisionDetail({
   seat,
   seats,
   blind,
+  partner,
   analyzeHref,
   onPrevious,
   onNext,
@@ -39,6 +41,8 @@ export default function DecisionDetail({
   seats: HandSeat[];
   /** The two cards of the hand's blind. */
   blind: string[];
+  /** The partner call as the table knew it, once it has been made. */
+  partner: PartnerLine | null;
   /** The pick analyzer opened on this hand's deal. */
   analyzeHref: string;
   onPrevious: (() => void) | null;
@@ -99,26 +103,54 @@ export default function DecisionDetail({
           );
         })}
       </div>
-      <p className={styles.highTrump}>
-        <span className={styles.sectionLabel}>High trump</span>
-        {trump.card ? (
-          <>
-            <span>
-              <span
-                className={`${styles.highCard} ${isRed(trump.card) ? styles.red : ""}`}
-              >
-                {cardLabel(trump.card)}
-              </span>{" "}
-              <strong className={trump.held ? styles.gain : undefined}>
-                {trump.held ? "in your hand" : "still out"}
-              </strong>
-            </span>
-            <span>{trump.unseen} trump you have not seen</span>
-          </>
-        ) : (
-          <strong>no trump left</strong>
+      <dl className={styles.context}>
+        {partner && (
+          <div>
+            <dt className={styles.sectionLabel}>{partner.label}</dt>
+            <dd>
+              {partner.card && (
+                <span
+                  className={`${styles.highCard} ${isRed(partner.card) ? styles.red : ""}`}
+                >
+                  {cardLabel(partner.card)}
+                </span>
+              )}
+              {partner.under && <strong>under</strong>}
+              {partner.held ? (
+                <strong>
+                  {partner.under && "· "}
+                  {partner.note}
+                </strong>
+              ) : (
+                <span>
+                  {partner.under && "· "}
+                  {partner.note}
+                </span>
+              )}
+            </dd>
+          </div>
         )}
-      </p>
+        <div>
+          <dt className={styles.sectionLabel}>High trump</dt>
+          <dd>
+            {trump.card ? (
+              <>
+                <span
+                  className={`${styles.highCard} ${isRed(trump.card) ? styles.red : ""}`}
+                >
+                  {cardLabel(trump.card)}
+                </span>
+                <strong className={trump.held ? styles.gain : undefined}>
+                  {trump.held ? "in your hand" : "still out"}
+                </strong>
+                <span>· {trump.unseen} trump you have not seen</span>
+              </>
+            ) : (
+              <strong>no trump left</strong>
+            )}
+          </dd>
+        </div>
+      </dl>
 
       <div className={styles.sectionLabel}>How the AI plays it</div>
       <ul className={styles.policy}>

@@ -1397,6 +1397,8 @@ export interface components {
             blind: string[];
             /** Called Card */
             called_card: string | null;
+            /** Called Under */
+            called_under: boolean;
             /** Dealt Hand */
             dealt_hand: string[];
             /** Decisions */

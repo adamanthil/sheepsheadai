@@ -10,6 +10,7 @@ import {
   handHeadline,
   net,
   netTone,
+  partnerLine,
   shortAction,
   signed,
   tone,
@@ -296,5 +297,76 @@ describe("totals", () => {
     expect(tone(1)).toBe("gain");
     expect(tone(-0.9)).toBe("plain");
     expect(tone(null)).toBe("plain");
+  });
+});
+
+describe("partnerLine", () => {
+  const seats = (you: HandReview["seats"][number]["role"]) =>
+    [1, 2, 3, 4, 5].map((seat) => ({
+      seat,
+      is_ai: seat !== 3,
+      is_you: seat === 3,
+      name: null,
+      role:
+        seat === 3
+          ? you
+          : seat === 1 && you !== "leaster"
+            ? "picker"
+            : "defender",
+    })) as HandReview["seats"];
+  const hand = (alone = false) => ({ alone }) as HandReview["hand"];
+  const called = {
+    hand: hand(),
+    seat: 3,
+    seats: seats("defender"),
+    called_card: "AH",
+    called_under: false,
+    partner_mode: 1,
+  };
+
+  it("is absent before the call and in a leaster", () => {
+    expect(partnerLine(called, decision({ kind: "pick" }))).toBeNull();
+    expect(partnerLine(called, decision({ kind: "call" }))).toBeNull();
+    expect(
+      partnerLine({ ...called, seats: seats("leaster") }, decision({})),
+    ).toBeNull();
+  });
+
+  it("names the called ace and whether the partner is known", () => {
+    expect(partnerLine(called, decision({}))).toEqual({
+      label: "Called",
+      card: "AH",
+      under: false,
+      held: false,
+      note: "partner not yet known",
+    });
+    expect(
+      partnerLine(
+        { ...called, called_under: true },
+        decision({ partner_known: true }),
+      ),
+    ).toMatchObject({ under: true, note: "partner known" });
+  });
+
+  it("tells the partner it is in their hand, then that they played it", () => {
+    const partner = { ...called, seats: seats("partner") };
+    expect(
+      partnerLine(partner, decision({ hand: ["AH", "QC"] })),
+    ).toMatchObject({ held: true, note: "in your hand" });
+    expect(
+      partnerLine(partner, decision({ partner_known: true })),
+    ).toMatchObject({ held: false, note: "you played it" });
+  });
+
+  it("shows the jack of diamonds, or that the picker is alone", () => {
+    expect(
+      partnerLine(
+        { ...called, partner_mode: 0, called_card: null },
+        decision({}),
+      ),
+    ).toMatchObject({ label: "Partner", card: "JD" });
+    expect(
+      partnerLine({ ...called, hand: hand(true) }, decision({})),
+    ).toMatchObject({ card: null, note: "none, the picker is alone" });
   });
 });

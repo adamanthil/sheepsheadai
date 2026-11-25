@@ -24,6 +24,7 @@ import {
   historyHref,
   net,
   netTone,
+  partnerLine,
   signed,
   tone,
 } from "../../../../lib/review";
@@ -303,6 +304,7 @@ function Review({ gameId }: { gameId: string }) {
                         seat={review.seat}
                         seats={review.seats}
                         blind={review.blind}
+                        partner={partnerLine(review, d)}
                         analyzeHref={analyzeHref}
                         onPrevious={position > 0 ? step(-1) : null}
                         onNext={

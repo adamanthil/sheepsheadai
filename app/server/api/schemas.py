@@ -400,6 +400,9 @@ class HandReviewResponse(BaseModel):
     hand: HandHistoryRow
     seat: int
     called_card: Optional[str]
+    # The picker called the ace "under": they held none of its suit and
+    # put a card face down to play when it is led.
+    called_under: bool
     # The deal as the pick analyzer takes it: the six cards the seat was
     # dealt, the blind, and the partner mode (0 = jack of diamonds, 1 =
     # called ace).

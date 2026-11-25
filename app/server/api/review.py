@@ -99,6 +99,7 @@ async def hand_review(
         "hand": hand,
         "seat": seat,
         "called_card": record.called_card if record is not None else None,
+        "called_under": record is not None and record.under_card is not None,
         "dealt_hand": record.hands[seat] if record is not None else [],
         "blind": record.blind if record is not None else [],
         "partner_mode": record.partner_mode if record is not None else 1,

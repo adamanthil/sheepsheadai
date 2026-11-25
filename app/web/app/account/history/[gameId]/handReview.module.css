@@ -437,19 +437,31 @@
   line-height: 1;
   color: var(--ink-soft);
 }
-.highTrump {
-  display: flex;
-  flex-wrap: wrap;
+/* The state of the hand a decision was made in: who the partner is and
+   the high trump. A label column, so the two lines read as one block. */
+.context {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
   align-items: baseline;
-  gap: 4px 12px;
+  gap: 6px 14px;
   margin: 0 0 24px;
   font-size: 13px;
   color: var(--muted);
 }
-.highTrump .sectionLabel {
+.context > div {
+  display: contents;
+}
+.context .sectionLabel {
   margin: 0;
 }
-.highTrump strong {
+.context dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  margin: 0;
+}
+.context strong {
   font-weight: 600;
 }
 .highCard {

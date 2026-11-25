@@ -169,6 +169,60 @@ export function decisionVerdict(decision: DecisionReview): string {
   }
 }
 
+/** Who the picker's partner is, as the table knew it at a decision. */
+export type PartnerLine = {
+  /** "Called" for a called ace, "Partner" otherwise. */
+  label: string;
+  /** The card that names the partner; null when the picker went alone. */
+  card: string | null;
+  under: boolean;
+  /** The deciding seat holds the card: they are the partner. */
+  held: boolean;
+  note: string;
+};
+
+/** The partner call as it stood at a decision: what was called and, from
+ * the deciding seat's view, whether the partner is known yet. Null before
+ * the call is made (the pick and the call itself) and in a leaster. */
+export function partnerLine(
+  review: Pick<
+    HandReview,
+    "hand" | "seat" | "seats" | "called_card" | "called_under" | "partner_mode"
+  >,
+  decision: Pick<DecisionReview, "kind" | "hand" | "partner_known">,
+): PartnerLine | null {
+  if (decision.kind === "pick" || decision.kind === "call") return null;
+  const picker = review.seats.find((s) => s.role === "picker")?.seat;
+  if (picker == null) return null;
+  const youPicked = picker === review.seat;
+  if (review.hand.alone) {
+    return {
+      label: "Partner",
+      card: null,
+      under: false,
+      held: false,
+      note: youPicked ? "none, you went alone" : "none, the picker is alone",
+    };
+  }
+  const card = review.partner_mode === 1 ? review.called_card : "JD";
+  if (!card) return null;
+  const held = decision.hand.includes(card);
+  const note = held
+    ? "in your hand"
+    : !decision.partner_known
+      ? "partner not yet known"
+      : review.seats.find((s) => s.seat === review.seat)?.role === "partner"
+        ? "you played it"
+        : "partner known";
+  return {
+    label: review.partner_mode === 1 ? "Called" : "Partner",
+    card,
+    under: review.called_under,
+    held,
+    note,
+  };
+}
+
 /** How the two expected scores were arrived at, in a sentence. */
 export function decisionMethod(decision: DecisionReview): string {
   if (decision.standing === "forced")
