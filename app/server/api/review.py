@@ -10,7 +10,12 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from server.api.auth import PlayerIdentity, current_player, verified_account
+from server.api.auth import (
+    PlayerIdentity,
+    admin_account,
+    current_player,
+    verified_account,
+)
 from server.api.schemas import (
     AccountReviewResponse,
     HandReviewResponse,
@@ -19,7 +24,6 @@ from server.api.schemas import (
 from server.config import get_settings
 from server.runtime import review_worker
 from server.services.high_trump import high_trump, played_before
-from server.services.persistence import accounts as accounts_db
 from server.services.persistence import history as history_db
 from server.services.persistence import review_reads
 from server.services.persistence.hand_records import load_hands
@@ -146,11 +150,8 @@ async def hand_review(
 @router.get("/api/admin/review-queue", response_model=ReviewQueueResponse)
 async def review_queue(identity: PlayerIdentity = Depends(current_player)):
     """The state of the AI review queue, for administrators."""
+    await admin_account(identity)
     pool = get_db_pool()
-    account = await accounts_db.get_account(pool, identity.id)
-    # Not found, rather than forbidden: the admin area is not advertised.
-    if account is None or not account.is_admin:
-        raise HTTPException(status_code=404, detail="not_found")
     label = get_settings().sheepshead_model_label
     stats = await review_reads.queue_stats(pool, label)
     return {

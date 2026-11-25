@@ -99,3 +99,13 @@ async def verified_account(identity: PlayerIdentity) -> Account:
     if not account.email_verified:
         raise HTTPException(status_code=403, detail="email_unverified")
     return account
+
+
+async def admin_account(identity: PlayerIdentity) -> Account:
+    """The caller's account, for endpoints only an administrator may use.
+    Not found, rather than forbidden, for anyone else: the admin area is
+    not advertised."""
+    account = await accounts_db.get_account(get_db_pool(), identity.id)
+    if account is None or not account.is_admin:
+        raise HTTPException(status_code=404, detail="not_found")
+    return account
