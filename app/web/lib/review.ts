@@ -268,11 +268,11 @@ export function net(cost: number, gained: number): number {
 
 export type Tone = "cost" | "gain" | "plain";
 
-/** The colour of a hand's net: red or green by its sign when the hand has
- * a flagged decision (so it agrees with the headline beside it), and
- * plain otherwise, however the small differences add up. */
-export function netTone(value: number, flagged: boolean): Tone {
-  if (!flagged || value === 0) return "plain";
+/** The colour of a hand's net: red or green by its sign for a notable
+ * hand (a decision cost or gained a full point, and the net came out a
+ * full point the same way), and plain for every other. */
+export function netTone(value: number, notable: boolean): Tone {
+  if (!notable) return "plain";
   return value < 0 ? "cost" : "gain";
 }
 

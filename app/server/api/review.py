@@ -18,6 +18,7 @@ from server.api.schemas import (
 )
 from server.config import get_settings
 from server.runtime import review_worker
+from server.services.hand_review import is_notable
 from server.services.high_trump import high_trump, played_before
 from server.services.persistence import accounts as accounts_db
 from server.services.persistence import history as history_db
@@ -124,6 +125,11 @@ async def hand_review(
                     "cost",
                     "gained",
                     "headline_index",
+                )
+            }
+            | {
+                "notable": is_notable(
+                    row["cost"], row["gained"], row["costly"], row["better"]
                 )
             }
             if row is not None and reviewed

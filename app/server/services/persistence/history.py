@@ -19,6 +19,7 @@ from uuid import UUID
 
 import asyncpg
 
+from server.services.hand_review import is_notable
 from server.services.persistence.stats import (
     ABANDONED_SQL,
     AI_ASSISTED_SQL,
@@ -84,8 +85,8 @@ bury AS (
 SELECT p.*, s.on_picker_team, s.taken, tm.picker_raw, tm.defender_raw,
        tm.opponent_humans, tm.opponent_ai, coalesce(b.points, 0) AS bury,
        hr.status AS review_status, hr.cost AS review_cost,
-       hr.gained AS review_gained,
-       hr.headline_index IS NOT NULL AS review_flagged
+       hr.gained AS review_gained, hr.costly AS review_costly,
+       hr.better AS review_better
 FROM page p
 JOIN seat s ON s.game_player_id = p.game_player_id
 JOIN team tm ON tm.game_id = p.game_id
@@ -153,7 +154,13 @@ def _review(row: asyncpg.Record) -> Optional[dict]:
         "status": status,
         "cost": row["review_cost"] if reviewed else None,
         "gained": row["review_gained"] if reviewed else None,
-        "flagged": reviewed and row["review_flagged"],
+        "notable": reviewed
+        and is_notable(
+            row["review_cost"],
+            row["review_gained"],
+            row["review_costly"],
+            row["review_better"],
+        ),
     }
 
 

@@ -151,11 +151,15 @@
 .barHead > :first-child {
   text-align: right;
 }
+/* Grey and light for most hands; a notable hand's net is heavier and in
+   colour. */
 .aiTable .net {
   font-size: 13px;
-  font-weight: 600;
-  /* Grey unless the hand's net reaches a full point either way. */
   color: var(--muted);
+}
+.aiTable .netNotable {
+  font-size: 14px;
+  font-weight: 700;
 }
 .aiTable .net.costText {
   color: var(--accent-2);

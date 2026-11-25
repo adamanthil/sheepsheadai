@@ -13,7 +13,12 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 import pytest
 
-from server.services.hand_review import HandRecord, ReplayError, review_hand
+from server.services.hand_review import (
+    HandRecord,
+    ReplayError,
+    is_notable,
+    review_hand,
+)
 from sheepshead.agent import ppo
 from sheepshead.agent.observation import last_trick_observation_for
 from sheepshead.agent.ppo import PPOAgent
@@ -168,6 +173,18 @@ def test_a_pick_the_model_would_pass_is_read_over_every_blind(agent):
     # The comparison uses the all-blinds reading for the pick.
     assert pick.chosen == pick.pick_all_blinds
     assert pick.model == pick.pass_actual_deal
+
+
+def test_a_hand_is_notable_when_its_net_bears_out_a_flagged_decision():
+    # A costly decision, and the hand a full point down.
+    assert is_notable(cost=1.6, gained=0.2, costly=1, better=0)
+    assert is_notable(cost=0.3, gained=2.1, costly=0, better=1)
+    # The same costly decision, cancelled by the smaller ones.
+    assert not is_notable(cost=1.1, gained=0.6, costly=1, better=0)
+    # A net that small differences added up to, with nothing flagged.
+    assert not is_notable(cost=1.4, gained=0.0, costly=0, better=0)
+    # A costly decision in a hand that came out ahead on its small ones.
+    assert not is_notable(cost=1.0, gained=2.4, costly=1, better=0)
 
 
 def test_a_record_the_engine_cannot_follow_is_refused(agent):

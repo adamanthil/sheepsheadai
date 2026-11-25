@@ -1379,10 +1379,10 @@ export interface components {
         HandReviewBrief: {
             /** Cost */
             cost: number | null;
-            /** Flagged */
-            flagged: boolean;
             /** Gained */
             gained: number | null;
+            /** Notable */
+            notable: boolean;
             /**
              * Status
              * @enum {string}
@@ -1432,6 +1432,8 @@ export interface components {
             gained: number;
             /** Headline Index */
             headline_index: number | null;
+            /** Notable */
+            notable: boolean;
             /** Slight */
             slight: number;
         };

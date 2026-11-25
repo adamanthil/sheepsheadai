@@ -2117,10 +2117,6 @@
             ],
             "title": "Cost"
           },
-          "flagged": {
-            "title": "Flagged",
-            "type": "boolean"
-          },
           "gained": {
             "anyOf": [
               {
@@ -2131,6 +2127,10 @@
               }
             ],
             "title": "Gained"
+          },
+          "notable": {
+            "title": "Notable",
+            "type": "boolean"
           },
           "status": {
             "enum": [
@@ -2147,7 +2147,7 @@
           "status",
           "cost",
           "gained",
-          "flagged"
+          "notable"
         ],
         "title": "HandReviewBrief",
         "type": "object"
@@ -2308,6 +2308,10 @@
             ],
             "title": "Headline Index"
           },
+          "notable": {
+            "title": "Notable",
+            "type": "boolean"
+          },
           "slight": {
             "title": "Slight",
             "type": "integer"
@@ -2322,7 +2326,8 @@
           "better",
           "cost",
           "gained",
-          "headline_index"
+          "headline_index",
+          "notable"
         ],
         "title": "HandReviewSummary",
         "type": "object"

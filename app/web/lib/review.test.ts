@@ -51,7 +51,7 @@ function review(
   status: "queued" | "reviewed" | "skipped" | "failed" = "reviewed",
 ): HandReview {
   return {
-    hand: { review: { status, cost: 0, gained: 0, flagged: false } },
+    hand: { review: { status, cost: 0, gained: 0, notable: false } },
     summary:
       status === "reviewed"
         ? {
@@ -64,6 +64,7 @@ function review(
             cost: 0,
             gained: 0,
             headline_index: null,
+            notable: false,
             ...summary,
           }
         : null,
@@ -271,6 +272,7 @@ describe("totals", () => {
         cost: 2.7,
         gained: 0.9,
         headline_index: 6,
+        notable: false,
       }),
     ).toBe(
       "8 decisions: 4 agreed, 1 about even, 1 small difference, 2 cost you, 1 gained",
@@ -282,11 +284,11 @@ describe("totals", () => {
     expect(net(0.1, 0.1)).toBe(0);
   });
 
-  it("colours a net only for a hand with a flagged decision", () => {
-    expect(netTone(-0.9, true)).toBe("cost");
-    expect(netTone(0.3, true)).toBe("gain");
-    expect(netTone(0, true)).toBe("plain");
+  it("colours a net only for a notable hand", () => {
+    expect(netTone(-1.3, true)).toBe("cost");
+    expect(netTone(2.1, true)).toBe("gain");
     expect(netTone(-1.4, false)).toBe("plain");
+    expect(netTone(0.5, false)).toBe("plain");
   });
 
   it("colours only a full point or more", () => {

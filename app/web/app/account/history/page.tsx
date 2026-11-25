@@ -255,7 +255,11 @@ function AiRow({ hand }: { hand: HandHistoryRow }) {
   const cost = hand.review?.cost ?? 0;
   const gained = hand.review?.gained ?? 0;
   const handNet = net(cost, gained);
-  const netColour = netTone(handNet, hand.review?.flagged ?? false);
+  // Most hands differ from the AI's line a little each way and come out
+  // near even. Those are drawn quietly, so the few where a decision moved
+  // the hand a full point are the ones the eye finds.
+  const notable = hand.review?.notable ?? false;
+  const netColour = netTone(handNet, notable);
   const lineTone = hand.counted_score < 0 ? styles.loss : "";
 
   const toggle = () => {
@@ -293,10 +297,10 @@ function AiRow({ hand }: { hand: HandHistoryRow }) {
         {reviewed ? (
           <>
             <td className={styles.barCell}>
-              <CostGainBar cost={cost} gained={gained} />
+              <CostGainBar cost={cost} gained={gained} quiet={!notable} />
             </td>
             <td
-              className={`${styles.num} ${styles.net} ${netColour === "cost" ? styles.costText : netColour === "gain" ? styles.gainText : ""}`}
+              className={`${styles.num} ${styles.net} ${notable ? styles.netNotable : ""} ${netColour === "cost" ? styles.costText : netColour === "gain" ? styles.gainText : ""}`}
             >
               {cost === 0 && gained === 0 ? "—" : signedPoints(handNet)}
             </td>

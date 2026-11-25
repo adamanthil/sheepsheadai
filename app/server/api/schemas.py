@@ -324,9 +324,9 @@ class HandReviewBrief(BaseModel):
     # both >= 0 (gained - cost is the hand's net); None until reviewed.
     cost: Optional[float]
     gained: Optional[float]
-    # One of the hand's decisions cost or gained a full point: the hand
-    # has a headline decision, and its net is shown in colour.
-    flagged: bool
+    # One of the hand's decisions cost or gained a full point and its net
+    # came out a full point the same way: the hand stands out in a list.
+    notable: bool
 
 
 class HighTrump(BaseModel):
@@ -392,6 +392,8 @@ class HandReviewSummary(BaseModel):
     # index of the decision that sums the hand up, if any reaches a full
     # point: the costliest, else the best gain.
     headline_index: Optional[int]
+    # As HandReviewBrief.notable.
+    notable: bool
 
 
 class HandReviewResponse(BaseModel):

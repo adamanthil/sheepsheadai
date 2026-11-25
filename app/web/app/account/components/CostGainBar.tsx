@@ -12,13 +12,19 @@ const FULL = 3;
 export default function CostGainBar({
   cost,
   gained,
+  quiet = false,
 }: {
   cost: number;
   gained: number;
+  /** Drawn faintly, for a hand that does not stand out. */
+  quiet?: boolean;
 }) {
   const side = (value: number) => `${Math.min(value / FULL, 1) * 50}%`;
   return (
-    <span className={styles.bar} aria-hidden="true">
+    <span
+      className={`${styles.bar} ${quiet ? styles.quiet : ""}`}
+      aria-hidden="true"
+    >
       <span className={styles.cost} style={{ width: side(cost) }} />
       <span className={styles.gained} style={{ width: side(gained) }} />
       {cost > FULL && (

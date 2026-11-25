@@ -20,6 +20,10 @@
   left: 50%;
   background: #1d6b42;
 }
+.quiet .cost,
+.quiet .gained {
+  opacity: 0.3;
+}
 .centre {
   position: absolute;
   left: 50%;

@@ -396,6 +396,12 @@ Where the build differs from, or settles, the design above.
   forward pass. A record the engine cannot follow fails at once; any
   other failure is retried once. The reason is stored and shown on the
   admin page. `AI_REVIEW_ENABLED=false` switches it off.
+* **History picks out the notable hands.** Most hands differ from the
+  AI a little each way and net out near even, often with one decision
+  just over the line. A hand is drawn in full colour, its net heavy,
+  only when one decision cost or gained a full point and the hand's net
+  came out a full point the same way (`is_notable`); every other bar is
+  faint and its net grey.
 * **History refreshes itself.** While a hand on show is waiting, the
   page looks again every 20 seconds.
 * **A decision's option list is capped**: the choices the AI gives a

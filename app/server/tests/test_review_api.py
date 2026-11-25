@@ -13,6 +13,7 @@ import httpx2
 import pytest
 
 from server.runtime import review_worker
+from server.services.hand_review import is_notable
 from server.services.high_trump import high_trump, played_before
 from server.services.persistence import reviews as reviews_db
 from server.services.persistence.sessions import create_session
@@ -85,16 +86,16 @@ async def test_history_rows_say_where_the_review_stands(db_app, agent):
         "status": "queued",
         "cost": None,
         "gained": None,
-        "flagged": False,
+        "notable": False,
     }
     review = done["hands"][0]["review"]
     assert review["status"] == "reviewed"
-    headline = await pool.fetchval(
-        "SELECT hr.headline_index FROM hand_review hr "
+    stored = await pool.fetchrow(
+        "SELECT hr.cost, hr.gained, hr.costly, hr.better FROM hand_review hr "
         "JOIN game_player gp USING (game_player_id) WHERE gp.player_id = $1",
         players[1],
     )
-    assert review["flagged"] == (headline is not None)
+    assert review["notable"] == is_notable(*stored)
     assert review["cost"] >= 0 and review["gained"] >= 0
 
 

@@ -145,7 +145,7 @@ function Review({ gameId }: { gameId: string }) {
   const humans = review.seats.filter((s) => !s.is_ai);
   const ai = review.seats.length - humans.length;
   const handNet = summary ? net(summary.cost, summary.gained) : 0;
-  const netColour = netTone(handNet, summary?.headline_index != null);
+  const netColour = netTone(handNet, summary?.notable ?? false);
 
   return (
     <>
