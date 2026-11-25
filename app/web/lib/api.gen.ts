@@ -42,6 +42,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/account/hands/{game_id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Hand Review
+         * @description One of the caller's hands, decision by decision, against the AI.
+         */
+        get: operations["hand_review_api_account_hands__game_id__review_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/account/login": {
         parameters: {
             query?: never;
@@ -161,6 +181,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/account/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Account Review
+         * @description The caller's reviewed hands, totalled: how often they made the AI's
+         *     choice, by kind of decision, and the largest differences.
+         */
+        get: operations["account_review_api_account_review_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/account/running-score": {
         parameters: {
             query?: never;
@@ -250,6 +291,26 @@ export interface paths {
          * @description Return action id to string mapping for the UI.
          */
         get: operations["get_actions_api_actions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/review-queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Review Queue
+         * @description The state of the AI review queue, for administrators.
+         */
+        get: operations["review_queue_api_admin_review_queue_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -629,8 +690,45 @@ export interface components {
             email: string;
             /** Email Verified */
             email_verified: boolean;
+            /** Is Admin */
+            is_admin: boolean;
             /** Username */
             username: string;
+        };
+        /** AccountReviewResponse */
+        AccountReviewResponse: {
+            /** Agreed */
+            agreed: number;
+            /** Better */
+            better: number;
+            /** By Kind */
+            by_kind: components["schemas"]["ReviewKindRow"][];
+            /** Cost Most */
+            cost_most: components["schemas"]["ReviewDifference"][];
+            /** Costly */
+            costly: number;
+            /** Decisions */
+            decisions: number;
+            /** Even */
+            even: number;
+            /** Gained Most */
+            gained_most: components["schemas"]["ReviewDifference"][];
+            /** Hands Reviewed */
+            hands_reviewed: number;
+            /** Hands Waiting */
+            hands_waiting: number;
+            /** Net */
+            net: number;
+            /** Passed Ai Picks */
+            passed_ai_picks: components["schemas"]["ReviewPick"][];
+            /** Pick Agreed */
+            pick_agreed: number;
+            /** Pick Decisions */
+            pick_decisions: number;
+            /** Picked Ai Passes */
+            picked_ai_passes: components["schemas"]["ReviewPick"][];
+            /** Slight */
+            slight: number;
         };
         /** AccountRunningScoreResponse */
         AccountRunningScoreResponse: {
@@ -1158,6 +1256,52 @@ export interface components {
              */
             status: "open" | "playing" | "finished";
         };
+        /** DecisionReviewOut */
+        DecisionReviewOut: {
+            /** Action */
+            action: string;
+            /** Ai Action */
+            ai_action: string;
+            /** Ai Score */
+            ai_score: number | null;
+            /** Chosen Score */
+            chosen_score: number | null;
+            /** Difference */
+            difference: number | null;
+            /** Expected Score */
+            expected_score: number;
+            /** Hand */
+            hand: string[];
+            high_trump: components["schemas"]["HighTrump"];
+            /** Index */
+            index: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "pick" | "call" | "under" | "bury" | "play";
+            /** Oracle Score */
+            oracle_score: number | null;
+            /** Partner Known */
+            partner_known: boolean;
+            /** Policy */
+            policy: [
+                string,
+                number
+            ][];
+            /**
+             * Standing
+             * @enum {string}
+             */
+            standing: "forced" | "agreed" | "even" | "slight" | "costly" | "better";
+            /** Table */
+            table: [
+                number,
+                string
+            ][];
+            /** Trick */
+            trick: number | null;
+        };
         /** EmailTokenRequest */
         EmailTokenRequest: {
             /** Token */
@@ -1208,6 +1352,7 @@ export interface components {
             points_scope: "team" | "own";
             /** Points Taken */
             points_taken: number;
+            review: components["schemas"]["HandReviewBrief"] | null;
             /**
              * Role
              * @enum {string}
@@ -1230,6 +1375,84 @@ export interface components {
             /** Humans */
             humans: number;
         };
+        /** HandReviewBrief */
+        HandReviewBrief: {
+            /** Cost */
+            cost: number | null;
+            /** Gained */
+            gained: number | null;
+            /** Notable */
+            notable: boolean;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "reviewed" | "skipped" | "failed";
+        };
+        /** HandReviewResponse */
+        HandReviewResponse: {
+            /** Ai Model */
+            ai_model: string | null;
+            /** Blind */
+            blind: string[];
+            /** Called Card */
+            called_card: string | null;
+            /** Dealt Hand */
+            dealt_hand: string[];
+            /** Decisions */
+            decisions: components["schemas"]["DecisionReviewOut"][];
+            hand: components["schemas"]["HandHistoryRow"];
+            /** Newer Game Id */
+            newer_game_id: string | null;
+            /** Older Game Id */
+            older_game_id: string | null;
+            /** Partner Mode */
+            partner_mode: number;
+            /** Seat */
+            seat: number;
+            /** Seats */
+            seats: components["schemas"]["HandSeat"][];
+            summary: components["schemas"]["HandReviewSummary"] | null;
+        };
+        /** HandReviewSummary */
+        HandReviewSummary: {
+            /** Agreed */
+            agreed: number;
+            /** Better */
+            better: number;
+            /** Cost */
+            cost: number;
+            /** Costly */
+            costly: number;
+            /** Decisions */
+            decisions: number;
+            /** Even */
+            even: number;
+            /** Gained */
+            gained: number;
+            /** Headline Index */
+            headline_index: number | null;
+            /** Notable */
+            notable: boolean;
+            /** Slight */
+            slight: number;
+        };
+        /** HandSeat */
+        HandSeat: {
+            /** Is Ai */
+            is_ai: boolean;
+            /** Is You */
+            is_you: boolean;
+            /** Name */
+            name: string | null;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "picker" | "partner" | "defender" | "leaster";
+            /** Seat */
+            seat: number;
+        };
         /** HealthResponse */
         HealthResponse: {
             /** Db */
@@ -1240,6 +1463,15 @@ export interface components {
             sampling: string;
             /** Status */
             status: string;
+        };
+        /** HighTrump */
+        HighTrump: {
+            /** Card */
+            card: string | null;
+            /** Held */
+            held: boolean;
+            /** Unseen */
+            unseen: number;
         };
         /** JoinTableRequest */
         JoinTableRequest: {
@@ -1371,6 +1603,132 @@ export interface components {
             password: string;
             /** Token */
             token: string;
+        };
+        /** ReviewDifference */
+        ReviewDifference: {
+            /** Action */
+            action: string;
+            /** Ai Action */
+            ai_action: string;
+            /** Ai Probability */
+            ai_probability: number;
+            /** Difference */
+            difference: number;
+            /**
+             * Game Id
+             * Format: uuid
+             */
+            game_id: string;
+            /** Index */
+            index: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "pick" | "call" | "under" | "bury" | "play";
+            /** Led */
+            led: boolean;
+            /** Table Name */
+            table_name: string;
+            /**
+             * Time Closed
+             * Format: date-time
+             */
+            time_closed: string;
+            /** Trick */
+            trick: number | null;
+        };
+        /** ReviewKindRow */
+        ReviewKindRow: {
+            /** Agreed */
+            agreed: number;
+            /** Better */
+            better: number;
+            /** Costly */
+            costly: number;
+            /** Decisions */
+            decisions: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "pick" | "call" | "bury" | "play";
+            /** Net */
+            net: number;
+        };
+        /** ReviewPick */
+        ReviewPick: {
+            /** Ai Pick Probability */
+            ai_pick_probability: number;
+            /**
+             * Game Id
+             * Format: uuid
+             */
+            game_id: string;
+            /** Hand */
+            hand: string[];
+            /** Pass Score */
+            pass_score: number;
+            /** Pick Score */
+            pick_score: number;
+            /** Picked */
+            picked: boolean;
+            /** Score */
+            score: number;
+            /** Seat */
+            seat: number;
+            /** Table Name */
+            table_name: string;
+            /**
+             * Time Closed
+             * Format: date-time
+             */
+            time_closed: string;
+        };
+        /** ReviewQueueFailure */
+        ReviewQueueFailure: {
+            /**
+             * Game Id
+             * Format: uuid
+             */
+            game_id: string;
+            /** Reason */
+            reason: string | null;
+            /** Seat */
+            seat: number;
+        };
+        /** ReviewQueueResponse */
+        ReviewQueueResponse: {
+            /** Ai Model */
+            ai_model: string;
+            /** Average Ms 24H */
+            average_ms_24h: number | null;
+            /** Failed */
+            failed: number;
+            /** Failures */
+            failures: components["schemas"]["ReviewQueueFailure"][];
+            /** Last Reviewed */
+            last_reviewed: string | null;
+            /** Oldest Queued */
+            oldest_queued: string | null;
+            /** Other Model Reviews */
+            other_model_reviews: number;
+            /** Paused */
+            paused: boolean;
+            /** Reviewed */
+            reviewed: number;
+            /** Reviewed 24H */
+            reviewed_24h: number;
+            /** Skipped */
+            skipped: number;
+            /** Slowest Ms 24H */
+            slowest_ms_24h: number | null;
+            /** Tables In Play */
+            tables_in_play: number;
+            /** Total */
+            total: number;
+            /** Waiting */
+            waiting: number;
         };
         /** RoleSplit */
         RoleSplit: {
@@ -1625,6 +1983,37 @@ export interface operations {
             };
         };
     };
+    hand_review_api_account_hands__game_id__review_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                game_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HandReviewResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     login_api_account_login_post: {
         parameters: {
             query?: never;
@@ -1817,6 +2206,26 @@ export interface operations {
             };
         };
     };
+    account_review_api_account_review_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountReviewResponse"];
+                };
+            };
+        };
+    };
     account_running_score_api_account_running_score_get: {
         parameters: {
             query?: {
@@ -1959,6 +2368,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ActionsLookupResponse"];
+                };
+            };
+        };
+    };
+    review_queue_api_admin_review_queue_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewQueueResponse"];
                 };
             };
         };

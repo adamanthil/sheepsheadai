@@ -20,6 +20,13 @@ export type StatsMode = NonNullable<
 >;
 export type HandHistory = components["schemas"]["HandHistoryResponse"];
 export type HandHistoryRow = components["schemas"]["HandHistoryRow"];
+export type HandReview = components["schemas"]["HandReviewResponse"];
+export type DecisionReview = components["schemas"]["DecisionReviewOut"];
+export type HandSeat = components["schemas"]["HandSeat"];
+export type AccountReview = components["schemas"]["AccountReviewResponse"];
+export type ReviewDifference = components["schemas"]["ReviewDifference"];
+export type ReviewPick = components["schemas"]["ReviewPick"];
+export type ReviewQueue = components["schemas"]["ReviewQueueResponse"];
 export type Leaderboard = components["schemas"]["LeaderboardResponse"];
 export type LeaderboardRow = components["schemas"]["LeaderboardRow"];
 export type LeaderboardSort = Leaderboard["sort"];

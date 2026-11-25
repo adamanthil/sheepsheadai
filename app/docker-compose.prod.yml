@@ -75,6 +75,8 @@ services:
       SHEEPSHEAD_TEMPERATURE_BURY: ${SHEEPSHEAD_TEMPERATURE_BURY:-0}
       SHEEPSHEAD_TEMPERATURE_PLAY: ${SHEEPSHEAD_TEMPERATURE_PLAY:-0}
       SHEEPSHEAD_LOGIT_BAND: ${SHEEPSHEAD_LOGIT_BAND:-}
+      # The background AI review worker; set false to switch it off.
+      AI_REVIEW_ENABLED: ${AI_REVIEW_ENABLED:-true}
       DATABASE_URL: postgres://${POSTGRES_USER:-sheepshead}:${POSTGRES_PASSWORD:?}@postgres:5432/sheepshead
       ENV: production
       LOG_FORMAT: json

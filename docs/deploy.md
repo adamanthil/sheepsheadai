@@ -84,6 +84,18 @@ values.
   this safe. If rule 2 was broken, fix forward.
 - Bad model: revert the manifest commit (the old asset still exists).
 
+**Re-review hands.** A deploy with a new model reviews new hands only;
+stored reviews keep the model they were made with. To have hands reviewed
+again, put them back in the queue, and the worker takes them at its usual
+pace (newest first, only while at most one table is in play):
+`UPDATE hand_review SET status = 'queued', attempts = 0 WHERE status IN
+('reviewed', 'failed')`, with `AND ai_model_id <> (SELECT ai_model_id FROM
+ai_model WHERE label = '<current label>')` to redo only another model's.
+
+**Switch AI review off.** Set `AI_REVIEW_ENABLED=false` in `.env.prod` and
+redeploy the api. Hands keep being queued and are reviewed once it is
+switched back on.
+
 **Deploy by hand** (first deploy, or with CI down). Locally run
 `app/scripts/deploy_tags.sh`, make sure CI has published those tags, then
 on the box as `deploy`: `/opt/sheepsheadai/app/scripts/deploy.sh <sha>

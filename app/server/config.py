@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     email_from: str = "Sheepshead AI <noreply@localhost>"
     # Origin of the web app, for links in emails (verify, password reset).
     public_base_url: str = "http://localhost:3000"
+    # The background worker that reviews registered players' finished hands
+    # against the model (server.runtime.review_worker).
+    ai_review_enabled: bool = True
     env: str = "development"
     log_format: str = "text"
     # Error reporting (server.error_reporting). Empty DSN = off. The release

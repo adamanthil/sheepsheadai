@@ -1,0 +1,294 @@
+.cost {
+  color: var(--accent-2);
+}
+.gain {
+  color: #1d6b42;
+}
+.mono {
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.lede {
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ink-soft);
+  margin: 0 0 20px;
+  max-width: 620px;
+}
+.section {
+  margin-top: 56px;
+}
+/* Between the page's two views; the same control as hand history's. */
+.viewToggle {
+  display: inline-flex;
+  border: 1px solid var(--rule-strong);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+.viewToggle button {
+  min-height: 36px;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.viewToggle button + button {
+  border-left: 1px solid var(--rule-strong);
+}
+.viewToggle button[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--bg-page);
+}
+.viewToggle button:focus-visible {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: -2px;
+}
+.sectionHead {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  border-top: 3px double var(--ink);
+  padding-top: 8px;
+  margin-bottom: 18px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.subHead {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 28px 0 6px;
+}
+.footnote {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+  margin: 12px 0 0;
+}
+
+.figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 20px 24px;
+  margin: 0;
+}
+.figures dt {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.figures dd {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 44px;
+  line-height: 1.1;
+}
+.figures .figureNote {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--ink-soft);
+  margin-top: 2px;
+}
+
+.kinds {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.kinds li {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr) 44px 110px 52px;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--rule);
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+.kinds li > :nth-child(n + 3) {
+  text-align: right;
+}
+.kindTrack {
+  display: block;
+  height: 6px;
+  background: var(--bg-page-deep);
+}
+.kindTrack > span {
+  display: block;
+  height: 6px;
+  background: var(--accent);
+}
+.kindCount {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin-bottom: 8px;
+}
+.figures + .controls {
+  margin-top: 24px;
+}
+.more {
+  margin-top: 14px;
+}
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--rule-strong);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.segmented button {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.segmented button + button {
+  border-left: 1px solid var(--rule-strong);
+}
+.segmented button[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--bg-page);
+}
+.segmented button:focus-visible {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: -2px;
+}
+
+.differences {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.difference {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--rule);
+  text-decoration: none;
+  color: var(--ink);
+}
+.difference:hover .differenceYours {
+  text-decoration: underline;
+  text-decoration-color: var(--rule-strong);
+  text-underline-offset: 4px;
+}
+.differenceValue {
+  font-family: var(--font-display);
+  font-size: 40px;
+  line-height: 1;
+}
+.differenceText {
+  min-width: 0;
+}
+.differenceYours {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 22px;
+  line-height: 1.15;
+}
+.differenceAi {
+  display: block;
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 3px;
+}
+.differenceAi .mono {
+  font-size: 12px;
+}
+.arrow {
+  font-size: 16px;
+}
+
+.picks {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+.pick {
+  background: var(--bg-card);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  box-shadow: var(--shadow-1);
+  padding: 16px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.pickHead {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+.pickCards {
+  --pc-w: 40px;
+  display: flex;
+  gap: 5px;
+  margin-bottom: 14px;
+}
+.pickChance {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.pickFoot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  border-top: 1px solid var(--rule);
+  padding-top: 12px;
+  margin-top: 14px;
+}
+
+@media (max-width: 640px) {
+  .kinds li {
+    grid-template-columns: 92px minmax(0, 1fr) 40px 48px;
+    gap: 8px;
+  }
+  .kindCount {
+    display: none;
+  }
+  .difference {
+    grid-template-columns: 62px minmax(0, 1fr) auto;
+    gap: 10px;
+  }
+  .differenceValue {
+    font-size: 32px;
+  }
+  .difference .arrow {
+    display: none;
+  }
+}

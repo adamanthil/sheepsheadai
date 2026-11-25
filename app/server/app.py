@@ -20,6 +20,7 @@ from server.api import analyze as analyze_router
 from server.api import games as games_router
 from server.api import health as health_router
 from server.api import players as players_router
+from server.api import review as review_router
 from server.api import stats as stats_router
 from server.api import tables as tables_router
 from server.api.ratelimit import limiter
@@ -27,6 +28,7 @@ from server.config import get_settings
 from server.error_reporting import init_error_reporting
 from server.realtime import websocket as websocket_router
 from server.runtime import lifecycle
+from server.runtime.review_worker import run_review_worker
 from server.runtime.tasks import spawn
 from server.services.ai_loader import load_agent
 from server.services.ai_sampling import SamplingSpec
@@ -196,6 +198,15 @@ def create_app() -> FastAPI:
             spawn(lifecycle.run_idle_sweeper(), "idle-sweeper"),
             spawn(run_identity_purge(pool), "identity-purge"),
         ]
+        if settings.ai_review_enabled:
+            background.append(
+                spawn(
+                    run_review_worker(
+                        pool, settings.sheepshead_model_path, ai_model_id
+                    ),
+                    "review-worker",
+                )
+            )
         try:
             yield
         finally:
@@ -259,6 +270,7 @@ def create_app() -> FastAPI:
     app.include_router(players_router.router)
     app.include_router(account_router.router)
     app.include_router(stats_router.router)
+    app.include_router(review_router.router)
     app.include_router(websocket_router.router)
 
     return app

@@ -33,11 +33,16 @@ pytestmark = pytest.mark.skipif(
 
 
 async def _play_hand(
-    pool, seed: int, partner_mode: int, ai_seats: tuple[int, ...] = ()
+    pool,
+    seed: int,
+    partner_mode: int,
+    ai_seats: tuple[int, ...] = (),
+    seat_players: dict[int, uuid.UUID] | None = None,
 ) -> tuple[Game, dict[int, uuid.UUID]]:
     """Deal ``Game(seed)`` at a fresh table and play it out with uniformly
     random legal moves (seeded), firing the persistence hooks for every
-    move. Returns the finished game and each human seat's player id."""
+    move. Returns the finished game and each human seat's player id.
+    ``seat_players`` seats existing players; the rest are new guests."""
     table = Table(
         id=str(uuid.uuid4()),
         name=f"history {seed}",
@@ -51,7 +56,7 @@ async def _play_hand(
             )
             table.seats[seat] = f"ai{seat}"
             continue
-        pid = uuid.uuid4()
+        pid = (seat_players or {}).get(seat) or uuid.uuid4()
         await ensure_player(pool, pid, None)
         players[seat] = pid
         cid = f"h{seat}"

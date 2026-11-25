@@ -39,7 +39,7 @@ export default function AccountPage() {
     <AccountShell
       title={account ? `@${account.username}` : "Your account"}
       tab="overview"
-      signedIn={!!account}
+      account={account}
       wide={verified}
     >
       {body}

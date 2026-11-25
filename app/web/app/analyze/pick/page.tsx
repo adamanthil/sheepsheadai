@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import type {
   AnalyzePickRequest,
   AnalyzePickResponse,
 } from "../../../lib/analyzeTypes";
 import { apiFetch } from "../../../lib/api";
 import { apiErrorMessage, fetchFailureMessage } from "../../../lib/apiError";
+import { parsePickScenario } from "../../../lib/pickScenario";
 import DecisionFlow from "./DecisionFlow";
 import HandBlindPicker, { PickerState } from "./HandBlindPicker";
 import styles from "./page.module.css";
@@ -27,20 +28,11 @@ export default function PickAnalysisPage() {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleAnalyze = async () => {
+  const analyze = async (requestBody: AnalyzePickRequest) => {
     setError(null);
     setLoading(true);
 
     try {
-      const requestBody: AnalyzePickRequest = {
-        partnerMode,
-        seat,
-        deterministic,
-        seed: seed ? parseInt(seed, 10) : undefined,
-        hand: picker.lockedHand.length > 0 ? picker.lockedHand : undefined,
-        blind: picker.lockedBlind.length > 0 ? picker.lockedBlind : undefined,
-      };
-
       const res = await apiFetch("/api/analyze/pick", {
         method: "POST",
         body: JSON.stringify(requestBody),
@@ -71,6 +63,41 @@ export default function PickAnalysisPage() {
       setLoading(false);
     }
   };
+
+  const handleAnalyze = () =>
+    analyze({
+      partnerMode,
+      seat,
+      deterministic,
+      seed: seed ? parseInt(seed, 10) : undefined,
+      hand: picker.lockedHand.length > 0 ? picker.lockedHand : undefined,
+      blind: picker.lockedBlind.length > 0 ? picker.lockedBlind : undefined,
+    });
+
+  // A link from a hand review names a deal (lib/pickScenario): open on it,
+  // with every card locked, and analyze it straight away. The AI takes its
+  // first choice there, as it does in the review. Read after mounting, so
+  // that the first render matches the server's.
+  useEffect(() => {
+    const linked = parsePickScenario(window.location.search);
+    if (!linked) return;
+    setPartnerMode(linked.partnerMode);
+    setSeat(linked.seat);
+    setDeterministic(true);
+    setPicker({
+      lockedHand: linked.hand,
+      lockedBlind: linked.blind,
+      dealtHand: null,
+      dealtBlind: null,
+    });
+    void analyze({
+      partnerMode: linked.partnerMode,
+      seat: linked.seat,
+      deterministic: true,
+      hand: linked.hand.length > 0 ? linked.hand : undefined,
+      blind: linked.blind.length > 0 ? linked.blind : undefined,
+    });
+  }, []);
 
   const handleSeedChange = (value: string) => {
     if (value === "" || /^\d+$/.test(value)) {

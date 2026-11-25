@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Tuple
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
@@ -170,6 +170,8 @@ class AccountPublic(BaseModel):
     username: str
     email: str
     email_verified: bool
+    # May open the admin area.
+    is_admin: bool
 
 
 class AccountMeResponse(BaseModel):
@@ -312,6 +314,194 @@ class HandOpponents(BaseModel):
     ai: int
 
 
+ReviewStatus = Literal["queued", "reviewed", "skipped", "failed"]
+DecisionKind = Literal["pick", "call", "under", "bury", "play"]
+
+
+class HandReviewBrief(BaseModel):
+    status: ReviewStatus
+    # Expected score the player's choices cost and gained against the AI's,
+    # both >= 0 (gained - cost is the hand's net); None until reviewed.
+    cost: Optional[float]
+    gained: Optional[float]
+    # One of the hand's decisions cost or gained a full point and its net
+    # came out a full point the same way: the hand stands out in a list.
+    notable: bool
+
+
+class HighTrump(BaseModel):
+    # The highest trump not yet played at the decision, as far as the seat
+    # could know; None once every trump is gone.
+    card: Optional[str]
+    held: bool
+    # Trump neither played nor in the seat's hand.
+    unseen: int
+
+
+class DecisionReviewOut(BaseModel):
+    index: int
+    kind: DecisionKind
+    # 0-based trick for a card play.
+    trick: Optional[int]
+    # Card codes: the seat's hand, and the [seat, card] plays already made
+    # to the trick.
+    hand: List[str]
+    table: List[Tuple[int, str]]
+    # Engine action names; a bury is "BURY <card> <card>".
+    action: str
+    ai_action: str
+    # [action, probability], the AI's most likely first.
+    policy: List[Tuple[str, float]]
+    # even: under a quarter point either way; slight: a real difference
+    # short of a full point; costly / better: a point or more.
+    standing: Literal["forced", "agreed", "even", "slight", "costly", "better"]
+    # The AI's expected score at the decision: from the seat's view, and
+    # with every card known (None for a model without that estimate).
+    expected_score: float
+    oracle_score: Optional[float]
+    # Expected score after the player's choice and after the AI's, and the
+    # first less the second as displayed; None where they agreed.
+    chosen_score: Optional[float]
+    ai_score: Optional[float]
+    difference: Optional[float]
+    high_trump: HighTrump
+    # The table could tell who the partner was by this decision: the card
+    # that names them had been played.
+    partner_known: bool
+
+
+class HandSeat(BaseModel):
+    seat: int
+    is_ai: bool
+    is_you: bool
+    # Display name; None for an AI seat.
+    name: Optional[str]
+    role: Literal["picker", "partner", "defender", "leaster"]
+
+
+class HandReviewSummary(BaseModel):
+    # Decisions where the player had a choice, by how they compare.
+    decisions: int
+    agreed: int
+    even: int
+    slight: int
+    costly: int
+    better: int
+    cost: float
+    gained: float
+    # index of the decision that sums the hand up, if any reaches a full
+    # point: the costliest, else the best gain.
+    headline_index: Optional[int]
+    # As HandReviewBrief.notable.
+    notable: bool
+
+
+class HandReviewResponse(BaseModel):
+    hand: HandHistoryRow
+    seat: int
+    called_card: Optional[str]
+    # The deal as the pick analyzer takes it: the six cards the seat was
+    # dealt, the blind, and the partner mode (0 = jack of diamonds, 1 =
+    # called ace).
+    dealt_hand: List[str]
+    blind: List[str]
+    partner_mode: int
+    seats: List[HandSeat]
+    # None unless the review is done.
+    summary: Optional[HandReviewSummary]
+    decisions: List[DecisionReviewOut]
+    # Label of the AI model that produced the review.
+    ai_model: Optional[str]
+    newer_game_id: Optional[UUID]
+    older_game_id: Optional[UUID]
+
+
+class ReviewKindRow(BaseModel):
+    kind: Literal["pick", "call", "bury", "play"]
+    decisions: int
+    agreed: int
+    # Decisions of this kind that cost, and that gained, a full point.
+    costly: int
+    better: int
+    net: float
+
+
+class ReviewDifference(BaseModel):
+    game_id: UUID
+    index: int
+    kind: DecisionKind
+    trick: Optional[int]
+    # True when the play led the trick.
+    led: bool
+    action: str
+    ai_action: str
+    # How likely the AI was to make its own choice.
+    ai_probability: float
+    difference: float
+    time_closed: datetime
+    table_name: str
+
+
+class ReviewPick(BaseModel):
+    game_id: UUID
+    time_closed: datetime
+    table_name: str
+    seat: int
+    hand: List[str]
+    picked: bool
+    # How likely the AI was to pick.
+    ai_pick_probability: float
+    pick_score: float
+    pass_score: float
+    # What the hand scored for the player.
+    score: int
+
+
+class AccountReviewResponse(BaseModel):
+    hands_reviewed: int
+    hands_waiting: int
+    decisions: int
+    agreed: int
+    even: int
+    slight: int
+    costly: int
+    better: int
+    net: float
+    by_kind: List[ReviewKindRow]
+    # Largest first, at most REVIEW_LIST_SIZE each.
+    cost_most: List[ReviewDifference]
+    gained_most: List[ReviewDifference]
+    pick_decisions: int
+    pick_agreed: int
+    picked_ai_passes: List[ReviewPick]
+    passed_ai_picks: List[ReviewPick]
+
+
+class ReviewQueueFailure(BaseModel):
+    game_id: UUID
+    seat: int
+    reason: Optional[str]
+
+
+class ReviewQueueResponse(BaseModel):
+    paused: bool
+    tables_in_play: int
+    waiting: int
+    oldest_queued: Optional[datetime]
+    reviewed_24h: int
+    average_ms_24h: Optional[int]
+    slowest_ms_24h: Optional[int]
+    reviewed: int
+    skipped: int
+    failed: int
+    total: int
+    last_reviewed: Optional[datetime]
+    ai_model: str
+    # Reviews made by an AI model other than the one now deployed.
+    other_model_reviews: int
+    failures: List[ReviewQueueFailure]
+
+
 class HandHistoryRow(BaseModel):
     game_id: UUID
     time_closed: datetime
@@ -331,6 +521,8 @@ class HandHistoryRow(BaseModel):
     abandoned: bool
     # The other four seats of the hand, by who was dealt them.
     opponents: HandOpponents
+    # Where the hand's AI review stands; None if it was never queued.
+    review: Optional[HandReviewBrief]
 
 
 class HandHistoryResponse(BaseModel):

@@ -45,11 +45,13 @@ class Account:
     email: str
     password_hash: str
     email_verified: bool
+    # Set by hand in the database, never by the application.
+    is_admin: bool
 
 
 _COLUMNS = (
     "player_id, username, email, password_hash, "
-    "email_verified_at IS NOT NULL AS email_verified"
+    "email_verified_at IS NOT NULL AS email_verified, is_admin"
 )
 
 
@@ -62,6 +64,7 @@ def _account(row: Optional[asyncpg.Record]) -> Optional[Account]:
         email=row["email"],
         password_hash=row["password_hash"],
         email_verified=row["email_verified"],
+        is_admin=row["is_admin"],
     )
 
 

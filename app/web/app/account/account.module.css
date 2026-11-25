@@ -19,8 +19,16 @@
 .tabs {
   display: flex;
   gap: 24px;
-  border-bottom: 1px solid var(--rule);
+  /* The rule under the row is drawn inside it, so that the current
+     tab's underline can cover it without reaching outside the box: a tab
+     hanging a pixel below would give this scrolling row a vertical
+     scroll bar. */
+  box-shadow: inset 0 -1px 0 var(--rule);
   margin-bottom: 24px;
+  /* On a phone the row scrolls sideways rather than wrapping its labels. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
 }
 .tab {
   font-family: var(--font-ui);
@@ -29,7 +37,6 @@
   border: none;
   border-bottom: 2px solid transparent;
   padding: 0 0 8px;
-  margin-bottom: -1px;
   color: var(--muted);
   cursor: pointer;
 }
