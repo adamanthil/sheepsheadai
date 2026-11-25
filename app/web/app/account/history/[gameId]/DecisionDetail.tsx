@@ -92,7 +92,7 @@ export default function DecisionDetail({
           return found.has(card) ? (
             <span key={card} className={styles.fromBlind}>
               {face}
-              Blind
+              <span>Blind</span>
             </span>
           ) : (
             face
