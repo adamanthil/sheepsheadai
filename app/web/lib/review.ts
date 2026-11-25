@@ -261,6 +261,14 @@ export function decisionCounts(
   return parts.length ? `${total}: ${parts.join(", ")}` : total;
 }
 
+/** The two tables of the hand history page. */
+export type HistoryView = "results" | "ai";
+
+/** The hand history page opened on ``view``. */
+export function historyHref(view: HistoryView): string {
+  return view === "ai" ? "/account/history?view=ai" : "/account/history";
+}
+
 /** A hand's net against the AI from its two totals. */
 export function net(cost: number, gained: number): number {
   return Math.round((gained - cost) * 10) / 10;

@@ -10,7 +10,13 @@ import {
   fetchHands,
   useAccount,
 } from "../../../lib/account";
-import { net, netTone, signed as signedPoints } from "../../../lib/review";
+import {
+  historyHref,
+  net,
+  netTone,
+  signed as signedPoints,
+  type HistoryView as View,
+} from "../../../lib/review";
 import type { HandReview } from "../../../lib/types";
 import BetaTag from "../components/BetaTag";
 import CostGainBar from "../components/CostGainBar";
@@ -73,7 +79,11 @@ export default function HandHistoryPage() {
   );
 }
 
-type View = "results" | "ai";
+/** The view a link asked for (?view=ai); results otherwise. */
+function linkedView(): View {
+  const asked = new URLSearchParams(window.location.search).get("view");
+  return asked === "ai" ? "ai" : "results";
+}
 
 // Seconds between looks for reviews that were still waiting.
 const POLL_SECONDS = 20;
@@ -84,7 +94,13 @@ function History() {
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [view, setView] = useState<View>("results");
+  const [view, setView] = useState<View>(linkedView);
+  // The address follows the view, so a link (or the way back from a
+  // hand's review) can open the AI comparison.
+  const show = (next: View) => {
+    setView(next);
+    window.history.replaceState(null, "", historyHref(next));
+  };
 
   const load = useCallback(async (before: string | null) => {
     setBusy(true);
@@ -137,14 +153,14 @@ function History() {
           <button
             type="button"
             aria-pressed={view === "results"}
-            onClick={() => setView("results")}
+            onClick={() => show("results")}
           >
             Results
           </button>
           <button
             type="button"
             aria-pressed={view === "ai"}
-            onClick={() => setView("ai")}
+            onClick={() => show("ai")}
           >
             AI comparison
             <BetaTag />

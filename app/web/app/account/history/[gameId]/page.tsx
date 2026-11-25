@@ -21,6 +21,7 @@ import {
   decisionLabel,
   decisionNote,
   handHeadline,
+  historyHref,
   net,
   netTone,
   signed,
@@ -150,7 +151,7 @@ function Review({ gameId }: { gameId: string }) {
   return (
     <>
       <div className={styles.topRow}>
-        <Link href="/account/history" className={ds.link}>
+        <Link href={historyHref("ai")} className={ds.link}>
           ← Hand history
         </Link>
         <span className={styles.neighbours}>
