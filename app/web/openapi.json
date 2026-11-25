@@ -65,6 +65,109 @@
         "title": "AccountPublic",
         "type": "object"
       },
+      "AccountReviewResponse": {
+        "properties": {
+          "agreed": {
+            "title": "Agreed",
+            "type": "integer"
+          },
+          "better": {
+            "title": "Better",
+            "type": "integer"
+          },
+          "by_kind": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewKindRow"
+            },
+            "title": "By Kind",
+            "type": "array"
+          },
+          "cost_most": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewDifference"
+            },
+            "title": "Cost Most",
+            "type": "array"
+          },
+          "costly": {
+            "title": "Costly",
+            "type": "integer"
+          },
+          "decisions": {
+            "title": "Decisions",
+            "type": "integer"
+          },
+          "even": {
+            "title": "Even",
+            "type": "integer"
+          },
+          "gained_most": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewDifference"
+            },
+            "title": "Gained Most",
+            "type": "array"
+          },
+          "hands_reviewed": {
+            "title": "Hands Reviewed",
+            "type": "integer"
+          },
+          "hands_waiting": {
+            "title": "Hands Waiting",
+            "type": "integer"
+          },
+          "net": {
+            "title": "Net",
+            "type": "number"
+          },
+          "passed_ai_picks": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewPick"
+            },
+            "title": "Passed Ai Picks",
+            "type": "array"
+          },
+          "pick_agreed": {
+            "title": "Pick Agreed",
+            "type": "integer"
+          },
+          "pick_decisions": {
+            "title": "Pick Decisions",
+            "type": "integer"
+          },
+          "picked_ai_passes": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewPick"
+            },
+            "title": "Picked Ai Passes",
+            "type": "array"
+          },
+          "slight": {
+            "title": "Slight",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "hands_reviewed",
+          "hands_waiting",
+          "decisions",
+          "agreed",
+          "even",
+          "slight",
+          "costly",
+          "better",
+          "net",
+          "by_kind",
+          "cost_most",
+          "gained_most",
+          "pick_decisions",
+          "pick_agreed",
+          "picked_ai_passes",
+          "passed_ai_picks"
+        ],
+        "title": "AccountReviewResponse",
+        "type": "object"
+      },
       "AccountRunningScoreResponse": {
         "properties": {
           "closed": {
@@ -1650,6 +1753,172 @@
         "title": "CreateTableResponse",
         "type": "object"
       },
+      "DecisionReviewOut": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "ai_action": {
+            "title": "Ai Action",
+            "type": "string"
+          },
+          "ai_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Score"
+          },
+          "chosen_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chosen Score"
+          },
+          "difference": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Difference"
+          },
+          "expected_score": {
+            "title": "Expected Score",
+            "type": "number"
+          },
+          "hand": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Hand",
+            "type": "array"
+          },
+          "high_trump": {
+            "$ref": "#/components/schemas/HighTrump"
+          },
+          "index": {
+            "title": "Index",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "pick",
+              "call",
+              "under",
+              "bury",
+              "play"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "oracle_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oracle Score"
+          },
+          "partner_known": {
+            "title": "Partner Known",
+            "type": "boolean"
+          },
+          "policy": {
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            "title": "Policy",
+            "type": "array"
+          },
+          "standing": {
+            "enum": [
+              "forced",
+              "agreed",
+              "even",
+              "slight",
+              "costly",
+              "better"
+            ],
+            "title": "Standing",
+            "type": "string"
+          },
+          "table": {
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "string"
+                }
+              ],
+              "type": "array"
+            },
+            "title": "Table",
+            "type": "array"
+          },
+          "trick": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trick"
+          }
+        },
+        "required": [
+          "index",
+          "kind",
+          "trick",
+          "hand",
+          "table",
+          "action",
+          "ai_action",
+          "policy",
+          "standing",
+          "expected_score",
+          "oracle_score",
+          "chosen_score",
+          "ai_score",
+          "difference",
+          "high_trump",
+          "partner_known"
+        ],
+        "title": "DecisionReviewOut",
+        "type": "object"
+      },
       "EmailTokenRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1764,6 +2033,16 @@
             "title": "Points Taken",
             "type": "integer"
           },
+          "review": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HandReviewBrief"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "role": {
             "enum": [
               "picker",
@@ -1801,7 +2080,8 @@
           "points_scope",
           "ai_assisted",
           "abandoned",
-          "opponents"
+          "opponents",
+          "review"
         ],
         "title": "HandHistoryRow",
         "type": "object"
@@ -1822,6 +2102,275 @@
           "ai"
         ],
         "title": "HandOpponents",
+        "type": "object"
+      },
+      "HandReviewBrief": {
+        "properties": {
+          "cost": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost"
+          },
+          "flagged": {
+            "title": "Flagged",
+            "type": "boolean"
+          },
+          "gained": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gained"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "reviewed",
+              "skipped",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "cost",
+          "gained",
+          "flagged"
+        ],
+        "title": "HandReviewBrief",
+        "type": "object"
+      },
+      "HandReviewResponse": {
+        "properties": {
+          "ai_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Model"
+          },
+          "blind": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Blind",
+            "type": "array"
+          },
+          "called_card": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Called Card"
+          },
+          "dealt_hand": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Dealt Hand",
+            "type": "array"
+          },
+          "decisions": {
+            "items": {
+              "$ref": "#/components/schemas/DecisionReviewOut"
+            },
+            "title": "Decisions",
+            "type": "array"
+          },
+          "hand": {
+            "$ref": "#/components/schemas/HandHistoryRow"
+          },
+          "newer_game_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Newer Game Id"
+          },
+          "older_game_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Older Game Id"
+          },
+          "partner_mode": {
+            "title": "Partner Mode",
+            "type": "integer"
+          },
+          "seat": {
+            "title": "Seat",
+            "type": "integer"
+          },
+          "seats": {
+            "items": {
+              "$ref": "#/components/schemas/HandSeat"
+            },
+            "title": "Seats",
+            "type": "array"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HandReviewSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "hand",
+          "seat",
+          "called_card",
+          "dealt_hand",
+          "blind",
+          "partner_mode",
+          "seats",
+          "summary",
+          "decisions",
+          "ai_model",
+          "newer_game_id",
+          "older_game_id"
+        ],
+        "title": "HandReviewResponse",
+        "type": "object"
+      },
+      "HandReviewSummary": {
+        "properties": {
+          "agreed": {
+            "title": "Agreed",
+            "type": "integer"
+          },
+          "better": {
+            "title": "Better",
+            "type": "integer"
+          },
+          "cost": {
+            "title": "Cost",
+            "type": "number"
+          },
+          "costly": {
+            "title": "Costly",
+            "type": "integer"
+          },
+          "decisions": {
+            "title": "Decisions",
+            "type": "integer"
+          },
+          "even": {
+            "title": "Even",
+            "type": "integer"
+          },
+          "gained": {
+            "title": "Gained",
+            "type": "number"
+          },
+          "headline_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Headline Index"
+          },
+          "slight": {
+            "title": "Slight",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "decisions",
+          "agreed",
+          "even",
+          "slight",
+          "costly",
+          "better",
+          "cost",
+          "gained",
+          "headline_index"
+        ],
+        "title": "HandReviewSummary",
+        "type": "object"
+      },
+      "HandSeat": {
+        "properties": {
+          "is_ai": {
+            "title": "Is Ai",
+            "type": "boolean"
+          },
+          "is_you": {
+            "title": "Is You",
+            "type": "boolean"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "role": {
+            "enum": [
+              "picker",
+              "partner",
+              "defender",
+              "leaster"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "seat": {
+            "title": "Seat",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "seat",
+          "is_ai",
+          "is_you",
+          "name",
+          "role"
+        ],
+        "title": "HandSeat",
         "type": "object"
       },
       "HealthResponse": {
@@ -1850,6 +2399,36 @@
           "sampling"
         ],
         "title": "HealthResponse",
+        "type": "object"
+      },
+      "HighTrump": {
+        "properties": {
+          "card": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Card"
+          },
+          "held": {
+            "title": "Held",
+            "type": "boolean"
+          },
+          "unseen": {
+            "title": "Unseen",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "card",
+          "held",
+          "unseen"
+        ],
+        "title": "HighTrump",
         "type": "object"
       },
       "JoinTableRequest": {
@@ -2236,6 +2815,329 @@
           "password"
         ],
         "title": "ResetPasswordRequest",
+        "type": "object"
+      },
+      "ReviewDifference": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "ai_action": {
+            "title": "Ai Action",
+            "type": "string"
+          },
+          "ai_probability": {
+            "title": "Ai Probability",
+            "type": "number"
+          },
+          "difference": {
+            "title": "Difference",
+            "type": "number"
+          },
+          "game_id": {
+            "format": "uuid",
+            "title": "Game Id",
+            "type": "string"
+          },
+          "index": {
+            "title": "Index",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "pick",
+              "call",
+              "under",
+              "bury",
+              "play"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "led": {
+            "title": "Led",
+            "type": "boolean"
+          },
+          "table_name": {
+            "title": "Table Name",
+            "type": "string"
+          },
+          "time_closed": {
+            "format": "date-time",
+            "title": "Time Closed",
+            "type": "string"
+          },
+          "trick": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trick"
+          }
+        },
+        "required": [
+          "game_id",
+          "index",
+          "kind",
+          "trick",
+          "led",
+          "action",
+          "ai_action",
+          "ai_probability",
+          "difference",
+          "time_closed",
+          "table_name"
+        ],
+        "title": "ReviewDifference",
+        "type": "object"
+      },
+      "ReviewKindRow": {
+        "properties": {
+          "agreed": {
+            "title": "Agreed",
+            "type": "integer"
+          },
+          "decisions": {
+            "title": "Decisions",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "pick",
+              "call",
+              "bury",
+              "play"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "net": {
+            "title": "Net",
+            "type": "number"
+          }
+        },
+        "required": [
+          "kind",
+          "decisions",
+          "agreed",
+          "net"
+        ],
+        "title": "ReviewKindRow",
+        "type": "object"
+      },
+      "ReviewPick": {
+        "properties": {
+          "ai_pick_probability": {
+            "title": "Ai Pick Probability",
+            "type": "number"
+          },
+          "game_id": {
+            "format": "uuid",
+            "title": "Game Id",
+            "type": "string"
+          },
+          "hand": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Hand",
+            "type": "array"
+          },
+          "pass_score": {
+            "title": "Pass Score",
+            "type": "number"
+          },
+          "pick_score": {
+            "title": "Pick Score",
+            "type": "number"
+          },
+          "picked": {
+            "title": "Picked",
+            "type": "boolean"
+          },
+          "score": {
+            "title": "Score",
+            "type": "integer"
+          },
+          "seat": {
+            "title": "Seat",
+            "type": "integer"
+          },
+          "table_name": {
+            "title": "Table Name",
+            "type": "string"
+          },
+          "time_closed": {
+            "format": "date-time",
+            "title": "Time Closed",
+            "type": "string"
+          }
+        },
+        "required": [
+          "game_id",
+          "time_closed",
+          "table_name",
+          "seat",
+          "hand",
+          "picked",
+          "ai_pick_probability",
+          "pick_score",
+          "pass_score",
+          "score"
+        ],
+        "title": "ReviewPick",
+        "type": "object"
+      },
+      "ReviewQueueFailure": {
+        "properties": {
+          "game_id": {
+            "format": "uuid",
+            "title": "Game Id",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "seat": {
+            "title": "Seat",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "game_id",
+          "seat",
+          "reason"
+        ],
+        "title": "ReviewQueueFailure",
+        "type": "object"
+      },
+      "ReviewQueueResponse": {
+        "properties": {
+          "ai_model": {
+            "title": "Ai Model",
+            "type": "string"
+          },
+          "average_ms_24h": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Ms 24H"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "failures": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewQueueFailure"
+            },
+            "title": "Failures",
+            "type": "array"
+          },
+          "last_reviewed": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Reviewed"
+          },
+          "oldest_queued": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldest Queued"
+          },
+          "other_model_reviews": {
+            "title": "Other Model Reviews",
+            "type": "integer"
+          },
+          "paused": {
+            "title": "Paused",
+            "type": "boolean"
+          },
+          "reviewed": {
+            "title": "Reviewed",
+            "type": "integer"
+          },
+          "reviewed_24h": {
+            "title": "Reviewed 24H",
+            "type": "integer"
+          },
+          "skipped": {
+            "title": "Skipped",
+            "type": "integer"
+          },
+          "slowest_ms_24h": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slowest Ms 24H"
+          },
+          "tables_in_play": {
+            "title": "Tables In Play",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "waiting": {
+            "title": "Waiting",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "paused",
+          "tables_in_play",
+          "waiting",
+          "oldest_queued",
+          "reviewed_24h",
+          "average_ms_24h",
+          "slowest_ms_24h",
+          "reviewed",
+          "skipped",
+          "failed",
+          "total",
+          "last_reviewed",
+          "ai_model",
+          "other_model_reviews",
+          "failures"
+        ],
+        "title": "ReviewQueueResponse",
         "type": "object"
       },
       "RoleSplit": {
@@ -2821,6 +3723,47 @@
         "summary": "Account Hands"
       }
     },
+    "/api/account/hands/{game_id}/review": {
+      "get": {
+        "description": "One of the caller's hands, decision by decision, against the AI.",
+        "operationId": "hand_review_api_account_hands__game_id__review_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "game_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Game Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HandReviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Hand Review"
+      }
+    },
     "/api/account/login": {
       "post": {
         "operationId": "login_api_account_login_post",
@@ -3027,6 +3970,25 @@
         "summary": "Reset Password"
       }
     },
+    "/api/account/review": {
+      "get": {
+        "description": "The caller's reviewed hands, totalled: how often they made the AI's\nchoice, by kind of decision, and the largest differences.",
+        "operationId": "account_review_api_account_review_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountReviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Account Review"
+      }
+    },
     "/api/account/running-score": {
       "get": {
         "description": "Every finished hand of the caller's (or one partner mode's), oldest\nfirst, for the running score chart.",
@@ -3213,6 +4175,25 @@
           }
         },
         "summary": "Get Actions"
+      }
+    },
+    "/api/admin/review-queue": {
+      "get": {
+        "description": "The state of the AI review queue, for administrators.",
+        "operationId": "review_queue_api_admin_review_queue_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewQueueResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Review Queue"
       }
     },
     "/api/analyze/model": {

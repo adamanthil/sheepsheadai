@@ -4,17 +4,20 @@ from __future__ import annotations
 
 from typing import Optional
 
-import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from server.api.auth import PlayerIdentity, current_player, optional_player
+from server.api.auth import (
+    PlayerIdentity,
+    current_player,
+    optional_player,
+    verified_account,
+)
 from server.api.schemas import (
     AccountRunningScoreResponse,
     AccountStatsResponse,
     HandHistoryResponse,
     LeaderboardResponse,
 )
-from server.services.persistence import accounts as accounts_db
 from server.services.persistence import history as history_db
 from server.services.persistence import stats as stats_db
 from server.services.persistence.history import BadCursor
@@ -90,15 +93,6 @@ async def leaderboard(
     }
 
 
-async def _verified_account(pool: asyncpg.Pool, identity: PlayerIdentity):
-    account = await accounts_db.get_account(pool, identity.id)
-    if account is None:
-        raise HTTPException(status_code=403, detail="account_required")
-    if not account.email_verified:
-        raise HTTPException(status_code=403, detail="email_unverified")
-    return account
-
-
 @router.get("/api/account/stats", response_model=AccountStatsResponse)
 async def account_stats(
     mode: GameMode = "all",
@@ -108,7 +102,7 @@ async def account_stats(
     the rank is on that mode's all-time board, by score per hand (the
     leaderboard's default sort)."""
     pool = get_db_pool()
-    account = await _verified_account(pool, identity)
+    account = await verified_account(identity)
     stats = await stats_db.player_stats(pool, identity.id, mode)
     board = MODE_BOARD[mode]
     ranking = await stats_db.ranking(pool, "sph", board)
@@ -142,7 +136,7 @@ async def account_running_score(
     """Every finished hand of the caller's (or one partner mode's), oldest
     first, for the running score chart."""
     pool = get_db_pool()
-    await _verified_account(pool, identity)
+    await verified_account(identity)
     return await stats_db.player_running_score(pool, identity.id, mode)
 
 
@@ -154,7 +148,7 @@ async def account_hands(
     """The caller's finished hands, newest first, a page at a time; pass
     the previous page's next_cursor as ``before`` for the next."""
     pool = get_db_pool()
-    await _verified_account(pool, identity)
+    await verified_account(identity)
     try:
         return await history_db.hand_history(pool, identity.id, before)
     except BadCursor:

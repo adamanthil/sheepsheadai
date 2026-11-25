@@ -16,7 +16,9 @@ from uuid import UUID
 
 from fastapi import HTTPException, Request
 
+from server.services.persistence import accounts as accounts_db
 from server.services.persistence import sessions as sessions_db
+from server.services.persistence.accounts import Account
 from server.services.persistence.pool import get_db_pool
 from server.services.persistence.sessions import hash_token
 
@@ -86,3 +88,14 @@ async def current_player(request: Request) -> PlayerIdentity:
     if identity is None:
         raise HTTPException(status_code=401, detail="invalid_token")
     return identity
+
+
+async def verified_account(identity: PlayerIdentity) -> Account:
+    """The caller's account, for endpoints only a confirmed account may
+    use; 403 for a guest or an unconfirmed email."""
+    account = await accounts_db.get_account(get_db_pool(), identity.id)
+    if account is None:
+        raise HTTPException(status_code=403, detail="account_required")
+    if not account.email_verified:
+        raise HTTPException(status_code=403, detail="email_unverified")
+    return account

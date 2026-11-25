@@ -50,6 +50,7 @@ WITH page AS (
       AND g.time_closed IS NOT NULL
       AND gp.score IS NOT NULL
       AND ($2::timestamp IS NULL OR (g.time_closed, g.game_id) < ($2, $3::uuid))
+      AND ($5::uuid IS NULL OR gp.game_id = $5)
     ORDER BY g.time_closed DESC, g.game_id DESC
     LIMIT $4
 ),
@@ -81,11 +82,15 @@ bury AS (
     GROUP BY g.game_id
 )
 SELECT p.*, s.on_picker_team, s.taken, tm.picker_raw, tm.defender_raw,
-       tm.opponent_humans, tm.opponent_ai, coalesce(b.points, 0) AS bury
+       tm.opponent_humans, tm.opponent_ai, coalesce(b.points, 0) AS bury,
+       hr.status AS review_status, hr.cost AS review_cost,
+       hr.gained AS review_gained,
+       hr.headline_index IS NOT NULL AS review_flagged
 FROM page p
 JOIN seat s ON s.game_player_id = p.game_player_id
 JOIN team tm ON tm.game_id = p.game_id
 LEFT JOIN bury b ON b.game_id = p.game_id
+LEFT JOIN hand_review hr ON hr.game_player_id = p.game_player_id
 ORDER BY p.time_closed DESC, p.game_id DESC
 """
 
@@ -134,6 +139,21 @@ def _hand(row: asyncpg.Record) -> dict:
         "ai_assisted": row["ai_assisted"],
         "abandoned": row["abandoned"],
         "opponents": {"humans": row["opponent_humans"], "ai": row["opponent_ai"]},
+        "review": _review(row),
+    }
+
+
+def _review(row: asyncpg.Record) -> Optional[dict]:
+    """Where the hand's AI review stands; None for a hand never queued."""
+    status = row["review_status"]
+    if status is None:
+        return None
+    reviewed = status == "reviewed"
+    return {
+        "status": status,
+        "cost": row["review_cost"] if reviewed else None,
+        "gained": row["review_gained"] if reviewed else None,
+        "flagged": reviewed and row["review_flagged"],
     }
 
 
@@ -143,7 +163,7 @@ async def hand_history(
     """One page of ``player_id``'s hands, newest first, and the cursor for
     the next page (None on the last). Raises BadCursor for a bad ``before``."""
     stamp, game_id = decode_cursor(before) if before else (None, None)
-    rows = await pool.fetch(_PAGE_SQL, player_id, stamp, game_id, PAGE_SIZE + 1)
+    rows = await pool.fetch(_PAGE_SQL, player_id, stamp, game_id, PAGE_SIZE + 1, None)
     page = rows[:PAGE_SIZE]
     next_cursor = (
         encode_cursor(page[-1]["time_closed"], page[-1]["game_id"])
@@ -151,3 +171,38 @@ async def hand_history(
         else None
     )
     return {"hands": [_hand(r) for r in page], "next_cursor": next_cursor}
+
+
+async def hand_row(
+    pool: asyncpg.Pool, player_id: UUID, game_id: UUID
+) -> Optional[dict]:
+    """One of ``player_id``'s finished hands as a history row, or None."""
+    rows = await pool.fetch(_PAGE_SQL, player_id, None, None, 1, game_id)
+    return _hand(rows[0]) if rows else None
+
+
+async def neighbours(
+    pool: asyncpg.Pool, player_id: UUID, game_id: UUID
+) -> tuple[Optional[UUID], Optional[UUID]]:
+    """The (newer, older) hands either side of ``game_id`` in the history."""
+    row = await pool.fetchrow(
+        """
+        WITH mine AS (
+            SELECT g.game_id, g.time_closed
+            FROM game_player gp
+            JOIN game g ON g.game_id = gp.game_id
+            WHERE gp.player_id = $1
+              AND g.time_closed IS NOT NULL AND gp.score IS NOT NULL
+        ), here AS (SELECT * FROM mine WHERE game_id = $2)
+        SELECT
+            (SELECT m.game_id FROM mine m, here h
+              WHERE (m.time_closed, m.game_id) > (h.time_closed, h.game_id)
+              ORDER BY m.time_closed, m.game_id LIMIT 1) AS newer,
+            (SELECT m.game_id FROM mine m, here h
+              WHERE (m.time_closed, m.game_id) < (h.time_closed, h.game_id)
+              ORDER BY m.time_closed DESC, m.game_id DESC LIMIT 1) AS older
+        """,
+        player_id,
+        game_id,
+    )
+    return row["newer"], row["older"]

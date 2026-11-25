@@ -20,6 +20,7 @@ from server.api import analyze as analyze_router
 from server.api import games as games_router
 from server.api import health as health_router
 from server.api import players as players_router
+from server.api import review as review_router
 from server.api import stats as stats_router
 from server.api import tables as tables_router
 from server.api.ratelimit import limiter
@@ -269,6 +270,7 @@ def create_app() -> FastAPI:
     app.include_router(players_router.router)
     app.include_router(account_router.router)
     app.include_router(stats_router.router)
+    app.include_router(review_router.router)
     app.include_router(websocket_router.router)
 
     return app
