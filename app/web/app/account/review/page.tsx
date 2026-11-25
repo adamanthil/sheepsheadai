@@ -196,19 +196,25 @@ function Totals() {
             </dd>
           </div>
           <div>
-            <dt>Cost you</dt>
+            <dt>AI chose better</dt>
             <dd>{review.costly}</dd>
-            <dd className={styles.figureNote}>a point or more</dd>
+            <dd className={styles.figureNote}>
+              {review.costly === 1 ? "time" : "times"}, by 1+ score
+            </dd>
           </div>
           <div>
-            <dt>Beat its choice</dt>
+            <dt>You chose better</dt>
             <dd>{review.better}</dd>
-            <dd className={styles.figureNote}>a point or more</dd>
+            <dd className={styles.figureNote}>
+              {review.better === 1 ? "time" : "times"}, by 1+ score
+            </dd>
           </div>
           <div>
             <dt>Net vs. AI</dt>
             <dd className={toneClass(review.net)}>{signed(review.net)}</dd>
-            <dd className={styles.figureNote}>{signed(perHand, 2)} a hand</dd>
+            <dd className={styles.figureNote}>
+              {signed(perHand, 2)} score per hand
+            </dd>
           </div>
         </dl>
 
