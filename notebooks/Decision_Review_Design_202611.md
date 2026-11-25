@@ -370,8 +370,8 @@ review-tab aggregates; (0) `is_admin`; (4) history toggle, bar column and strip;
   each. Nothing banded is stored: a decision keeps its difference and a
   hand what its choices cost and gained, and standings, counts, the
   headline decision and notability are worked out when a review is read.
-  The count and `headline_index` columns of `hand_review` are no longer
-  written or read.
+  Migration 000012 dropped the count and `headline_index` columns that
+  `hand_review` first had.
 * `app/server/services/review_view.py` — a stored review joined to its
   recorded hand, as the hand page is served it.
 * `app/scripts/review_hands.py` — read-only report over a database:
