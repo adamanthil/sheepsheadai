@@ -1,0 +1,45 @@
+.bar {
+  position: relative;
+  display: block;
+  width: 100%;
+  max-width: 184px;
+  height: 16px;
+  margin: 0 auto;
+}
+.cost,
+.gained {
+  position: absolute;
+  top: 4px;
+  height: 8px;
+}
+.cost {
+  right: 50%;
+  background: var(--accent-2);
+}
+.gained {
+  left: 50%;
+  background: #1d6b42;
+}
+.centre {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  height: 16px;
+  border-left: 1px solid var(--ink);
+}
+/* A slanted gap near the end of a bar that ran past full width. Its colour
+   is the row's background, set by the row as --bar-paper. */
+.notch {
+  position: absolute;
+  top: 3px;
+  width: 2px;
+  height: 10px;
+  background: var(--bar-paper, var(--bg-page));
+  transform: skewX(-20deg);
+}
+.notchCost {
+  left: 5px;
+}
+.notchGained {
+  right: 5px;
+}

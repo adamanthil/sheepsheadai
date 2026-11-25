@@ -85,6 +85,278 @@
   white-space: nowrap;
 }
 
+/* ---- The view toggle ---- */
+.viewBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 24px;
+  margin-bottom: 16px;
+}
+.toggle {
+  display: inline-flex;
+  border: 1px solid var(--rule-strong);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.toggle button {
+  min-height: 36px;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.toggle button + button {
+  border-left: 1px solid var(--rule-strong);
+}
+.toggle button[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--bg-page);
+}
+.toggle button:focus-visible {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: -2px;
+}
+.viewNote {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0;
+}
+
+/* ---- The AI comparison ----
+   What a hand's choices cost (red) and gained (green) against the AI's. */
+.costText {
+  color: var(--accent-2);
+}
+.gainText {
+  color: #1d6b42;
+}
+.aiTable .barCell {
+  width: 200px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+/* "Cost" and "Gained" sit either side of the bars' centre line, and so
+   say which way each bar grows. */
+.barHead {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 20px;
+}
+.barHead > :first-child {
+  text-align: right;
+}
+.aiTable .net {
+  font-size: 13px;
+  font-weight: 600;
+  /* Grey unless the hand's net reaches a full point either way. */
+  color: var(--muted);
+}
+.aiTable .net.costText {
+  color: var(--accent-2);
+}
+.aiTable .net.gainText {
+  color: #1d6b42;
+}
+.aiTable .expandCell {
+  width: 40px;
+  padding: 0;
+  text-align: center;
+}
+/* A reviewed row opens wherever it is clicked. */
+.opens {
+  cursor: pointer;
+}
+.opens:hover td {
+  background: var(--bg-sunk);
+}
+.opens.openRow:hover td {
+  background: var(--bg-card);
+}
+.expand {
+  width: 100%;
+  min-height: 44px;
+  border: none;
+  background: none;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--muted);
+  cursor: pointer;
+}
+/* One glyph, turned over when the row is open, so it keeps its size. */
+.expand span {
+  display: inline-block;
+}
+.caretOpen {
+  transform: rotate(180deg);
+}
+.expand:focus-visible {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: -2px;
+}
+.aiTable .pending {
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+/* The role sits under the date on a phone, where its own column is gone. */
+.roleUnder {
+  display: none;
+  font-family: var(--font-ui);
+  color: var(--ink-soft);
+  margin-top: 2px;
+}
+.loss .roleUnder {
+  color: var(--card-red);
+}
+.openRow td {
+  background: var(--bg-card);
+  border-bottom-color: transparent;
+  --bar-paper: var(--bg-card);
+}
+.table .stripRow td {
+  background: var(--bg-card);
+  border-bottom-color: var(--rule-strong);
+  padding: 4px 16px 18px;
+  white-space: normal;
+}
+
+/* ---- The strip under an opened row ---- */
+.strip {
+  color: var(--ink);
+}
+.stripHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px 24px;
+  margin-bottom: 14px;
+}
+.stripHeadline {
+  font-family: var(--font-display);
+  font-size: 28px;
+  line-height: 1.05;
+  margin-top: 6px;
+}
+.stripLink {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.stripCaption {
+  font-size: 11px;
+  color: var(--muted);
+  margin: 0 0 6px 34px;
+}
+.stripChart {
+  display: flex;
+}
+.stripZero {
+  width: 34px;
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 64px;
+  color: var(--muted);
+}
+.stripPlotColumn {
+  flex: 1;
+  min-width: 0;
+}
+.stripPlot {
+  position: relative;
+  height: 64px;
+}
+.stripPlot svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.stripPlot line {
+  stroke: var(--rule);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+  vector-effect: non-scaling-stroke;
+}
+.stripPlot polyline {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+.stripDot {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  margin: -5px 0 0 -5px;
+  border-radius: 50%;
+  background: var(--ink);
+  box-shadow: 0 0 0 2px var(--bg-card);
+}
+.stripDotCost {
+  background: var(--accent-2);
+}
+.stripCells {
+  display: grid;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  border-top: 1px solid var(--rule);
+}
+.stripCells li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 10px 2px 0;
+  text-align: center;
+  min-width: 0;
+}
+.cellLabel {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.cellAction {
+  font-family: var(--font-display);
+  font-size: 20px;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+.cellDifference {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.cellNote {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.cellDifference.costText,
+.cellNote.costText {
+  color: var(--accent-2);
+}
+.cellDifference.gainText {
+  color: #1d6b42;
+}
+
 @media (max-width: 640px) {
   .table {
     font-size: 13px;
@@ -92,5 +364,39 @@
   .table th,
   .table td {
     padding: 8px 5px;
+  }
+  /* The comparison fits a phone without scrolling sideways: the role
+     moves under the date and the bar narrows. */
+  .aiTable .roleCell {
+    display: none;
+  }
+  .roleUnder {
+    display: block;
+  }
+  .aiTable .barCell {
+    width: 34%;
+  }
+  .barHead {
+    column-gap: 8px;
+  }
+  .aiTable .expandCell {
+    width: 30px;
+  }
+  .table .stripRow td {
+    padding: 4px 10px 14px;
+  }
+  /* A phone keeps the headline and the line; a cell per decision is too
+     much for the width. */
+  .stripCells {
+    display: none;
+  }
+  .stripHeadline {
+    font-size: 22px;
+  }
+  .stripCaption {
+    margin-left: 0;
+  }
+  .stripZero {
+    width: 14px;
   }
 }

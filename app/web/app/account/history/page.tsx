@@ -6,9 +6,15 @@ import { useRouter } from "next/navigation";
 import { ds } from "../../../lib/ds";
 import {
   accountErrorMessage,
+  fetchHandReview,
   fetchHands,
   useAccount,
 } from "../../../lib/account";
+import { net, netTone, signed as signedPoints } from "../../../lib/review";
+import type { HandReview } from "../../../lib/types";
+import BetaTag from "../components/BetaTag";
+import CostGainBar from "../components/CostGainBar";
+import HandStrip from "./HandStrip";
 import type { HandHistoryRow } from "../../../lib/types";
 import AccountShell from "../AccountShell";
 import { signed } from "../components/statsFormat";
@@ -67,12 +73,19 @@ export default function HandHistoryPage() {
   );
 }
 
+type View = "results" | "ai";
+
+// Seconds between looks for reviews that were still waiting.
+const POLL_SECONDS = 20;
+
 function History() {
   const [hands, setHands] = useState<HandHistoryRow[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The AI comparison opens first, so that it is found.
+  const [view, setView] = useState<View>("ai");
 
   const load = useCallback(async (before: string | null) => {
     setBusy(true);
@@ -93,37 +106,118 @@ function History() {
     void load(null);
   }, [load]);
 
+  // Reviews arrive on their own: while a hand on show is still waiting,
+  // look again now and then and take in whatever has been reviewed since.
+  const waiting = hands.some((hand) => hand.review?.status === "queued");
+  useEffect(() => {
+    if (!waiting) return;
+    const timer = window.setInterval(() => {
+      fetchHands(null).then(
+        (page) => {
+          const fresh = new Map(page.hands.map((h) => [h.game_id, h.review]));
+          setHands((prev) =>
+            prev.map((h) =>
+              fresh.has(h.game_id)
+                ? { ...h, review: fresh.get(h.game_id) ?? null }
+                : h,
+            ),
+          );
+        },
+        // A missed look is harmless; the next one will do.
+        () => undefined,
+      );
+    }, POLL_SECONDS * 1000);
+    return () => window.clearInterval(timer);
+  }, [waiting]);
+
   return (
     <>
       {error && <p className={accountStyles.error}>{error}</p>}
+      <div className={styles.viewBar}>
+        <div className={styles.toggle} role="group" aria-label="Table view">
+          <button
+            type="button"
+            aria-pressed={view === "results"}
+            onClick={() => setView("results")}
+          >
+            Results
+          </button>
+          <button
+            type="button"
+            aria-pressed={view === "ai"}
+            onClick={() => setView("ai")}
+          >
+            AI comparison
+            <BetaTag />
+          </button>
+        </div>
+        {view === "ai" && (
+          <p className={styles.viewNote}>
+            Expected score your choices lost or gained against the AI model.
+          </p>
+        )}
+      </div>
       <div className={styles.scroller}>
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th scope="col">Date</th>
-              <th scope="col">Table</th>
-              <th scope="col">Role</th>
-              <th scope="col" className={styles.num}>
-                Score
-              </th>
-              <th scope="col" className={styles.mult}>
-                <span className={styles.srOnly}>Stakes</span>
-              </th>
-              <th scope="col" className={styles.num}>
-                Points
-              </th>
-              <th scope="col">Opponents</th>
-              <th scope="col">
-                <span className={styles.srOnly}>Notes</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {hands.map((hand) => (
-              <Row key={hand.game_id} hand={hand} />
-            ))}
-          </tbody>
-        </table>
+        {view === "results" ? (
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th scope="col">Date</th>
+                <th scope="col">Table</th>
+                <th scope="col">Role</th>
+                <th scope="col" className={styles.num}>
+                  Score
+                </th>
+                <th scope="col" className={styles.mult}>
+                  <span className={styles.srOnly}>Stakes</span>
+                </th>
+                <th scope="col" className={styles.num}>
+                  Points
+                </th>
+                <th scope="col">Opponents</th>
+                <th scope="col">
+                  <span className={styles.srOnly}>Notes</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {hands.map((hand) => (
+                <Row key={hand.game_id} hand={hand} />
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <table className={`${styles.table} ${styles.aiTable}`}>
+            <thead>
+              <tr>
+                <th scope="col">Date</th>
+                <th scope="col" className={styles.roleCell}>
+                  Role
+                </th>
+                <th scope="col" className={styles.num}>
+                  Score
+                </th>
+                <th scope="col" className={styles.barCell}>
+                  <span className={styles.barHead}>
+                    <span className={styles.costText}>Cost</span>
+                    <span className={styles.gainText}>Gained</span>
+                  </span>
+                </th>
+                <th scope="col" className={styles.num}>
+                  Net vs AI
+                </th>
+                <th scope="col">
+                  <span className={styles.srOnly}>Review</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {hands.map((hand) => (
+                <AiRow key={hand.game_id} hand={hand} />
+              ))}
+            </tbody>
+          </table>
+        )}
         {loaded && hands.length === 0 && (
           <p className={styles.empty}>
             No finished hands yet. They show up here once a hand is played out.
@@ -141,6 +235,110 @@ function History() {
             {busy ? "Loading…" : "Show older"}
           </button>
         </div>
+      )}
+    </>
+  );
+}
+
+const WHY_NOT: Record<string, string> = {
+  skipped: "The AI made some of your decisions in this hand",
+  failed: "This hand could not be reviewed",
+};
+
+/** A hand in the AI comparison: what its choices cost and gained against
+ * the AI's, and the net. Opens to a strip of its decisions. */
+function AiRow({ hand }: { hand: HandHistoryRow }) {
+  const [open, setOpen] = useState(false);
+  const [review, setReview] = useState<HandReview | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const status = hand.review?.status ?? null;
+  const reviewed = status === "reviewed";
+  const cost = hand.review?.cost ?? 0;
+  const gained = hand.review?.gained ?? 0;
+  const handNet = net(cost, gained);
+  const netColour = netTone(handNet, hand.review?.flagged ?? false);
+  const lineTone = hand.counted_score < 0 ? styles.loss : "";
+
+  const toggle = () => {
+    setOpen(!open);
+    if (!open && !review) {
+      setError(null);
+      fetchHandReview(hand.game_id).then(setReview, (err) =>
+        setError(accountErrorMessage(err)),
+      );
+    }
+  };
+  const role = (
+    <>
+      {ROLE_LABEL[hand.role]}
+      {hand.alone && hand.role === "picker" && (
+        <span className={styles.muted}> · alone</span>
+      )}
+    </>
+  );
+
+  return (
+    <>
+      {/* The whole row opens it; the button is the same control for the
+          keyboard and for screen readers. */}
+      <tr
+        className={`${lineTone} ${open ? styles.openRow : ""} ${reviewed ? styles.opens : ""}`}
+        onClick={reviewed ? toggle : undefined}
+      >
+        <td className={styles.when}>
+          {WHEN.format(new Date(hand.time_closed))}
+          <span className={`${styles.roleUnder} ${styles.tone}`}>{role}</span>
+        </td>
+        <td className={`${styles.tone} ${styles.roleCell}`}>{role}</td>
+        <td className={`${styles.num} ${styles.tone}`}>{signed(hand.score)}</td>
+        {reviewed ? (
+          <>
+            <td className={styles.barCell}>
+              <CostGainBar cost={cost} gained={gained} />
+            </td>
+            <td
+              className={`${styles.num} ${styles.net} ${netColour === "cost" ? styles.costText : netColour === "gain" ? styles.gainText : ""}`}
+            >
+              {cost === 0 && gained === 0 ? "—" : signedPoints(handNet)}
+            </td>
+            <td className={styles.expandCell}>
+              <button
+                type="button"
+                className={styles.expand}
+                aria-expanded={open}
+                aria-label={`Cost ${cost.toFixed(1)}, gained ${gained.toFixed(1)}, net ${signedPoints(handNet)} points of expected score. ${open ? "Hide" : "Show"} decisions`}
+                onClick={(event) => {
+                  // The row would toggle it straight back.
+                  event.stopPropagation();
+                  toggle();
+                }}
+              >
+                <span className={open ? styles.caretOpen : undefined}>▾</span>
+              </button>
+            </td>
+          </>
+        ) : (
+          <td colSpan={3} className={styles.pending}>
+            {status === "queued" ? (
+              <span role="status">Waiting for review</span>
+            ) : (
+              <span title={status ? WHY_NOT[status] : "Not reviewed"}>—</span>
+            )}
+          </td>
+        )}
+      </tr>
+      {open && (
+        <tr className={styles.stripRow}>
+          <td colSpan={6}>
+            {review ? (
+              <HandStrip review={review} />
+            ) : (
+              <p className={error ? accountStyles.error : accountStyles.note}>
+                {error ?? "Loading…"}
+              </p>
+            )}
+          </td>
+        </tr>
       )}
     </>
   );
