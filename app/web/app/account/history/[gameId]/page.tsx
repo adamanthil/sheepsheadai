@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import PageShell from "../../../components/PageShell";
@@ -92,6 +92,28 @@ function Review({ gameId }: { gameId: string }) {
   const [picked, setPicked] = useState<number | null>(linkedDecision);
   // On a phone the detail opens in place and can be closed again.
   const [shut, setShut] = useState(false);
+  // The selected decision's row, and whether the selection was just moved
+  // from somewhere other than the row itself (the step buttons, the
+  // chart).
+  const selectedRow = useRef<HTMLButtonElement>(null);
+  const moved = useRef(false);
+
+  // On a phone the detail opens under its row, and the one that was open
+  // closes, so the page shifts under the reader: a step from the foot of
+  // a long detail would leave the next one mostly out of view. Bring the
+  // new row to the top. Where the detail sits beside the list instead, it
+  // has not moved and nothing is scrolled.
+  useEffect(() => {
+    if (!moved.current) return;
+    moved.current = false;
+    const row = selectedRow.current;
+    const detail = row?.nextElementSibling;
+    if (!row || !detail) return;
+    const inPlace =
+      detail.getBoundingClientRect().top >=
+      row.getBoundingClientRect().bottom - 2;
+    if (inPlace) row.scrollIntoView({ block: "start" });
+  }, [picked]);
 
   useEffect(() => {
     let live = true;
@@ -124,6 +146,7 @@ function Review({ gameId }: { gameId: string }) {
     setPicked(index);
   };
   const step = (by: number) => () => {
+    moved.current = true;
     setPicked(decisions[position + by].index);
     setShut(false);
   };
@@ -224,6 +247,7 @@ function Review({ gameId }: { gameId: string }) {
             finalScore={hand.score}
             selected={selected}
             onSelect={(index) => {
+              moved.current = true;
               setPicked(index);
               setShut(false);
             }}
@@ -244,6 +268,7 @@ function Review({ gameId }: { gameId: string }) {
                 <React.Fragment key={d.index}>
                   <button
                     type="button"
+                    ref={on ? selectedRow : undefined}
                     className={`${styles.row} ${on ? styles.rowOn : ""}`}
                     aria-expanded={open}
                     onClick={() => select(d.index)}
