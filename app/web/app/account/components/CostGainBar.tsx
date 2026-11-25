@@ -2,8 +2,8 @@ import React from "react";
 import styles from "./CostGainBar.module.css";
 
 /** Points of expected score that fill one side of the bar. The same for
- * every row, so hands compare down a column; a longer bar is cut off and
- * notched. */
+ * every row, so hands compare down a column; a longer bar stops at full
+ * width and ends in a point, to say that it runs on. */
 const FULL = 3;
 
 /** What a hand's choices cost (red, growing left from the centre line)
@@ -25,14 +25,14 @@ export default function CostGainBar({
       className={`${styles.bar} ${quiet ? styles.quiet : ""}`}
       aria-hidden="true"
     >
-      <span className={styles.cost} style={{ width: side(cost) }} />
-      <span className={styles.gained} style={{ width: side(gained) }} />
-      {cost > FULL && (
-        <span className={`${styles.notch} ${styles.notchCost}`} />
-      )}
-      {gained > FULL && (
-        <span className={`${styles.notch} ${styles.notchGained}`} />
-      )}
+      <span
+        className={`${styles.cost} ${cost > FULL ? styles.costOver : ""}`}
+        style={{ width: side(cost) }}
+      />
+      <span
+        className={`${styles.gained} ${gained > FULL ? styles.gainedOver : ""}`}
+        style={{ width: side(gained) }}
+      />
       <span className={styles.centre} />
     </span>
   );

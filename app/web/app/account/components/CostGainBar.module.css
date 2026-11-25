@@ -31,19 +31,17 @@
   height: 16px;
   border-left: 1px solid var(--ink);
 }
-/* A slanted gap near the end of a bar that ran past full width. Its colour
-   is the row's background, set by the row as --bar-paper. */
-.notch {
-  position: absolute;
-  top: 3px;
-  width: 2px;
-  height: 10px;
-  background: var(--bar-paper, var(--bg-page));
-  transform: skewX(-20deg);
+/* A bar that ran past full width ends in a point, like an arrow off the
+   edge of the scale. */
+.costOver {
+  clip-path: polygon(6px 0, 100% 0, 100% 100%, 6px 100%, 0 50%);
 }
-.notchCost {
-  left: 5px;
-}
-.notchGained {
-  right: 5px;
+.gainedOver {
+  clip-path: polygon(
+    0 0,
+    calc(100% - 6px) 0,
+    100% 50%,
+    calc(100% - 6px) 100%,
+    0 100%
+  );
 }

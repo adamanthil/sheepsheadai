@@ -129,7 +129,8 @@ real: 160 hands of one production player, reviewed with
   difference counts, including the about-even ones, so the two bars
   always add up to Net.
 * **Scale.** Three points fills a side, the same for every row. A
-  longer bar is cut at full width and notched.
+  longer bar stops at full width and ends in a point (the design's
+  notch read as a rendering fault).
 * **One line of explanation** beside the toggle; no separate legend.
 * A row expands to a strip: the costliest decision as a headline, a
   sparkline of expected score from the player's seat, a cell per

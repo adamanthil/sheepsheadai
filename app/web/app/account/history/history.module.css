@@ -221,7 +221,6 @@
 .openRow td {
   background: var(--bg-card);
   border-bottom-color: transparent;
-  --bar-paper: var(--bg-card);
 }
 .table .stripRow td {
   background: var(--bg-card);
